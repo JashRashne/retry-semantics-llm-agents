@@ -1,0 +1,1541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retry-semantics.local/schemas/trace_schema_v1.json",
+  "title": "Primary CREATE experiment V1 recovery-arm trace",
+  "description": "Schema for one recovery arm in a four-arm trial family. identifiers.trial_family_id joins both hidden-world pairs derived from one frozen original request. Only model_visible is supplied to the model; evaluator_only and diagnostic latency must never enter model context.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experiment_version",
+    "git_commit",
+    "timestamp",
+    "identifiers",
+    "mutation_class",
+    "recovery_policy",
+    "model",
+    "sampling",
+    "execution_order",
+    "model_visible",
+    "frozen_original",
+    "recovery_actions",
+    "request_drift",
+    "usage",
+    "latency",
+    "evaluator_only",
+    "errors",
+    "termination_reason"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "trace-schema-v1"
+    },
+    "experiment_version": {
+      "const": "primary-create-v1"
+    },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40,64}$",
+      "description": "Commit containing the exact experiment configuration and implementation used for this run."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Evaluator-only trace creation time; never supplied to the model."
+    },
+    "identifiers": {
+      "$ref": "#/$defs/identifiers"
+    },
+    "mutation_class": {
+      "const": "CREATE"
+    },
+    "recovery_policy": {
+      "enum": [
+        "EXACT_REPLAY",
+        "LLM_REGENERATION"
+      ]
+    },
+    "model": {
+      "$ref": "#/$defs/model"
+    },
+    "sampling": {
+      "$ref": "#/$defs/sampling"
+    },
+    "execution_order": {
+      "$ref": "#/$defs/executionOrder"
+    },
+    "model_visible": {
+      "$ref": "#/$defs/modelVisible"
+    },
+    "frozen_original": {
+      "$ref": "#/$defs/frozenOriginal"
+    },
+    "recovery_actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/recoveryAction"
+      }
+    },
+    "request_drift": {
+      "$ref": "#/$defs/requestDrift"
+    },
+    "usage": {
+      "$ref": "#/$defs/usage"
+    },
+    "latency": {
+      "$ref": "#/$defs/latency",
+      "description": "Evaluator-only timing diagnostics and recovery measurements; never part of model_visible."
+    },
+    "evaluator_only": {
+      "$ref": "#/$defs/evaluatorOnly"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/error"
+      }
+    },
+    "termination_reason": {
+      "enum": [
+        "replay_executed",
+        "model_stopped",
+        "task_completed",
+        "action_budget_exceeded",
+        "invalid_model_tool_call",
+        "infrastructure_failure",
+        "protocol_violation"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "recovery_policy": {
+            "const": "EXACT_REPLAY"
+          }
+        },
+        "required": [
+          "recovery_policy"
+        ]
+      },
+      "then": {
+        "properties": {
+          "identifiers": {
+            "properties": {
+              "run_id": {
+                "pattern": ":P1$"
+              },
+              "arm_id": {
+                "pattern": ":P1$"
+              }
+            }
+          },
+          "sampling": {
+            "properties": {
+              "regeneration": {
+                "type": "null"
+              }
+            }
+          },
+          "request_drift": {
+            "properties": {
+              "applicable": {
+                "const": false
+              },
+              "exact_request_preserved": {
+                "type": "null"
+              }
+            }
+          },
+          "usage": {
+            "properties": {
+              "additional_llm_calls": {
+                "const": 0
+              },
+              "recovery_tool_calls_attempted": {
+                "const": 1
+              },
+              "recovery_tool_calls_executed": {
+                "const": 1
+              }
+            }
+          },
+          "termination_reason": {
+            "enum": [
+              "replay_executed",
+              "infrastructure_failure",
+              "protocol_violation"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "identifiers": {
+            "properties": {
+              "run_id": {
+                "pattern": ":P2$"
+              },
+              "arm_id": {
+                "pattern": ":P2$"
+              }
+            }
+          },
+          "sampling": {
+            "properties": {
+              "regeneration": {
+                "$ref": "#/$defs/samplingConfiguration"
+              }
+            }
+          },
+          "request_drift": {
+            "properties": {
+              "applicable": {
+                "const": true
+              },
+              "exact_request_preserved": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evaluator_only": {
+            "properties": {
+              "hidden_world": {
+                "const": "NOT_EXECUTED"
+              }
+            },
+            "required": [
+              "hidden_world"
+            ]
+          }
+        },
+        "required": [
+          "evaluator_only"
+        ]
+      },
+      "then": {
+        "properties": {
+          "identifiers": {
+            "properties": {
+              "run_id": {
+                "pattern": "-H0:P[12]$"
+              },
+              "pair_id": {
+                "pattern": "-H0$"
+              },
+              "arm_id": {
+                "pattern": "-H0:P[12]$"
+              }
+            }
+          },
+          "evaluator_only": {
+            "properties": {
+              "original_request_executed": {
+                "const": false
+              },
+              "post_ambiguity_state": {
+                "properties": {
+                  "tickets": {
+                    "maxItems": 0
+                  },
+                  "mutation_events": {
+                    "maxItems": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "identifiers": {
+            "properties": {
+              "run_id": {
+                "pattern": "-H1:P[12]$"
+              },
+              "pair_id": {
+                "pattern": "-H1$"
+              },
+              "arm_id": {
+                "pattern": "-H1:P[12]$"
+              }
+            }
+          },
+          "evaluator_only": {
+            "properties": {
+              "original_request_executed": {
+                "const": true
+              },
+              "post_ambiguity_state": {
+                "properties": {
+                  "tickets": {
+                    "minItems": 1,
+                    "maxItems": 1
+                  },
+                  "mutation_events": {
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identifiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "base_trial_id",
+        "trial_family_id",
+        "pair_id",
+        "arm_id",
+        "scenario_id",
+        "manifest_id"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^run-pair-family-bt-.+-[0-9]{6}-H[01]:P[12]$"
+        },
+        "base_trial_id": {
+          "type": "string",
+          "pattern": "^bt-.+-[0-9]{6}$"
+        },
+        "trial_family_id": {
+          "type": "string",
+          "pattern": "^family-bt-.+-[0-9]{6}$",
+          "description": "Joins the four arms derived from one eligible original request M."
+        },
+        "pair_id": {
+          "type": "string",
+          "pattern": "^pair-family-bt-.+-[0-9]{6}-H[01]$",
+          "description": "Joins Replay and Regeneration within one hidden world."
+        },
+        "arm_id": {
+          "type": "string",
+          "pattern": "^pair-family-bt-.+-[0-9]{6}-H[01]:P[12]$"
+        },
+        "scenario_id": {
+          "type": "string",
+          "pattern": "^CREATE-[0-9]{3}$"
+        },
+        "manifest_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "name",
+        "version_or_digest"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version_or_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "samplingConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "temperature",
+        "top_p",
+        "max_output_tokens",
+        "seed",
+        "seed_supported",
+        "tool_choice",
+        "parallel_tool_calls",
+        "provider_parameters"
+      ],
+      "properties": {
+        "temperature": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "top_p": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seed": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "seed_supported": {
+          "type": "boolean"
+        },
+        "tool_choice": {
+          "type": [
+            "string",
+            "object",
+            "null"
+          ]
+        },
+        "parallel_tool_calls": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "provider_parameters": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "sampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_config_id",
+        "original_generation",
+        "regeneration"
+      ],
+      "properties": {
+        "model_config_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "original_generation": {
+          "$ref": "#/$defs/samplingConfiguration"
+        },
+        "regeneration": {
+          "description": "Regeneration configuration used by LLM_REGENERATION; null for EXACT_REPLAY. H0 and H1 Regeneration traces in a family use the same supported seed and call-index derivation.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/samplingConfiguration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "executionOrder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family_hidden_world_order",
+        "hidden_world_pair_position",
+        "pair_arm_order",
+        "arm_position",
+        "arms_executed_serially"
+      ],
+      "properties": {
+        "family_hidden_world_order": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "enum": [
+                "NOT_EXECUTED",
+                "EXECUTED_ACK_LOST"
+              ]
+            },
+            {
+              "enum": [
+                "NOT_EXECUTED",
+                "EXECUTED_ACK_LOST"
+              ]
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2,
+          "allOf": [
+            {
+              "contains": {
+                "const": "NOT_EXECUTED"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "const": "EXECUTED_ACK_LOST"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        },
+        "hidden_world_pair_position": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "pair_arm_order": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "enum": [
+                "EXACT_REPLAY",
+                "LLM_REGENERATION"
+              ]
+            },
+            {
+              "enum": [
+                "EXACT_REPLAY",
+                "LLM_REGENERATION"
+              ]
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2,
+          "allOf": [
+            {
+              "contains": {
+                "const": "EXACT_REPLAY"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "const": "LLM_REGENERATION"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        },
+        "arm_position": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "arms_executed_serially": {
+          "const": true
+        }
+      }
+    },
+    "toolDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description",
+        "parameters"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "create_ticket",
+            "list_tickets"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object"
+        }
+      }
+    },
+    "ticketArguments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "customer_id",
+        "title",
+        "description"
+      ],
+      "properties": {
+        "customer_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "toolCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_call_id",
+        "tool",
+        "arguments"
+      ],
+      "properties": {
+        "tool_call_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments": {
+          "type": "object"
+        }
+      }
+    },
+    "originalToolCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_tool_call_id",
+        "tool",
+        "arguments",
+        "raw_assistant_content"
+      ],
+      "properties": {
+        "provider_tool_call_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool": {
+          "const": "create_ticket"
+        },
+        "arguments": {
+          "$ref": "#/$defs/ticketArguments"
+        },
+        "raw_assistant_content": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "content",
+        "tool_calls",
+        "tool_call_id"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "system",
+            "user",
+            "assistant",
+            "tool"
+          ]
+        },
+        "content": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_calls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolCall"
+          }
+        },
+        "tool_call_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "modelVisible": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system_prompt",
+        "user_task",
+        "tools_exposed",
+        "original_tool_call",
+        "canonical_ambiguous_observation",
+        "model_visible_context",
+        "model_visible_context_hash"
+      ],
+      "properties": {
+        "system_prompt": {
+          "const": "You are a tool-using assistant. Complete the user's task using the available tools."
+        },
+        "user_task": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tools_exposed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolDefinition"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "const": "create_ticket"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "const": "list_tickets"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        },
+        "original_tool_call": {
+          "$ref": "#/$defs/originalToolCall"
+        },
+        "canonical_ambiguous_observation": {
+          "const": "ToolError: The previous request timed out. Its outcome is unknown."
+        },
+        "model_visible_context": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/message"
+                },
+                {
+                  "properties": {
+                    "role": {
+                      "const": "system"
+                    },
+                    "content": {
+                      "const": "You are a tool-using assistant. Complete the user's task using the available tools."
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/message"
+                },
+                {
+                  "properties": {
+                    "role": {
+                      "const": "user"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/message"
+                },
+                {
+                  "properties": {
+                    "role": {
+                      "const": "assistant"
+                    },
+                    "tool_calls": {
+                      "minItems": 1,
+                      "maxItems": 1
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/message"
+                },
+                {
+                  "properties": {
+                    "role": {
+                      "const": "tool"
+                    },
+                    "content": {
+                      "const": "ToolError: The previous request timed out. Its outcome is unknown."
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false,
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "model_visible_context_hash": {
+          "$ref": "#/$defs/sha256",
+          "description": "SHA-256 of canonical JSON object {messages: model_visible_context, tools: tools_exposed}."
+        }
+      }
+    },
+    "frozenOriginal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serialized_original_request",
+        "original_request_hash",
+        "serialization_format",
+        "eligibility_verified"
+      ],
+      "properties": {
+        "serialized_original_request": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact UTF-8 JSON request bytes represented as a JSON string."
+        },
+        "original_request_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "serialization_format": {
+          "const": "canonical-json-v1-utf8-no-bom-no-newline"
+        },
+        "eligibility_verified": {
+          "const": true
+        }
+      }
+    },
+    "ticket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ticket_id",
+        "customer_id",
+        "title",
+        "description"
+      ],
+      "properties": {
+        "ticket_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "ticketState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state_schema_version",
+        "next_ticket_id",
+        "tickets",
+        "mutation_events"
+      ],
+      "properties": {
+        "state_schema_version": {
+          "const": "ticket-state-v1"
+        },
+        "next_ticket_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tickets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ticket"
+          }
+        },
+        "mutation_events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mutationEvent"
+          }
+        }
+      }
+    },
+    "mutationEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "event_sequence",
+        "event_type",
+        "source_stage",
+        "arm_id",
+        "tool_call_id",
+        "serialized_request",
+        "request_hash",
+        "ticket"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event_sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "event_type": {
+          "const": "CREATE_TICKET_COMMITTED"
+        },
+        "source_stage": {
+          "enum": [
+            "ORIGINAL",
+            "RECOVERY"
+          ]
+        },
+        "arm_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_call_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serialized_request": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "ticket": {
+          "$ref": "#/$defs/ticket"
+        }
+      }
+    },
+    "driftClass": {
+      "enum": [
+        "D0_EXACT_REQUEST_MATCH",
+        "D1_SAME_TOOL_ARGUMENT_DRIFT",
+        "D2_IDENTIFIER_DRIFT",
+        "D3_DIFFERENT_TOOL",
+        "D4_READ_OR_VERIFICATION",
+        "D5_ABANDONMENT_OR_NO_MUTATION",
+        "D6_ALTERNATE_OR_COMPENSATING_MUTATION",
+        "D7_OTHER"
+      ]
+    },
+    "recoveryAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_sequence",
+        "actor",
+        "action_type",
+        "model_call_index",
+        "provider_model_request_id",
+        "assistant_content",
+        "tool_call",
+        "serialized_request",
+        "request_hash",
+        "validation_status",
+        "executed",
+        "mutating",
+        "committed_effect_event_ids",
+        "model_visible_observation",
+        "drift_class"
+      ],
+      "properties": {
+        "action_sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "actor": {
+          "enum": [
+            "REPLAY_POLICY",
+            "MODEL"
+          ]
+        },
+        "action_type": {
+          "enum": [
+            "TOOL_CALL",
+            "MODEL_STOP",
+            "INVALID_TOOL_CALL",
+            "BUDGET_REJECTED_TOOL_CALL"
+          ]
+        },
+        "model_call_index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "provider_model_request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assistant_content": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_call": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/toolCall"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serialized_request": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "request_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "VALID",
+            "INVALID",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "executed": {
+          "type": "boolean"
+        },
+        "mutating": {
+          "type": "boolean"
+        },
+        "committed_effect_event_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "model_visible_observation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "drift_class": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/driftClass"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "requestDrift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applicable",
+        "per_action",
+        "first_action_class",
+        "first_mutating_action_class",
+        "terminal_class",
+        "exact_request_preserved",
+        "any_read",
+        "any_exact_request_match",
+        "any_argument_drift",
+        "any_identifier_drift"
+      ],
+      "properties": {
+        "applicable": {
+          "type": "boolean"
+        },
+        "per_action": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action_sequence",
+              "class"
+            ],
+            "properties": {
+              "action_sequence": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "class": {
+                "$ref": "#/$defs/driftClass"
+              }
+            }
+          }
+        },
+        "first_action_class": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/driftClass"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_mutating_action_class": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/driftClass"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "terminal_class": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/driftClass"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exact_request_preserved": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "any_read": {
+          "type": "boolean"
+        },
+        "any_exact_request_match": {
+          "type": "boolean"
+        },
+        "any_argument_drift": {
+          "type": "boolean"
+        },
+        "any_identifier_drift": {
+          "type": "boolean"
+        }
+      }
+    },
+    "tokenUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens"
+      ],
+      "properties": {
+        "prompt_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "completion_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "total_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "original_generation",
+        "recovery",
+        "additional_llm_calls",
+        "recovery_tool_calls_attempted",
+        "recovery_tool_calls_executed",
+        "reported_cost"
+      ],
+      "properties": {
+        "original_generation": {
+          "$ref": "#/$defs/tokenUsage"
+        },
+        "recovery": {
+          "$ref": "#/$defs/tokenUsage"
+        },
+        "additional_llm_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "recovery_tool_calls_attempted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recovery_tool_calls_executed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "reported_cost": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "latency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hidden_world_construction_ms",
+        "recovery_wall_ms",
+        "recovery_model_ms",
+        "recovery_tool_ms"
+      ],
+      "properties": {
+        "hidden_world_construction_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Evaluator-only diagnostic duration. It is never supplied to the model and is not physically equalized between hidden worlds."
+        },
+        "recovery_wall_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "recovery_model_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "recovery_tool_ms": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary_classification",
+        "valid_for_behavioral_analysis",
+        "matching_ticket_count",
+        "unintended_ticket_count",
+        "total_ticket_count",
+        "effect_multiplicity",
+        "correct",
+        "missing_effect",
+        "duplicate_effect",
+        "wrong_mutation",
+        "extra_unintended_mutation",
+        "infrastructure_failure",
+        "exclusion_reasons"
+      ],
+      "properties": {
+        "primary_classification": {
+          "enum": [
+            "CORRECT",
+            "MISSING_EFFECT",
+            "DUPLICATE_EFFECT",
+            "WRONG_MUTATION",
+            "EXTRA_UNINTENDED_MUTATION",
+            "INFRASTRUCTURE_FAILURE"
+          ]
+        },
+        "valid_for_behavioral_analysis": {
+          "type": "boolean"
+        },
+        "matching_ticket_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unintended_ticket_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_ticket_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "effect_multiplicity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "correct": {
+          "type": "boolean"
+        },
+        "missing_effect": {
+          "type": "boolean"
+        },
+        "duplicate_effect": {
+          "type": "boolean"
+        },
+        "wrong_mutation": {
+          "type": "boolean"
+        },
+        "extra_unintended_mutation": {
+          "type": "boolean"
+        },
+        "infrastructure_failure": {
+          "type": "boolean"
+        },
+        "exclusion_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/exclusionReason"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "exclusionReason": {
+      "enum": [
+        "PROVIDER_UNAVAILABLE",
+        "STATE_CLONE_FAILURE",
+        "STATE_EQUALITY_FAILURE",
+        "TRACE_CORRUPTION",
+        "UNRECORDED_COMMIT",
+        "PAIRING_INVARIANT_VIOLATION",
+        "IMPLEMENTATION_BUG",
+        "AUTOMATIC_RETRY_DETECTED",
+        "H1_ORIGINAL_COMMIT_FAILURE",
+        "HIDDEN_STATE_LEAK",
+        "CONFIG_COMMIT_MISMATCH",
+        "PROTOCOL_VIOLATION"
+      ]
+    },
+    "lifecycleEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_sequence",
+        "event_type",
+        "evaluator_payload"
+      ],
+      "properties": {
+        "event_sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "event_type": {
+          "enum": [
+            "RUN_STARTED",
+            "STATE_INITIALIZED",
+            "ORIGINAL_REQUEST_GENERATED",
+            "ORIGINAL_REQUEST_FROZEN",
+            "ORIGINAL_REQUEST_DISPATCHED",
+            "ORIGINAL_MUTATION_COMMITTED",
+            "AMBIGUITY_INJECTED",
+            "STATE_CLONED",
+            "RECOVERY_STARTED",
+            "MODEL_INVOKED",
+            "TOOL_REQUESTED",
+            "TOOL_DISPATCHED",
+            "TOOL_COMMITTED",
+            "TOOL_OBSERVED",
+            "RECOVERY_TERMINATED",
+            "FINAL_STATE_EVALUATED",
+            "RUN_FINISHED"
+          ]
+        },
+        "evaluator_payload": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "evaluatorOnly": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hidden_world",
+        "original_request_executed",
+        "environment_version",
+        "intended_effect",
+        "initial_state",
+        "initial_state_hash",
+        "post_ambiguity_state",
+        "post_ambiguity_state_hash",
+        "committed_effects",
+        "final_state",
+        "final_state_hash",
+        "evaluation",
+        "lifecycle_events"
+      ],
+      "properties": {
+        "hidden_world": {
+          "enum": [
+            "NOT_EXECUTED",
+            "EXECUTED_ACK_LOST"
+          ]
+        },
+        "original_request_executed": {
+          "type": "boolean"
+        },
+        "environment_version": {
+          "const": "ticket-env-v1"
+        },
+        "intended_effect": {
+          "$ref": "#/$defs/ticketArguments"
+        },
+        "initial_state": {
+          "$ref": "#/$defs/ticketState"
+        },
+        "initial_state_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "post_ambiguity_state": {
+          "$ref": "#/$defs/ticketState"
+        },
+        "post_ambiguity_state_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "committed_effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mutationEvent"
+          }
+        },
+        "final_state": {
+          "$ref": "#/$defs/ticketState"
+        },
+        "final_state_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evaluation": {
+          "$ref": "#/$defs/evaluation"
+        },
+        "lifecycle_events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/lifecycleEvent"
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error_id",
+        "category",
+        "code",
+        "message",
+        "behavioral",
+        "caused_exclusion"
+      ],
+      "properties": {
+        "error_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "BEHAVIORAL",
+            "INFRASTRUCTURE",
+            "PROTOCOL"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        },
+        "behavioral": {
+          "type": "boolean"
+        },
+        "caused_exclusion": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}
