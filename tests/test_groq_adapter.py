@@ -360,6 +360,29 @@ def test_multiple_tool_calls_are_all_preserved_in_provider_order() -> None:
     ]
 
 
+def test_missing_tool_call_id_is_preserved_as_readable_model_behavior() -> None:
+    raw_call = SimpleNamespace(
+        type="function",
+        function=SimpleNamespace(name="create_ticket", arguments="{}"),
+    )
+
+    response = capture_groq_chat_completion(
+        _completion(tool_calls=[raw_call]),
+        requested_model="requested-model",
+    )
+
+    assert response.assistant_message.tool_calls[0].tool_call_id is None
+
+
+def test_non_string_json_tool_call_id_is_preserved_as_readable_behavior() -> None:
+    response = capture_groq_chat_completion(
+        _completion(tool_calls=[_tool_call(7, "create_ticket", "{}")]),
+        requested_model="requested-model",
+    )
+
+    assert response.assistant_message.tool_calls[0].tool_call_id == 7
+
+
 @pytest.mark.parametrize(
     "raw",
     [

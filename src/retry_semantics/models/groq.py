@@ -136,11 +136,9 @@ def _optional_string(value: Any, label: str) -> str | None:
 
 def _capture_tool_call(raw_call: Any) -> ModelToolCall:
     function = _field(raw_call, "function")
-    tool_call_id = _field(raw_call, "id")
+    tool_call_id = freeze_json_value(_field(raw_call, "id", None))
     name = _field(function, "name")
     arguments_json = _field(function, "arguments")
-    if type(tool_call_id) is not str:
-        raise ModelResponseError("Groq tool-call ID must be a string")
     if type(name) is not str:
         raise ModelResponseError("Groq tool-call name must be a string")
     if type(arguments_json) is not str:

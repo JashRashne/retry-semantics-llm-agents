@@ -10,13 +10,13 @@ import os
 from retry_semantics.models import (
     GroqModelClient,
     ModelCallConfig,
-    ModelRequest,
     ToolChoice,
 )
-from retry_semantics.runtime.regeneration_context import (
-    FROZEN_SYSTEM_MESSAGE,
-    FROZEN_TOOL_CATALOG,
-    CanonicalContextMessage,
+from retry_semantics.runtime.original_generation import (
+    EligibleOriginalGeneration,
+    V1CreateTicketTaskSpec,
+    render_v1_create_ticket_task,
+    run_v1_original_generation_attempt,
 )
 
 ENGINEERING_DEFAULT_MODEL = "openai/gpt-oss-20b"
@@ -47,58 +47,60 @@ def main() -> int:
         )
         return 2
 
-    messages = (
-        CanonicalContextMessage(
-            role="system",
-            content=FROZEN_SYSTEM_MESSAGE,
-            tool_calls=(),
-            tool_call_id=None,
-        ),
-        CanonicalContextMessage(
-            role="user",
-            content=(
-                'Create exactly one support ticket for customer "SMOKE-CUST" '
-                'with title "Engineering smoke test" and description '
-                '"Engineering smoke test payload.".'
-            ),
-            tool_calls=(),
-            tool_call_id=None,
+    customer_id = "SMOKE-CUST"
+    title = "Engineering smoke test"
+    description = "Engineering smoke test payload."
+    task_spec = V1CreateTicketTaskSpec(
+        customer_id=customer_id,
+        expected_title=title,
+        expected_description=description,
+        user_task=render_v1_create_ticket_task(
+            customer_id=customer_id,
+            expected_title=title,
+            expected_description=description,
         ),
     )
-    request = ModelRequest(
-        messages=messages,
-        tools=FROZEN_TOOL_CATALOG,
+    result = run_v1_original_generation_attempt(
+        GroqModelClient(timeout_seconds=args.timeout_seconds),
+        task_spec=task_spec,
         model_config=ModelCallConfig(
             model=args.model,
             temperature=0.0,
             seed=None,
             max_completion_tokens=256,
-            tool_choice=ToolChoice.required(),
+            tool_choice=ToolChoice.auto(),
         ),
     )
 
-    response = GroqModelClient(timeout_seconds=args.timeout_seconds).complete(request)
+    response = result.model_response
     usage = None
-    if response.usage is not None:
+    if response is not None and response.usage is not None:
         usage = {
             "prompt_tokens": response.usage.prompt_tokens,
             "completion_tokens": response.usage.completion_tokens,
             "total_tokens": response.usage.total_tokens,
         }
+    eligible = isinstance(result, EligibleOriginalGeneration)
+    returned_calls = (
+        response.assistant_message.tool_calls if response is not None else ()
+    )
     summary = {
         "label": "engineering smoke test only; not an experiment run",
-        "provider": response.provider,
-        "requested_model": response.requested_model,
-        "returned_model": response.returned_model,
-        "finish_reason": response.finish_reason,
-        "tool_names": [
-            call.tool_name for call in response.assistant_message.tool_calls
-        ],
-        "raw_arguments": [
-            call.arguments_json for call in response.assistant_message.tool_calls
-        ],
+        "outcome": "eligible" if eligible else "ineligible",
+        "failure_reason": None if eligible else result.reason.value,
+        "provider": response.provider if response is not None else "groq",
+        "requested_model": (
+            response.requested_model if response is not None else args.model
+        ),
+        "returned_model": response.returned_model if response is not None else None,
+        "finish_reason": response.finish_reason if response is not None else None,
+        "tool_names": [call.tool_name for call in returned_calls],
+        "raw_arguments_json": [call.arguments_json for call in returned_calls],
+        "frozen_m_hash": result.original_request_hash if eligible else None,
         "usage": usage,
-        "system_fingerprint": response.system_fingerprint,
+        "system_fingerprint": (
+            response.system_fingerprint if response is not None else None
+        ),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0

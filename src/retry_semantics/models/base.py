@@ -244,7 +244,7 @@ def parse_tool_arguments_json(
 class ModelToolCall:
     """One exactly captured model-returned tool request."""
 
-    tool_call_id: str
+    tool_call_id: ImmutableJson
     tool_name: str
     arguments_json: str
     parse_success: bool
@@ -253,8 +253,10 @@ class ModelToolCall:
     tool_type: str | None
 
     def __post_init__(self) -> None:
-        if type(self.tool_call_id) is not str:
-            raise ModelResponseError("tool-call ID must be a string")
+        if not _is_immutable_json(self.tool_call_id):
+            raise ModelResponseError(
+                "tool-call ID must be an immutable JSON-compatible value"
+            )
         if type(self.tool_name) is not str:
             raise ModelResponseError("tool-call name must be a string")
         if type(self.arguments_json) is not str:
