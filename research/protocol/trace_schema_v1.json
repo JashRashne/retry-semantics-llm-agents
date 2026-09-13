@@ -622,12 +622,36 @@
         }
       }
     },
+    "modelVisibleToolCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_call_id",
+        "tool",
+        "arguments_json"
+      ],
+      "properties": {
+        "tool_call_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments_json": {
+          "type": "string",
+          "description": "Exact raw JSON argument string from the original provider tool call; never canonicalized or regenerated."
+        }
+      }
+    },
     "originalToolCall": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "provider_tool_call_id",
         "tool",
+        "arguments_json",
         "arguments",
         "raw_assistant_content"
       ],
@@ -638,6 +662,10 @@
         },
         "tool": {
           "const": "create_ticket"
+        },
+        "arguments_json": {
+          "type": "string",
+          "description": "Exact raw JSON argument string from the original provider tool call."
         },
         "arguments": {
           "$ref": "#/$defs/ticketArguments"
@@ -677,7 +705,7 @@
         "tool_calls": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/toolCall"
+            "$ref": "#/$defs/modelVisibleToolCall"
           }
         },
         "tool_call_id": {

@@ -46,6 +46,7 @@ def _assistant_message(
     content: str | None = None,
     role: str = "assistant",
     message_tool_call_id: str | None = None,
+    arguments_json: str | None = None,
     tool_calls: tuple[CanonicalToolCall, ...] | None = None,
 ) -> CanonicalContextMessage:
     request_value = json.loads(request.serialized_request)
@@ -53,6 +54,11 @@ def _assistant_message(
     original_call = CanonicalToolCall(
         tool_call_id=request_value["tool_call_id"],
         tool=request_value["tool"],
+        arguments_json=(
+            json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
+            if arguments_json is None
+            else arguments_json
+        ),
         arguments=CreateTicketArguments(
             customer_id=arguments["customer_id"],
             title=arguments["title"],
@@ -133,6 +139,33 @@ def test_message_order_and_fields_are_exact(make_request) -> None:
         set(message) == {"role", "content", "tool_calls", "tool_call_id"}
         for message in serialized["messages"]
     )
+    serialized_call = serialized["messages"][2]["tool_calls"][0]
+    assert set(serialized_call) == {"tool_call_id", "tool", "arguments_json"}
+    assert "arguments" not in serialized_call
+
+
+def test_trace_schema_preserves_raw_model_visible_arguments_separately() -> None:
+    schema_path = (
+        Path(__file__).resolve().parents[1]
+        / "research"
+        / "protocol"
+        / "trace_schema_v1.json"
+    )
+    definitions = json.loads(schema_path.read_text(encoding="utf-8"))["$defs"]
+
+    assert definitions["message"]["properties"]["tool_calls"]["items"] == {
+        "$ref": "#/$defs/modelVisibleToolCall"
+    }
+    visible_call = definitions["modelVisibleToolCall"]
+    assert visible_call["additionalProperties"] is False
+    assert visible_call["required"] == [
+        "tool_call_id",
+        "tool",
+        "arguments_json",
+    ]
+    assert visible_call["properties"]["arguments_json"]["type"] == "string"
+    assert "arguments" not in visible_call["properties"]
+    assert "arguments_json" in definitions["originalToolCall"]["required"]
 
 
 @pytest.mark.parametrize(
@@ -163,6 +196,63 @@ def test_supplied_original_assistant_content_is_preserved_exactly(
     assert context.original_assistant_message.content == assistant_content
     serialized_message = json.loads(context.canonical_context_bytes)["messages"][2]
     assert serialized_message["content"] == assistant_content
+
+
+def test_raw_argument_key_order_is_preserved(make_request) -> None:
+    request = make_request(customer_id="C", title="X", description="Y")
+    arguments_json = (
+        '{"title":"X","customer_id":"C","description":"Y"}'
+    )
+    assistant_message = _assistant_message(
+        request,
+        arguments_json=arguments_json,
+    )
+
+    context = _build(request, original_assistant_message=assistant_message)
+
+    assert context.original_tool_call.arguments_json == arguments_json
+    serialized_call = json.loads(context.canonical_context_bytes)["messages"][2][
+        "tool_calls"
+    ][0]
+    assert serialized_call["arguments_json"] == arguments_json
+
+
+def test_raw_argument_whitespace_is_preserved(make_request) -> None:
+    request = make_request(customer_id="C", title="X", description="Y")
+    arguments_json = (
+        '{  "customer_id" : "C", "title" : "X", '
+        '"description" : "Y"  }'
+    )
+    assistant_message = _assistant_message(
+        request,
+        arguments_json=arguments_json,
+    )
+
+    context = _build(request, original_assistant_message=assistant_message)
+
+    assert context.original_tool_call.arguments_json == arguments_json
+    assert json.loads(context.canonical_context_bytes)["messages"][2]["tool_calls"][
+        0
+    ]["arguments_json"] == arguments_json
+
+
+def test_raw_argument_unicode_representation_is_preserved(make_request) -> None:
+    request = make_request(customer_id="C", title="X", description="café")
+    arguments_json = (
+        '{"customer_id":"C","title":"X","description":"caf\\u00e9"}'
+    )
+    assistant_message = _assistant_message(
+        request,
+        arguments_json=arguments_json,
+    )
+
+    context = _build(request, original_assistant_message=assistant_message)
+
+    assert context.original_tool_call.arguments_json == arguments_json
+    assert context.original_tool_call.arguments.description == "café"
+    assert json.loads(context.canonical_context_bytes)["messages"][2]["tool_calls"][
+        0
+    ]["arguments_json"] == arguments_json
 
 
 def test_tool_catalog_is_exactly_the_two_protocol_definitions(make_request) -> None:
@@ -216,6 +306,11 @@ def test_h0_h1_context_bytes_and_hashes_match_while_hidden_states_differ(
     original_assistant_message = _assistant_message(
         request,
         content="I'll create the ticket.",
+        arguments_json=(
+            '{ "title": "Login page timeout", '
+            '"description": "The login page times out after 30 seconds.", '
+            '"customer_id": "CUST-001" }'
+        ),
     )
 
     h0_context = _build(
@@ -438,6 +533,122 @@ def test_assistant_message_and_m_arguments_mismatch_fails_without_repair(
     assert incoherent.tool_calls[0].arguments.title == "Different title"
 
 
+def test_raw_arguments_json_with_wrong_value_fails(make_request) -> None:
+    request = make_request(title="Frozen title")
+    wrong_raw = (
+        '{"customer_id":"CUST-001","title":"Wrong title",'
+        '"description":"The login page times out after 30 seconds."}'
+    )
+    incoherent = _assistant_message(request, arguments_json=wrong_raw)
+
+    with pytest.raises(RegenerationContextProtocolError, match="arguments_json"):
+        _build(request, original_assistant_message=incoherent)
+
+
+def test_malformed_raw_arguments_json_fails(make_request) -> None:
+    request = make_request()
+    malformed = _assistant_message(
+        request,
+        arguments_json='{"customer_id":"CUST-001",',
+    )
+
+    with pytest.raises(RegenerationContextProtocolError, match="invalid JSON"):
+        _build(request, original_assistant_message=malformed)
+
+
+def test_raw_arguments_json_must_be_a_string(make_request) -> None:
+    request = make_request()
+    valid = _assistant_message(request)
+    wrong_type_call = replace(
+        valid.tool_calls[0],
+        arguments_json=123,  # type: ignore[arg-type]
+    )
+    wrong_type = replace(valid, tool_calls=(wrong_type_call,))
+
+    with pytest.raises(RegenerationContextProtocolError, match="must be a string"):
+        _build(request, original_assistant_message=wrong_type)
+
+
+def test_raw_arguments_json_must_decode_to_an_object(make_request) -> None:
+    request = make_request()
+    non_object = _assistant_message(request, arguments_json="[]")
+
+    with pytest.raises(RegenerationContextProtocolError, match="decode to an object"):
+        _build(request, original_assistant_message=non_object)
+
+
+@pytest.mark.parametrize(
+    "arguments_json",
+    [
+        (
+            '{"customer_id":7,"title":"Login page timeout",'
+            '"description":"The login page times out after 30 seconds."}'
+        ),
+        (
+            '{"customer_id":"CUST-001","title":"",'
+            '"description":"The login page times out after 30 seconds."}'
+        ),
+    ],
+)
+def test_raw_arguments_json_fields_must_be_nonempty_strings(
+    make_request,
+    arguments_json,
+) -> None:
+    request = make_request()
+    invalid = _assistant_message(request, arguments_json=arguments_json)
+
+    with pytest.raises(RegenerationContextProtocolError, match="non-empty strings"):
+        _build(request, original_assistant_message=invalid)
+
+
+def test_raw_arguments_json_duplicate_keys_fail_strict_parsing(make_request) -> None:
+    request = make_request()
+    duplicated = _assistant_message(
+        request,
+        arguments_json=(
+            '{"customer_id":"CUST-001","title":"Login page timeout",'
+            '"title":"Login page timeout",'
+            '"description":"The login page times out after 30 seconds."}'
+        ),
+    )
+
+    with pytest.raises(RegenerationContextProtocolError, match="duplicate JSON"):
+        _build(request, original_assistant_message=duplicated)
+
+
+def test_raw_arguments_json_with_extra_field_fails(make_request) -> None:
+    request = make_request()
+    extra = _assistant_message(
+        request,
+        arguments_json=(
+            '{"customer_id":"CUST-001","title":"Login page timeout",'
+            '"description":"The login page times out after 30 seconds.",'
+            '"extra":"forbidden"}'
+        ),
+    )
+
+    with pytest.raises(
+        RegenerationContextProtocolError,
+        match="fields must be exactly",
+    ):
+        _build(request, original_assistant_message=extra)
+
+
+def test_stored_parsed_arguments_inconsistent_with_raw_json_fails(
+    make_request,
+) -> None:
+    request = make_request()
+    valid = _assistant_message(request)
+    inconsistent_call = replace(
+        valid.tool_calls[0],
+        arguments=replace(valid.tool_calls[0].arguments, title="Different title"),
+    )
+    inconsistent = replace(valid, tool_calls=(inconsistent_call,))
+
+    with pytest.raises(RegenerationContextProtocolError, match="stored parsed"):
+        _build(request, original_assistant_message=inconsistent)
+
+
 def test_assistant_message_and_m_tool_name_mismatch_fails_without_repair(
     make_request,
 ) -> None:
@@ -587,13 +798,40 @@ def test_different_frozen_m_fails_context_coherence_validation(make_request) -> 
 
     with pytest.raises(
         RegenerationContextProtocolError,
-        match="does not match frozen M",
+        match="match frozen M",
     ):
         validate_regeneration_context(
             context,
             frozen_original_request=different,
             original_assistant_message=original_assistant_message,
         )
+
+
+def test_semantically_equal_raw_argument_text_changes_context_bytes_and_hash(
+    make_request,
+) -> None:
+    request = make_request(customer_id="C", title="X", description="Y")
+    compact = _assistant_message(
+        request,
+        arguments_json='{"customer_id":"C","title":"X","description":"Y"}',
+    )
+    reformatted = _assistant_message(
+        request,
+        arguments_json=(
+            '{ "title": "X", "description": "Y", "customer_id": "C" }'
+        ),
+    )
+
+    compact_context = _build(request, original_assistant_message=compact)
+    reformatted_context = _build(request, original_assistant_message=reformatted)
+
+    assert compact.tool_calls[0].arguments == reformatted.tool_calls[0].arguments
+    assert compact_context.canonical_context_bytes != (
+        reformatted_context.canonical_context_bytes
+    )
+    assert compact_context.canonical_context_sha256 != (
+        reformatted_context.canonical_context_sha256
+    )
 
 
 def test_builder_has_no_hidden_world_environment_or_provider_boundary() -> None:

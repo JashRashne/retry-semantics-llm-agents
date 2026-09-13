@@ -22,6 +22,7 @@ FROZEN_SYSTEM_MESSAGE = (
 CANONICAL_AMBIGUITY_TEXT = (
     "ToolError: The previous request timed out. Its outcome is unknown."
 )
+_CREATE_ARGUMENT_FIELDS = frozenset({"customer_id", "title", "description"})
 
 
 class RegenerationContextProtocolError(ValueError):
@@ -93,13 +94,21 @@ class CanonicalToolCall:
 
     tool_call_id: str
     tool: str
+    arguments_json: str
     arguments: CreateTicketArguments
 
     def as_dict(self) -> dict[str, Any]:
+        """Return only fields that are part of model-visible history.
+
+        ``arguments`` is parsed validation metadata. The exact raw
+        ``arguments_json`` string is the historical representation a future
+        provider adapter must use.
+        """
+
         return {
             "tool_call_id": self.tool_call_id,
             "tool": self.tool,
-            "arguments": self.arguments.as_dict(),
+            "arguments_json": self.arguments_json,
         }
 
 
@@ -167,9 +176,9 @@ def _fail(message: str) -> None:
     raise RegenerationContextProtocolError(message)
 
 
-def _tool_call_from_frozen_m(
+def _frozen_m_identity(
     frozen_original_request: FrozenExecutableRequest,
-) -> CanonicalToolCall:
+) -> tuple[str, str, CreateTicketArguments]:
     if type(frozen_original_request) is not FrozenExecutableRequest:
         _fail("frozen_original_request must be a FrozenExecutableRequest")
     try:
@@ -181,10 +190,10 @@ def _tool_call_from_frozen_m(
     if request["tool"] != "create_ticket":
         _fail("original request M must be an eligible create_ticket request")
     arguments = request["arguments"]
-    return CanonicalToolCall(
-        tool_call_id=request["tool_call_id"],
-        tool=request["tool"],
-        arguments=CreateTicketArguments(
+    return (
+        request["tool_call_id"],
+        request["tool"],
+        CreateTicketArguments(
             customer_id=arguments["customer_id"],
             title=arguments["title"],
             description=arguments["description"],
@@ -192,11 +201,57 @@ def _tool_call_from_frozen_m(
     )
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant {value!r}")
+
+
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON object key {key!r}")
+        value[key] = item
+    return value
+
+
+def _parse_arguments_json(arguments_json: str) -> CreateTicketArguments:
+    if type(arguments_json) is not str:
+        _fail("original assistant tool-call arguments_json must be a string")
+    try:
+        decoded = json.loads(
+            arguments_json,
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise RegenerationContextProtocolError(
+            f"original assistant tool-call arguments_json is invalid JSON: {exc}"
+        ) from exc
+    if type(decoded) is not dict:
+        _fail("original assistant tool-call arguments_json must decode to an object")
+    if set(decoded) != _CREATE_ARGUMENT_FIELDS:
+        _fail(
+            "original assistant tool-call arguments_json fields must be exactly "
+            f"{sorted(_CREATE_ARGUMENT_FIELDS)!r}"
+        )
+    for field in sorted(_CREATE_ARGUMENT_FIELDS):
+        if type(decoded[field]) is not str or decoded[field] == "":
+            _fail(
+                "original assistant tool-call arguments_json fields must be "
+                "non-empty strings"
+            )
+    return CreateTicketArguments(
+        customer_id=decoded["customer_id"],
+        title=decoded["title"],
+        description=decoded["description"],
+    )
+
+
 def _validate_original_assistant_message(
     original_assistant_message: CanonicalContextMessage,
     *,
-    frozen_m_tool_call: CanonicalToolCall,
-) -> None:
+    frozen_m_identity: tuple[str, str, CreateTicketArguments],
+) -> CanonicalToolCall:
     if type(original_assistant_message) is not CanonicalContextMessage:
         _fail("original_assistant_message must be a CanonicalContextMessage")
     if original_assistant_message.role != "assistant":
@@ -215,12 +270,22 @@ def _validate_original_assistant_message(
     supplied_call = original_assistant_message.tool_calls[0]
     if type(supplied_call) is not CanonicalToolCall:
         _fail("original assistant message contains an unexpected tool-call type")
-    if supplied_call.tool_call_id != frozen_m_tool_call.tool_call_id:
-        _fail("original assistant message tool-call ID does not match frozen M")
-    if supplied_call.tool != frozen_m_tool_call.tool:
-        _fail("original assistant message tool name does not match frozen M")
-    if supplied_call.arguments != frozen_m_tool_call.arguments:
+    parsed_raw_arguments = _parse_arguments_json(supplied_call.arguments_json)
+    if type(supplied_call.arguments) is not CreateTicketArguments:
+        _fail("original assistant tool-call parsed arguments have the wrong type")
+    if parsed_raw_arguments != supplied_call.arguments:
+        _fail(
+            "original assistant tool-call arguments_json does not match stored "
+            "parsed arguments"
+        )
+    frozen_tool_call_id, frozen_tool, frozen_arguments = frozen_m_identity
+    if supplied_call.arguments != frozen_arguments:
         _fail("original assistant message arguments do not match frozen M")
+    if supplied_call.tool != frozen_tool:
+        _fail("original assistant message tool name does not match frozen M")
+    if supplied_call.tool_call_id != frozen_tool_call_id:
+        _fail("original assistant message tool-call ID does not match frozen M")
+    return supplied_call
 
 
 def _expected_messages(
@@ -268,10 +333,10 @@ def build_canonical_regeneration_context(
 
     if type(user_task) is not str or user_task == "":
         _fail("user_task must be a non-empty string")
-    original_tool_call = _tool_call_from_frozen_m(frozen_original_request)
-    _validate_original_assistant_message(
+    frozen_identity = _frozen_m_identity(frozen_original_request)
+    original_tool_call = _validate_original_assistant_message(
         original_assistant_message,
-        frozen_m_tool_call=original_tool_call,
+        frozen_m_identity=frozen_identity,
     )
     messages = _expected_messages(
         user_task,
@@ -320,10 +385,10 @@ def validate_regeneration_context(
     if context.tools != FROZEN_TOOL_CATALOG:
         _fail("Regeneration tool catalog differs from the frozen V1 catalog")
 
-    original_tool_call = _tool_call_from_frozen_m(frozen_original_request)
-    _validate_original_assistant_message(
+    frozen_identity = _frozen_m_identity(frozen_original_request)
+    original_tool_call = _validate_original_assistant_message(
         original_assistant_message,
-        frozen_m_tool_call=original_tool_call,
+        frozen_m_identity=frozen_identity,
     )
     user_task = context.messages[1].content
     if type(user_task) is not str or user_task == "":
