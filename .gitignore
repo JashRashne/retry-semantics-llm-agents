@@ -17,3 +17,4 @@ artifacts/
 *.db
 *.sqlite
 *.sqlite3
+*.zip
