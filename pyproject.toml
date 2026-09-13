@@ -7,7 +7,9 @@ name = "retry-semantics"
 version = "0.1.0"
 description = "Deterministic controlled environments for retry-semantics experiments"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "groq==1.7.0",
+]
 
 [project.optional-dependencies]
 dev = ["pytest==8.4.2"]
