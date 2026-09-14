@@ -1,4 +1,4 @@
-"""Canonical JSON serialization frozen by ``primary-create-v1``."""
+"""Canonical JSON serialization frozen by ``primary-create-v1.1``."""
 
 from __future__ import annotations
 

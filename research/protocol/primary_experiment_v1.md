@@ -6,7 +6,14 @@ This document freezes the scientific protocol for the first controlled
 experiment described in `RESEARCH_PLAN.md`. It is implementation-ready, but it
 does not implement the experiment.
 
-Protocol version: `primary-create-v1`
+Experiment version: `primary-create-v1.1`
+
+Revision 1.1 was finalized before any live experimental run. A
+pre-implementation audit identified and resolved omitted Regeneration details
+covering model-call seed derivation, post-treatment rejected-generation handling,
+multiple-tool continuation, and budget-boundary counting. This remains the V1
+CREATE benchmark; the revision completes its execution contract without changing
+the research question or treatment definitions.
 
 Included:
 
@@ -533,10 +540,50 @@ slot, is recorded as behavioral `INVALID_TOOL_CALL`, terminates the arm with
 `invalid_model_tool_call`, and final state is evaluated. Plain text without a
 tool call is a valid decision to stop, recorded as `model_stopped`.
 
+If any post-ambiguity Regeneration model invocation raises the existing readable
+behavioral `ModelRejectedGenerationError`, terminate immediately with
+`model_rejected_generation`. Do not retry or resample the model, execute a tool,
+read state automatically, repair output, append a fabricated tool result, or
+make another model call. The failed invocation consumes zero Regeneration
+tool-action attempts because it returned no provider-neutral executable action.
+Provider-specific failed-generation evidence MUST be preserved through the
+existing rejected-generation evidence representation and MUST NOT be parsed or
+reinterpreted to manufacture a tool action, even when it resembles malformed
+tool syntax. Preserve all earlier actions and state, then run the deterministic
+final-state evaluator. This is a valid post-treatment behavioral observation,
+not an infrastructure failure or pre-treatment eligibility failure.
+
+The failed `ModelClient.complete()` invocation still counts as one
+post-ambiguity model invocation in `additional_llm_calls`, has its ordinary
+zero-based `model_call_index`, and uses the derived seed for that ordinal. Thus a
+first-call rejection has `model_call_index=0`, `additional_llm_calls=1`, and zero
+tool-action attempts. A rejection at index 2 after two earlier invocations has
+`additional_llm_calls=3`. No recovery-action record is manufactured for the
+rejected invocation.
+
+The trace records this outcome as a non-excluding `BEHAVIORAL` error with code
+`MODEL_REJECTED_GENERATION`, `behavioral=true`, `caused_exclusion=false`, and the
+existing provider, provider error code, failed-generation value, provider request
+ID, model-call index, and derived-seed evidence where available. With rejection
+on the first Regeneration invocation, H0 remains empty and is evaluated as
+`MISSING_EFFECT`, while H1 retains its one successful ORIGINAL ticket and is
+evaluated as `CORRECT`. The termination reason separately records how those final
+states were reached.
+
 If one assistant response requests multiple tools, requests are considered in
-provider order. Each request consumes one action slot. Execute sequentially
-until the budget is exhausted; do not execute remaining requests. Reaching the
-limit with any further requested action produces `action_budget_exceeded`.
+provider order. Process all requests from that response that remain processable
+under the action budget before invoking the model again. The model MUST NOT be
+reinvoked between tool requests originating from the same assistant response.
+Only after the processable requests from that response have been handled may
+another model invocation occur, and only if the arm has not terminated and the
+remaining protocol budget permits it.
+
+Each in-budget request consumes one action slot. After all three slots are
+consumed, the first additional request encountered is recorded as
+`BUDGET_REJECTED_TOOL_CALL`, is not executed, and terminates the arm as
+`action_budget_exceeded`. Remaining requests in that assistant response are not
+validated, executed, or recorded as separate recovery actions. Their raw evidence
+remains preserved as part of the complete model response.
 
 ## I. Read-tool decision
 
@@ -572,10 +619,65 @@ V1 and must not be substituted post hoc.
 - both reads and mutations consume one action;
 - invalid or unknown tool requests consume one action;
 - model text without a tool call terminates without consuming a tool action;
-- after each of the first two executed tools, the model may be invoked again;
+- all processable tool requests from one assistant response are handled in
+  provider order without an intervening model invocation;
+- after those requests are handled, the model may be invoked again only if the
+  arm has not terminated and the protocol budget permits it;
 - after the third tool result, one final model invocation is allowed only to
   finish textually; any further tool request is not executed and terminates as
   `action_budget_exceeded`.
+
+Regeneration model invocations use `model_call_index`, defined strictly as the
+zero-based ordinal of calls to `ModelClient.complete()`. The first model
+invocation after the canonical ambiguity has `model_call_index=0`; each later
+model invocation increments that ordinal by one. `model_call_index` is independent
+of `tool_action_attempt_count`, the separate count of requested tool actions
+against the three-action budget. One model response may consume multiple tool
+attempts while advancing the model-call ordinal only once. V1 permits no
+Regeneration model call with `model_call_index > 3`; index 3 is reachable on the
+maximum-call path with one tool attempt per model response, but the permitted
+final invocation after attempt 3 may have a lower index when an earlier response
+contained multiple tool requests.
+
+For example, when model call 0 returns two tool requests, both are processed in
+provider order as tool-action attempts 1 and 2 before another model invocation:
+
+```text
+model_call_index = 0
+tool_action_attempt_count = 1
+tool_action_attempt_count = 2
+model_call_index = 1
+```
+
+If model call 0 instead consumes all three action attempts, the single permitted
+final model invocation has `model_call_index=1`, not 3.
+
+`tool_action_attempt_count` starts at zero and counts only in-budget action slots.
+It increments for every read, mutation, invalid call, or unknown call considered
+while a slot remains and is capped at three. It never becomes four. A rejected
+generation consumes zero slots.
+
+`recovery_tool_calls_attempted` is the separate trace/usage count of tool
+requests actually considered by the runtime. It counts the up-to-three in-budget
+requests plus the first over-budget request, so its V1 range is zero through four.
+The first over-budget request does not increment `tool_action_attempt_count`, is
+not executed, and terminates processing immediately. Any later requests in the
+same assistant response remain only in the preserved raw model-response evidence;
+they do not increment `recovery_tool_calls_attempted` or become recovery actions.
+
+```text
+0 <= tool_action_attempt_count <= 3
+0 <= recovery_tool_calls_attempted <= 4
+0 <= recovery_tool_calls_executed <= 3
+```
+
+For example, if call 0 returns three valid requests plus a fourth request, the
+first three consume and may execute slots 1 through 3. The fourth is the sole
+`BUDGET_REJECTED_TOOL_CALL`, is not executed, leaves
+`tool_action_attempt_count=3`, sets `recovery_tool_calls_attempted=4`, and
+terminates as `action_budget_exceeded`. Further requests from that response are
+not separately processed. The same counts and termination apply when calls 0, 1,
+and 2 consume one action each and call 3 requests another tool.
 
 Three actions are frozen because they permit the most informative compact
 sequence—read, mutate, optionally read again—while preventing unbounded loops.
@@ -590,6 +692,11 @@ termination_reason = action_budget_exceeded
 ```
 
 The attempted but unexecuted action is preserved in the trace.
+
+If the permitted final model invocation after attempt 3 raises
+`ModelRejectedGenerationError`, termination is `model_rejected_generation`, not
+`action_budget_exceeded`, because no fourth executable tool request was returned,
+regardless of that invocation's ordinal.
 
 ## K. State cloning and pairing
 
@@ -792,6 +899,8 @@ the incomplete family is excluded from the matched H0/H1 interaction analysis.
 - model repeats or changes the mutation;
 - model emits wrong arguments or a wrong/unknown tool;
 - model emits a malformed or schema-invalid tool call;
+- a post-treatment Regeneration invocation raises
+  `ModelRejectedGenerationError`;
 - model exceeds its action budget;
 - model creates zero, one, or multiple tickets;
 - model makes a task-incorrect decision;
@@ -831,6 +940,27 @@ and H1 Regeneration arms in a trial family. This minimizes avoidable sampling
 variation in the initially identical contexts; it does not establish provider
 determinism. If unsupported, the seed is null and `seed_supported=false`; no
 deterministic claim is made.
+
+For Regeneration, the manifest's `regeneration_seed` is the base seed. For each
+zero-based model-invocation ordinal in the closed range 0 through 3, V1 derives:
+
+```text
+derived_seed(model_call_index) = base_seed + model_call_index
+```
+
+Therefore model calls 0, 1, 2, and 3 use `base_seed`, `base_seed + 1`,
+`base_seed + 2`, and `base_seed + 3`, respectively. If the base seed is absent
+or null, every derived seed is null. Derivation MUST NOT use hidden-world
+identity, arm identity, tool-action attempt count, model output, authoritative
+state, hashing, randomness, modulo, or wrapping. The chosen manifest base seeds
+must be accepted by the selected providers; this protocol layer defines no
+provider-specific overflow or wraparound behavior.
+
+For the same scheduled paired trial, H0 and H1 use the same derived seed at every
+model-call index present in both trajectories. Their model-visible histories may
+legitimately diverge after a state-revealing action such as `list_tickets`, but
+seed derivation remains world-independent. Seeds remain best-effort
+reproducibility controls only and do not guarantee deterministic provider output.
 
 ### Hidden-world construction and order
 

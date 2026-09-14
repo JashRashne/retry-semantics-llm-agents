@@ -31,7 +31,7 @@
       "const": "trace-schema-v1"
     },
     "experiment_version": {
-      "const": "primary-create-v1"
+      "const": "primary-create-v1.1"
     },
     "git_commit": {
       "type": "string",
@@ -72,6 +72,8 @@
     },
     "recovery_actions": {
       "type": "array",
+      "maxItems": 4,
+      "description": "Ordered processed recovery actions. After three in-budget tool actions, at most the first over-budget request is added as BUDGET_REJECTED_TOOL_CALL; later requests from that response are not separate actions.",
       "items": {
         "$ref": "#/$defs/recoveryAction"
       }
@@ -102,6 +104,7 @@
         "task_completed",
         "action_budget_exceeded",
         "invalid_model_tool_call",
+        "model_rejected_generation",
         "infrastructure_failure",
         "protocol_violation"
       ]
@@ -290,6 +293,59 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "termination_reason": {
+            "const": "model_rejected_generation"
+          }
+        },
+        "required": [
+          "termination_reason"
+        ]
+      },
+      "then": {
+        "properties": {
+          "usage": {
+            "properties": {
+              "additional_llm_calls": {
+                "minimum": 1
+              }
+            }
+          },
+          "errors": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "const": "BEHAVIORAL"
+                },
+                "code": {
+                  "const": "MODEL_REJECTED_GENERATION"
+                },
+                "behavioral": {
+                  "const": true
+                },
+                "caused_exclusion": {
+                  "const": false
+                },
+                "rejected_generation": {
+                  "$ref": "#/$defs/rejectedGenerationEvidence"
+                }
+              },
+              "required": [
+                "category",
+                "code",
+                "behavioral",
+                "caused_exclusion",
+                "rejected_generation"
+              ]
+            },
+            "minContains": 1
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -440,7 +496,7 @@
           "$ref": "#/$defs/samplingConfiguration"
         },
         "regeneration": {
-          "description": "Regeneration configuration used by LLM_REGENERATION; null for EXACT_REPLAY. H0 and H1 Regeneration traces in a family use the same supported seed and call-index derivation.",
+          "description": "Regeneration base configuration used by LLM_REGENERATION; null for EXACT_REPLAY. For zero-based ModelClient.complete() invocation ordinals 0 through 3, the derived seed is base seed plus model-call index, or null when the base seed is null. Derivation is independent of hidden world, arm, and tool-action attempt count. Provider seeds are best-effort controls only and do not guarantee deterministic output.",
           "anyOf": [
             {
               "$ref": "#/$defs/samplingConfiguration"
@@ -1054,7 +1110,9 @@
             "integer",
             "null"
           ],
-          "minimum": 1
+          "minimum": 0,
+          "maximum": 3,
+          "description": "Strict zero-based ordinal of Regeneration ModelClient.complete() invocations; null for Exact Replay. It is independent of tool-action attempt count. V1 permits indexes 0 through 3 only."
         },
         "provider_model_request_id": {
           "type": [
@@ -1130,7 +1188,40 @@
             }
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action_type": {
+                "const": "BUDGET_REJECTED_TOOL_CALL"
+              }
+            },
+            "required": [
+              "action_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "const": "MODEL"
+              },
+              "validation_status": {
+                "const": "NOT_APPLICABLE"
+              },
+              "executed": {
+                "const": false
+              },
+              "mutating": {
+                "const": false
+              },
+              "committed_effect_event_ids": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "requestDrift": {
       "type": "object",
@@ -1274,11 +1365,14 @@
         "additional_llm_calls": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 4
+          "maximum": 4,
+          "description": "Post-ambiguity ModelClient.complete() invocation count. A ModelRejectedGenerationError invocation counts even though it produces no recovery action."
         },
         "recovery_tool_calls_attempted": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Tool requests considered by the runtime, independent of model_call_index. This includes up to three in-budget actions and the first over-budget BUDGET_REJECTED_TOOL_CALL; later calls in the same response are retained only as raw response evidence."
         },
         "recovery_tool_calls_executed": {
           "type": "integer",
@@ -1558,6 +1652,56 @@
         },
         "caused_exclusion": {
           "type": "boolean"
+        },
+        "rejected_generation": {
+          "$ref": "#/$defs/rejectedGenerationEvidence",
+          "description": "Present for MODEL_REJECTED_GENERATION to preserve the existing readable behavioral evidence."
+        }
+      }
+    },
+    "rejectedGenerationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "provider_error_code",
+        "failed_generation",
+        "provider_request_id",
+        "model_call_index",
+        "derived_seed"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider_error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failed_generation": {
+          "description": "Exact JSON-compatible evidence preserved from ModelRejectedGenerationError.failed_generation."
+        },
+        "provider_request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_call_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "Ordinary zero-based model invocation ordinal for the rejected call."
+        },
+        "derived_seed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Base Regeneration seed plus model_call_index, or null when the base seed is null."
         }
       }
     },

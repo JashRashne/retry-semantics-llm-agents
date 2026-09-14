@@ -1,4 +1,4 @@
-"""Frozen provider-neutral Regeneration context for ``primary-create-v1``.
+"""Frozen provider-neutral Regeneration context for ``primary-create-v1.1``.
 
 The canonical bytes in this module represent the experiment's logical
 model-visible context.  They are not a provider HTTP request body: model name,

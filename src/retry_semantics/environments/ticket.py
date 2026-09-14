@@ -1,4 +1,4 @@
-"""Deterministic local ticket environment for ``primary-create-v1``."""
+"""Deterministic local ticket environment for ``primary-create-v1.1``."""
 
 from __future__ import annotations
 

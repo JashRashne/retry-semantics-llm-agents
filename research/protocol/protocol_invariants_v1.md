@@ -3,7 +3,8 @@
 ## Status
 
 These invariants operationalize `primary_experiment_v1.md` for experiment
-version `primary-create-v1`. Every invariant is mandatory unless explicitly
+version `primary-create-v1.1`. Revision 1.1 was finalized during pre-implementation
+audit and before any live experimental run. Every invariant is mandatory unless explicitly
 limited to one policy. A pair-local scientific violation invalidates the
 complete hidden-world pair, not merely the arm in which it was detected. A
 violation of the shared original request, initial state, or family linkage
@@ -185,7 +186,10 @@ because it worsens Regeneration correctness.
 **Later enforcement/test:** Use the frozen error and exclusion enums. Tests must
 classify model stop, invalid arguments, wrong tools, and budget exhaustion as
 behavioral, while clone corruption and provider unavailability are
-infrastructure. Exclusion requires an allowed reason and evidence in the trace.
+infrastructure. A post-treatment `ModelRejectedGenerationError` terminates
+Regeneration as `model_rejected_generation`, remains behavioral and eligible for
+state-based evaluation, and preserves its readable evidence. Exclusion requires
+an allowed reason and evidence in the trace.
 
 **If violated:** Correct the classification before unblinding aggregate results;
 if post-hoc discretion was used, version the protocol and recollect affected
@@ -280,7 +284,18 @@ after its one execution returns an error.
 
 **Later enforcement/test:** Count every requested read, mutation, invalid tool,
 and unknown tool against the three-action Regeneration budget. Assert Replay has
-one execution. Test boundary sequences of zero through four requested actions.
+one execution. Regeneration `model_call_index` is strictly the zero-based ordinal
+of `ModelClient.complete()` invocations and is independent of the separate
+`tool_action_attempt_count`. One response may consume multiple action attempts
+while the next model invocation advances its ordinal only once; the model is never
+reinvoked between requests from the same response. `tool_action_attempt_count`
+starts at zero, counts only in-budget slots, and is capped at three. The first
+over-budget request counts only as the fourth `recovery_tool_calls_attempted`, is
+recorded as `BUDGET_REJECTED_TOOL_CALL`, is not executed, and terminates further
+request processing; later requests in that response remain raw response evidence
+only. A rejected generation consumes no tool-action attempt but its failed model
+invocation increments `additional_llm_calls`. Test these boundary sequences and
+assert no Regeneration model-call ordinal is outside 0 through 3.
 
 **If violated:** Exclude the pair as `PROTOCOL_VIOLATION`, because final state was
 produced under a different treatment.
@@ -347,7 +362,10 @@ again without logging the first invalid call.
 
 **Later enforcement/test:** Disable tool-call repair and schema-coercion features.
 Record raw structured output where permitted, terminate invalid tool calls as
-behavioral, and assert model-call count equals recorded provider requests.
+behavioral, and assert model-call count equals recorded provider requests. Never
+parse `ModelRejectedGenerationError.failed_generation` into a tool request;
+preserve that evidence, terminate without retry or a fabricated observation, and
+evaluate the authoritative state reached so far.
 
 **If violated:** Exclude the pair as an implementation/protocol failure. The
 repaired output cannot be treated as natural Regeneration.
@@ -417,7 +435,9 @@ present, or a budget-rejected fourth call is omitted.
 **Later enforcement/test:** Reconcile lifecycle events, recovery actions,
 provider request IDs, token usage, dispatch counts, commit events, observations,
 and termination. Include attempted-but-unexecuted budget actions. Validate the
-arm trace against `trace_schema_v1.json`.
+arm trace against `trace_schema_v1.json`. A rejected-generation termination must
+record behavioral, non-excluding error evidence and no manufactured recovery
+action for the failed invocation.
 
 **If violated:** Exclude the pair as `TRACE_CORRUPTION` unless the missing data
 can be deterministically reconstructed from immutable raw records under a
@@ -452,10 +472,16 @@ Regeneration seeds or different temperature/top-p settings.
 
 **Later enforcement/test:** Store one frozen Regeneration sampling configuration
 per trial family. When provider seeds are supported, use the same base
-`regeneration_seed` and call-index seed derivation in H0 and H1. Assert equality
-of all sampling fields across the two Regeneration traces. Exact Replay records
-no Regeneration sampling use. When seeds are unsupported, require `seed=null`,
-`seed_supported=false`, and make no determinism claim.
+`regeneration_seed` and derive the seed for each zero-based model-invocation
+ordinal 0 through 3 as `base_seed + model_call_index`. If the base seed is null,
+every derived seed is null. The derivation MUST NOT use hidden-world identity,
+arm identity, tool-action attempt count, model output, authoritative state,
+hashing, randomness, modulo, or wrapping. Assert H0/H1 seed equality at every
+model-call index that exists in both trajectories and equality of all other
+sampling fields across the two Regeneration traces. Exact Replay records no
+Regeneration sampling use. Provider seeds are best-effort controls only; when
+unsupported, require `seed=null`, `seed_supported=false`, and make no determinism
+claim.
 
 **If violated:** Exclude the family from the matched H0/H1 interaction analysis;
 the hidden-world pairs may remain in within-world policy analyses only if all
