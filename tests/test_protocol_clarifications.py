@@ -245,7 +245,7 @@ def test_experiment_revision_is_v1_1_and_schema_version_remains_v1() -> None:
         assert re.search(r"primary-create-v1(?!\.)", text) is None
 
 
-def test_clarification_is_explicitly_pre_experiment_and_non_runtime() -> None:
+def test_clarification_is_pre_experiment_and_executor_is_now_covered() -> None:
     primary = _single_line(_read_protocol("primary_experiment_v1.md"))
     coverage = _single_line(
         (REPOSITORY_ROOT / "tests" / "PROTOCOL_COVERAGE.md").read_text(
@@ -254,5 +254,5 @@ def test_clarification_is_explicitly_pre_experiment_and_non_runtime() -> None:
     )
 
     assert "Revision 1.1 was finalized before any live experimental run" in primary
-    assert "executor enforcement remains pending" in coverage
-    assert "Applying and tracing derived seeds remains pending" in coverage
+    assert "bounded V1.1 Regeneration executor" in coverage
+    assert "base_seed + model_call_index" in coverage

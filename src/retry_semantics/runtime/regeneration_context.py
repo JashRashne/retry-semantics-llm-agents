@@ -89,22 +89,14 @@ class CreateTicketArguments:
 
 
 @dataclass(frozen=True, slots=True)
-class CanonicalToolCall:
-    """Structured historical representation of the original tool call M."""
+class ModelVisibleToolCall:
+    """Exact provider-neutral tool-call fields retained in message history."""
 
-    tool_call_id: str
+    tool_call_id: object
     tool: str
     arguments_json: str
-    arguments: CreateTicketArguments
 
     def as_dict(self) -> dict[str, Any]:
-        """Return only fields that are part of model-visible history.
-
-        ``arguments`` is parsed validation metadata. The exact raw
-        ``arguments_json`` string is the historical representation a future
-        provider adapter must use.
-        """
-
         return {
             "tool_call_id": self.tool_call_id,
             "tool": self.tool,
@@ -113,12 +105,19 @@ class CanonicalToolCall:
 
 
 @dataclass(frozen=True, slots=True)
+class CanonicalToolCall(ModelVisibleToolCall):
+    """Original CREATE history plus separately validated logical metadata."""
+
+    arguments: CreateTicketArguments
+
+
+@dataclass(frozen=True, slots=True)
 class CanonicalContextMessage:
     """One message in the fixed pre-recovery Regeneration history."""
 
     role: str
     content: str | None
-    tool_calls: tuple[CanonicalToolCall, ...]
+    tool_calls: tuple[ModelVisibleToolCall, ...]
     tool_call_id: str | None
 
     def as_dict(self) -> dict[str, Any]:
@@ -161,7 +160,12 @@ class CanonicalRegenerationContext:
 
     @property
     def original_tool_call(self) -> CanonicalToolCall:
-        return self.messages[2].tool_calls[0]
+        original = self.messages[2].tool_calls[0]
+        if type(original) is not CanonicalToolCall:
+            raise RegenerationContextProtocolError(
+                "original assistant history lacks its validated CREATE metadata"
+            )
+        return original
 
     def as_dict(self) -> dict[str, Any]:
         """Return a fresh logical value; mutating it cannot mutate this context."""
@@ -425,6 +429,7 @@ __all__ = [
     "CanonicalToolCall",
     "CreateTicketArguments",
     "FrozenToolDefinition",
+    "ModelVisibleToolCall",
     "RegenerationContextProtocolError",
     "build_canonical_regeneration_context",
     "validate_regeneration_context",
