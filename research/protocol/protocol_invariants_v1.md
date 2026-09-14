@@ -3,13 +3,15 @@
 ## Status
 
 These invariants operationalize `primary_experiment_v1.md` for experiment
-version `primary-create-v1.1`. Revision 1.1 was finalized during pre-implementation
-audit and before any live experimental run. Every invariant is mandatory unless explicitly
-limited to one policy. A pair-local scientific violation invalidates the
-complete hidden-world pair, not merely the arm in which it was detected. A
-violation of the shared original request, initial state, or family linkage
-invalidates both pairs and the complete trial family. Engineering-validation
-runs must demonstrate enforcement before pilot data are collected.
+version `primary-create-v1.2`. Revision 1.2 freezes previously unspecified
+deterministic scheduling semantics found during pre-manifest audit and before
+any live experimental run. Revision 1.1 remains the pre-implementation
+Regeneration-contract amendment. Every invariant is mandatory unless explicitly
+limited to one policy. A pair-local scientific violation invalidates the complete
+hidden-world pair, not merely the arm in which it was detected. A violation of
+the shared original request, initial state, or family linkage invalidates both
+pairs and the complete trial family. Engineering-validation runs must demonstrate
+enforcement before pilot data are collected.
 
 “Model-visible context” means the exact system, user, assistant, and tool
 messages and tool definitions sent to a model. Trace metadata is not
@@ -328,14 +330,59 @@ scope and correct it before recollection.
 **Failure example:** Every Regeneration arm runs after machine warm-up, or every
 H1 pair runs after its H0 counterpart during a period of provider drift.
 
-**Later enforcement/test:** Materialize both the Replay/Regeneration order within
-each pair and the H0/H1 pair order within each family before execution.
-Counterbalance both, run all four arms serially, and compare actual orders and
-positions with the manifest. Tests reject swapped or concurrent execution.
+**Later enforcement/test:** For engineering validation, materialize the exact
+16-slot queue before execution: replicate 1 contains `CREATE-001` through
+`CREATE-008`, and replicate 2 contains `CREATE-008` through `CREATE-001`. For
+zero-based scheduled-attempt index `i`, use
+`(hidden_world_order_seed + i) mod 2` with frozen seed zero, mapping zero to
+H0/H1 and one to H1/H0. A two-pair block is the two hidden-world pairs in that
+single trial's materialized hidden-world order. With frozen
+`policy_order_seed = 0`, derive `scenario_ordinal` from the integer suffix of the
+assigned `scenario_id`, then derive
+`policy_orientation_bit = (policy_order_seed + scenario_ordinal - 1) mod 2`.
+Bit zero assigns Replay/Regeneration to the first pair and
+Regeneration/Replay to the second; bit one assigns the opposite orders. Run all
+four arms serially and compare actual orders and positions with the manifest.
+Tests reject swapped or concurrent execution.
 
-**If violated:** Exclude the affected family from matched interaction analysis
-and affected pairs from primary analysis. If ordering was systematic, discard
-the batch.
+The following exact counts apply to the complete 16-slot manifest, not to an
+eligibility-filtered subset: eight slots are H0-first and eight are H1-first;
+each of H0 and H1 has eight Replay-first and eight Regeneration-first pairs;
+every scenario and hidden world has one replicate in each policy order; and
+each absolute serial family-arm position 1 through 4 has eight Replay and eight
+Regeneration arms. Absolute position is reconstructed from
+`hidden_world_pair_position` and `arm_position`.
+
+Engineering validation executes all 16 slots exactly once without an
+eligibility-based early stop, replacement, resampling, queue extension, or
+retry-until-eligible. Afterward, at least eight families must be eligible and
+each of the four frozen strata must contain at least one eligible family:
+
+```text
+A = [H0, H1] with policy_orientation_bit 0
+B = [H1, H0] with policy_orientation_bit 1
+C = [H0, H1] with policy_orientation_bit 1
+D = [H1, H0] with policy_orientation_bit 0
+```
+
+Original-generation eligibility is a pre-treatment behavioral outcome, so the
+eligible subset need not preserve the manifest's exact 8/8 counts. All eligible
+families are retained; no post-hoc balanced subset is selected. Every eligible
+family and its executed arms must satisfy all applicable engineering invariants,
+or engineering validation fails.
+
+The scheduling seeds are manifest controls only: neither may enter
+original-generation sampling, `ModelCallConfig.seed`, the Regeneration base
+seed, or `base_seed + model_call_index` derivation. Materialization uses only
+the specified integer arithmetic and parity mappings; it is independent of
+PRNGs, hashes, language/runtime version, dictionary ordering, operating system,
+process, machine, and wall clock.
+
+**If violated:** Engineering-validation manifest, eligibility-coverage, or
+eligible-family failures fail the complete engineering-validation stage. In a
+later study, exclude the affected family from matched interaction analysis and
+affected pairs from primary analysis; if ordering was systematic, discard the
+batch.
 
 ## INV-20 — Final-state predicates are exact and exhaustive
 

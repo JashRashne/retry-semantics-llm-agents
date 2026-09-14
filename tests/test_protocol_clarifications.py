@@ -219,7 +219,7 @@ def test_rejected_invocation_counts_as_llm_call_but_not_tool_action() -> None:
     assert "No recovery-action record is manufactured" in primary
 
 
-def test_experiment_revision_is_v1_1_and_schema_version_remains_v1() -> None:
+def test_experiment_revision_is_v1_2_and_schema_version_remains_v1() -> None:
     schema = _trace_schema()
     primary = _read_protocol("primary_experiment_v1.md")
     invariants = _read_protocol("protocol_invariants_v1.md")
@@ -233,14 +233,14 @@ def test_experiment_revision_is_v1_1_and_schema_version_remains_v1() -> None:
         / "regeneration_context.py",
     )
 
-    assert "Experiment version: `primary-create-v1.1`" in primary
-    assert "version `primary-create-v1.1`" in invariants
+    assert "Experiment version: `primary-create-v1.2`" in primary
+    assert "version `primary-create-v1.2`" in invariants
     assert schema["properties"]["experiment_version"]["const"] == (
-        "primary-create-v1.1"
+        "primary-create-v1.2"
     )
     assert schema["properties"]["schema_version"]["const"] == "trace-schema-v1"
     for path in versioned_source_files:
-        assert "primary-create-v1.1" in path.read_text(encoding="utf-8")
+        assert "primary-create-v1.2" in path.read_text(encoding="utf-8")
     for text in (primary, invariants, json.dumps(schema)):
         assert re.search(r"primary-create-v1(?!\.)", text) is None
 
@@ -253,6 +253,7 @@ def test_clarification_is_pre_experiment_and_executor_is_now_covered() -> None:
         )
     )
 
+    assert "Revision 1.2 was finalized before any live experimental run" in primary
     assert "Revision 1.1 was finalized before any live experimental run" in primary
-    assert "bounded V1.1 Regeneration executor" in coverage
+    assert "bounded Regeneration executor" in coverage
     assert "base_seed + model_call_index" in coverage

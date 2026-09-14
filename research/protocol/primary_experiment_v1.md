@@ -6,7 +6,13 @@ This document freezes the scientific protocol for the first controlled
 experiment described in `RESEARCH_PLAN.md`. It is implementation-ready, but it
 does not implement the experiment.
 
-Experiment version: `primary-create-v1.1`
+Experiment version: `primary-create-v1.2`
+
+Revision 1.2 was finalized before any live experimental run. A pre-manifest
+audit identified previously unspecified deterministic scheduling semantics. This
+revision freezes the engineering-validation queue, hidden-world order, policy
+order, and the meaning of their scheduling seeds without changing the research
+question, treatment definitions, model-sampling rules, or trace-schema version.
 
 Revision 1.1 was finalized before any live experimental run. A
 pre-implementation audit identified and resolved omitted Regeneration details
@@ -925,7 +931,8 @@ Randomness sources are separate and independently logged.
 
 V1 uses a fixed, hand-authored scenario manifest. There is no runtime scenario
 generation randomness. Scenario ordering may be shuffled only by the frozen run
-manifest.
+manifest. The V1.2 engineering-validation manifest uses the exact deterministic
+ordering in Section R and performs no randomized scenario shuffle.
 
 ### Model sampling
 
@@ -962,31 +969,112 @@ legitimately diverge after a state-revealing action such as `list_tickets`, but
 seed derivation remains world-independent. Seeds remain best-effort
 reproducibility controls only and do not guarantee deterministic provider output.
 
+The scheduling controls `hidden_world_order_seed` and `policy_order_seed` are
+not model-sampling seeds. They MUST NOT enter `ModelCallConfig.seed`, alter an
+original-generation model seed, or alter the Regeneration base seed or
+`base_seed + model_call_index` derivation. Model-generation base seeds remain a
+separate explicit experiment dimension.
+
 ### Hidden-world construction and order
 
 Every eligible original request creates both hidden worlds in one trial family;
 there is no hidden-world assignment and no separate H0 or H1 original-generation
 slot. The manifest records the order in which the H0 and H1 recovery pairs are
-executed. This pair order is counterbalanced across families using the frozen
-`hidden_world_order_seed`. Hidden-world order therefore affects scheduling only,
-never which M, scenario, initial state, or model context a hidden world receives.
+executed. For the V1.2 engineering-validation schedule, the frozen scheduling
+constant is:
+
+```text
+hidden_world_order_seed = 0
+```
+
+For zero-based `scheduled_attempt_index = i`, materialize:
+
+```text
+hidden_world_orientation_bit = (hidden_world_order_seed + i) mod 2
+```
+
+The language-independent mapping is:
+
+```text
+0 -> [H0, H1]
+1 -> [H1, H0]
+```
+
+No PRNG, provider seed, hash, runtime randomness, process state, machine state,
+or wall-clock value participates. With the frozen seed and indices 0 through
+15, even indices are H0-first and odd indices are H1-first, producing exactly
+eight H0-first and eight H1-first attempts. Hidden-world order affects
+scheduling only, never which M, scenario, initial state, model context, or model
+seed a hidden world receives.
 
 ### Arm execution order
 
-See Section Q. Arm order is counterbalanced separately from hidden-world order.
+See Section Q. Policy order is materialized after hidden-world order and is
+counterbalanced separately from model sampling.
 
-Every seed and the algorithm/version used to materialize a randomized manifest
-are stored. The fully materialized manifest, rather than re-running a PRNG during
-execution, is authoritative.
+Every scheduling seed and the arithmetic algorithm/version used to materialize
+a manifest are stored. The fully materialized manifest, rather than deriving
+orders during execution, is authoritative. The same inputs MUST produce the
+same schedule independently of Python version, dictionary ordering, operating
+system, process, machine, and wall clock.
 
 ## Q. Trial and arm execution order
 
-Replay and Regeneration order is deterministically counterbalanced in the frozen
-manifest. Consecutive pairs within each `(model_config_id, hidden_world)` block
-form order blocks of size two. A frozen seed chooses the first pair's order in
-each block; the second pair receives the opposite order. In an incomplete final
-block, a seeded choice is used and the imbalance is reported. The order of the
-H0 and H1 pairs is separately counterbalanced across trial families.
+A V1.2 two-pair block is exactly the two hidden-world policy pairs belonging to
+one scheduled trial, in that trial's already-materialized hidden-world execution
+order. It is not a block of pairs drawn from multiple trials or a
+`(model_config_id, hidden_world)` grouping.
+
+The frozen engineering-validation scheduling constant is:
+
+```text
+policy_order_seed = 0
+```
+
+The seed does not vary by scheduled attempt. Define `scenario_ordinal` as the
+integer suffix of `scenario_id`, so `CREATE-001` maps to 1 through `CREATE-008`
+mapping to 8. After scenario assignment, materialize:
+
+```text
+policy_orientation_bit = (policy_order_seed + scenario_ordinal - 1) mod 2
+```
+
+The orientation bit selects the policy order for the first scheduled
+hidden-world pair in the trial's two-pair block; the second pair receives the
+opposite order:
+
+```text
+policy_orientation_bit = 0:
+    first hidden-world pair  -> [EXACT_REPLAY, LLM_REGENERATION]
+    second hidden-world pair -> [LLM_REGENERATION, EXACT_REPLAY]
+
+policy_orientation_bit = 1:
+    first hidden-world pair  -> [LLM_REGENERATION, EXACT_REPLAY]
+    second hidden-world pair -> [EXACT_REPLAY, LLM_REGENERATION]
+```
+
+With frozen `policy_order_seed = 0`, scenario policy orientations are:
+
+```text
+CREATE-001 -> 0
+CREATE-002 -> 1
+CREATE-003 -> 0
+CREATE-004 -> 1
+CREATE-005 -> 0
+CREATE-006 -> 1
+CREATE-007 -> 0
+CREATE-008 -> 1
+```
+
+The same scenario receives the same policy orientation in both engineering
+replicates. Replicate 2's reversed scenario queue places each scenario at a
+scheduled-attempt index with the opposite hidden-world orientation from its
+replicate 1 index. Consequently, for every scenario and each of H0 and H1, one
+replicate is Replay-first and the other is Regeneration-first.
+
+No PRNG, provider seed, hash, runtime randomness, process state, machine state,
+or wall-clock value participates. `policy_order_seed` is a scheduling control
+only and MUST NOT enter any model-sampling configuration.
 
 Allowed order values are:
 
@@ -1000,22 +1088,130 @@ must match the manifest. Cloning prevents state-order effects, while
 counterbalancing reduces systematic machine/provider drift. All four arms are
 executed serially in V1; parallel execution is prohibited.
 
+For the frozen 16-attempt engineering-validation schedule, hidden-world
+alternation and scenario-derived policy orientation jointly guarantee this exact
+aggregate balance:
+
+```text
+H0 Replay-first       = 8
+H0 Regeneration-first = 8
+H1 Replay-first       = 8
+H1 Regeneration-first = 8
+```
+
+They also guarantee the following exact within-scenario balance for every
+`CREATE-00N` in the catalog:
+
+```text
+H0 across the two replicates -> one Replay-first, one Regeneration-first
+H1 across the two replicates -> one Replay-first, one Regeneration-first
+```
+
+Conceptual serial family position is reconstructed from
+`hidden_world_pair_position` and `arm_position`: positions 1 and 2 are the first
+scheduled hidden-world pair's two arms, and positions 3 and 4 are the second
+pair's two arms. Across the 16 attempts, the exact position balance is:
+
+```text
+family position 1 -> EXACT_REPLAY = 8, LLM_REGENERATION = 8
+family position 2 -> EXACT_REPLAY = 8, LLM_REGENERATION = 8
+family position 3 -> EXACT_REPLAY = 8, LLM_REGENERATION = 8
+family position 4 -> EXACT_REPLAY = 8, LLM_REGENERATION = 8
+```
+
+No treatment is systematically assigned only to the outer or inner serial
+positions. Because the position is reconstructable from the existing two trace
+fields, V1.2 adds no new trace-schema field.
+
+Future manifest materialization MUST apply scheduling decisions in this order:
+
+```text
+scheduled_attempt_index
+        -> scenario + replicate assignment
+        -> hidden-world order
+        -> policy order within that scheduled trial
+        -> already-materialized ScheduledTrialPlan
+```
+
+`ScheduledTrialPlan` consumes the materialized orders and does not derive them.
+
 ## R. Engineering-validation stage
 
 Before any pilot, materialize a deterministic queue of **16 original-generation
 attempt slots**: eight frozen scenarios and two attempt replicates per scenario.
-Execute it in manifest order until eight eligible trial families exist or the
-queue is exhausted. One eligible M creates both hidden-world pairs and all four
-arms; no replacement M is generated for either hidden world. Every attempt,
-including every executed ineligible attempt, is retained. If eight eligible families are not
-obtained, engineering validation fails rather than extending the queue post hoc.
-The eight families (16 pairs, 32 arms) must be balanced across both policy-arm
-order and hidden-world-pair order; otherwise the stage is rerun only after a new
-engineering-validation manifest is frozen. These traces are labeled
-`engineering_validation` and never enter paper-result denominators.
+The exact zero-based queue is:
+
+```text
+scheduled_attempt_index  replicate  scenario_id
+0                        1          CREATE-001
+1                        1          CREATE-002
+2                        1          CREATE-003
+3                        1          CREATE-004
+4                        1          CREATE-005
+5                        1          CREATE-006
+6                        1          CREATE-007
+7                        1          CREATE-008
+8                        2          CREATE-008
+9                        2          CREATE-007
+10                       2          CREATE-006
+11                       2          CREATE-005
+12                       2          CREATE-004
+13                       2          CREATE-003
+14                       2          CREATE-002
+15                       2          CREATE-001
+```
+
+Replicate 1 uses ascending scenario order and replicate 2 uses reverse scenario
+order, giving symmetric early/late scenario exposure. No randomized scenario
+shuffle is used for this engineering-validation schedule.
+
+Execute all 16 frozen attempt slots exactly once in manifest order. There is no
+eligibility-based early stop, replacement, resampling, queue extension, or
+retry-until-eligible. One eligible M creates both hidden-world pairs and all four
+arms; an ineligible original generation creates no recovery arms. Every attempted
+slot, including every ineligible original generation, is retained as engineering
+evidence.
+
+The exact counterbalances in Section Q are properties of the complete 16-slot
+scheduled manifest. They are not requirements on the eligibility-filtered set.
+Original-generation eligibility is a pre-treatment behavioral outcome and may
+make the realized set of eligible families numerically unbalanced without
+changing the frozen assignment schedule. All eligible families are retained;
+none is discarded to select a convenient or post-hoc balanced subset, including
+when more than eight are eligible.
+
+After all 16 attempts have run, at least eight trial families MUST be eligible.
+Fewer than eight eligible families fails engineering validation without queue
+extension, replacement attempts, changed seeds, or resampling.
+
+The complete schedule contains four scheduling strata:
+
+```text
+A: hidden_world_order = [H0, H1], policy_orientation_bit = 0
+B: hidden_world_order = [H1, H0], policy_orientation_bit = 1
+C: hidden_world_order = [H0, H1], policy_orientation_bit = 1
+D: hidden_world_order = [H1, H0], policy_orientation_bit = 0
+```
+
+At least one eligible trial family MUST occur in each of A, B, C, and D. A zero
+eligible count in any stratum fails engineering validation; no replacement is
+manufactured. This proves that actual four-arm recovery execution exercised both
+hidden-world orders, both policy orientations, and all four combinations. These
+traces are labeled `engineering_validation` and never enter paper-result
+denominators.
+
+V1.2 freezes the scheduling algorithm, engineering-validation schedule, and the
+meanings and constants of its scheduling seeds. It does not freeze the final
+paper model list, final provider list, final number of full-study repetitions,
+or full-study live-run timing. Those remain explicit future manifest dimensions;
+the full-study sample is frozen only after the documented pilot review in
+Section S.
 
 Pass criteria are all-or-nothing:
 
+- all 16 scheduled original-generation attempts execute exactly once;
+- at least eight trial families are eligible;
+- each scheduling stratum A, B, C, and D contains at least one eligible family;
 - 100% of all four family arms share the same original-request bytes and hash;
 - 100% of arms within each hidden-world pair have byte-identical
   post-ambiguity state and state hashes;
@@ -1031,11 +1227,14 @@ Pass criteria are all-or-nothing:
   duplicate, wrong, extra, and infrastructure cases;
 - intentional infrastructure and behavioral fault fixtures are classified under
   the correct exclusion rules;
-- all eight families and all 16 constituent pairs are valid after fixing defects
-  and rerunning under a new engineering-validation manifest.
+- every eligible family and all of its constituent pairs satisfy every applicable
+  engineering invariant. Any defect in any eligible family fails engineering
+  validation; it cannot be hidden by excluding that family from a selected
+  subset.
 
-Any code or protocol change found necessary restarts the eight-family validation
-under a new manifest. Validation outcomes are engineering evidence only.
+Any code or protocol change found necessary restarts the complete 16-slot
+validation under a new manifest. Validation outcomes are engineering evidence
+only.
 
 ## S. Pilot stage
 

@@ -1,4 +1,4 @@
-"""Canonical JSON serialization frozen by ``primary-create-v1.1``."""
+"""Canonical JSON serialization frozen by ``primary-create-v1.2``."""
 
 from __future__ import annotations
 
@@ -65,4 +65,3 @@ def sha256_hex(data: bytes) -> str:
     if type(data) is not bytes:
         raise TypeError("sha256_hex requires bytes")
     return hashlib.sha256(data).hexdigest()
-
