@@ -25,6 +25,7 @@ from retry_semantics.models.base import (
     freeze_json_value,
     model_request_from_regeneration_context,
     parse_tool_arguments_json,
+    thaw_json_value,
 )
 from retry_semantics.models.groq import (
     GROQ_PROVIDER,
@@ -62,4 +63,5 @@ __all__ = [
     "freeze_json_value",
     "model_request_from_regeneration_context",
     "parse_tool_arguments_json",
+    "thaw_json_value",
 ]

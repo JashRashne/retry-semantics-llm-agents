@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 from typing import Any, Mapping, Protocol, TypeAlias, runtime_checkable
@@ -105,6 +105,25 @@ class ToolChoice:
         return cls(ToolChoiceMode.FORCED_FUNCTION, name)
 
 
+def _canonical_optional_sampling_float(
+    name: str,
+    value: float | None,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float | None:
+    if value is None:
+        return None
+    if type(value) not in (int, float) or not math.isfinite(value):
+        raise ModelRequestError(f"{name} must be a finite number or null")
+    normalized = float(value)
+    if minimum is not None and normalized < minimum:
+        raise ModelRequestError(f"{name} must be at least {minimum:g}")
+    if maximum is not None and normalized > maximum:
+        raise ModelRequestError(f"{name} must be at most {maximum:g}")
+    return 0.0 if normalized == 0.0 else normalized
+
+
 @dataclass(frozen=True, slots=True)
 class ModelCallConfig:
     """Model and sampling settings kept outside canonical visible context."""
@@ -114,15 +133,27 @@ class ModelCallConfig:
     seed: int | None
     max_completion_tokens: int | None
     tool_choice: ToolChoice
+    top_p: float | None = None
+    parallel_tool_calls: bool | None = None
+    provider_parameters: ImmutableJson = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     def __post_init__(self) -> None:
         if type(self.model) is not str or self.model == "":
             raise ModelRequestError("model must be a non-empty string")
-        if self.temperature is not None:
-            if type(self.temperature) not in (int, float) or not math.isfinite(
-                self.temperature
-            ):
-                raise ModelRequestError("temperature must be a finite number or null")
+        object.__setattr__(
+            self,
+            "temperature",
+            _canonical_optional_sampling_float("temperature", self.temperature),
+        )
+        object.__setattr__(
+            self,
+            "top_p",
+            _canonical_optional_sampling_float(
+                "top_p", self.top_p, minimum=0.0, maximum=1.0
+            ),
+        )
         if self.seed is not None and type(self.seed) is not int:
             raise ModelRequestError("seed must be an integer or null")
         if self.max_completion_tokens is not None and (
@@ -134,6 +165,15 @@ class ModelCallConfig:
             )
         if type(self.tool_choice) is not ToolChoice:
             raise ModelRequestError("tool_choice must be a ToolChoice")
+        if self.parallel_tool_calls is not None and type(
+            self.parallel_tool_calls
+        ) is not bool:
+            raise ModelRequestError("parallel_tool_calls must be a bool or null")
+        object.__setattr__(
+            self,
+            "provider_parameters",
+            _freeze_model_provider_parameters(self.provider_parameters),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +259,108 @@ def freeze_json_value(value: Any) -> ImmutableJson:
         raise ModelResponseError(
             "provider data is not a readable JSON-compatible value"
         ) from exc
+
+
+_SECRET_PROVIDER_PARAMETER_KEYS = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "apikey",
+        "auth_token",
+        "authorization",
+        "bearer_token",
+        "client_secret",
+        "cookie",
+        "credentials",
+        "headers",
+        "password",
+        "private_key",
+        "request_headers",
+        "secret",
+        "token",
+        "x_api_key",
+    }
+)
+_STANDARD_MODEL_REQUEST_KEYS = frozenset(
+    {
+        "max_completion_tokens",
+        "max_output_tokens",
+        "messages",
+        "model",
+        "parallel_tool_calls",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p",
+    }
+)
+
+
+def _normalized_provider_parameter_key(key: str) -> str:
+    return key.casefold().replace("-", "_").replace(" ", "_")
+
+
+def _is_secret_provider_parameter_key(key: str) -> bool:
+    normalized = _normalized_provider_parameter_key(key)
+    return normalized in _SECRET_PROVIDER_PARAMETER_KEYS or normalized.endswith(
+        ("_api_key", "_credentials", "_password", "_secret", "_token")
+    )
+
+
+def _immutable_json_to_json(value: ImmutableJson) -> Any:
+    if type(value) is MappingProxyType:
+        return {key: _immutable_json_to_json(item) for key, item in value.items()}
+    if type(value) is tuple:
+        return [_immutable_json_to_json(item) for item in value]
+    return value
+
+
+def thaw_json_value(value: ImmutableJson) -> Any:
+    """Copy a recursively immutable JSON value into plain JSON containers."""
+
+    if not _is_immutable_json(value):
+        raise ModelResponseError("value is not an immutable JSON-compatible value")
+    return _immutable_json_to_json(value)
+
+
+def _validate_provider_parameter_keys(value: ImmutableJson) -> None:
+    if type(value) is MappingProxyType:
+        for key, item in value.items():
+            if _is_secret_provider_parameter_key(key):
+                raise ModelRequestError(
+                    f"provider_parameters must not contain secret field {key!r}"
+                )
+            _validate_provider_parameter_keys(item)
+    elif type(value) is tuple:
+        for item in value:
+            _validate_provider_parameter_keys(item)
+
+
+def _freeze_model_provider_parameters(value: Any) -> ImmutableJson:
+    source = (
+        _immutable_json_to_json(value)
+        if type(value) is MappingProxyType
+        else value
+    )
+    if type(source) is not dict:
+        raise ModelRequestError("provider_parameters must be a JSON object")
+    try:
+        canonical_json_bytes(source)
+        frozen = freeze_json_value(source)
+    except (ModelResponseError, TypeError, ValueError) as exc:
+        raise ModelRequestError(
+            "provider_parameters must be a JSON-compatible object"
+        ) from exc
+    if type(frozen) is not MappingProxyType:
+        raise ModelRequestError("provider_parameters must be a JSON object")
+    for key in frozen:
+        if _normalized_provider_parameter_key(key) in _STANDARD_MODEL_REQUEST_KEYS:
+            raise ModelRequestError(
+                f"provider_parameters duplicates standard request field {key!r}"
+            )
+    _validate_provider_parameter_keys(frozen)
+    return frozen
 
 
 def parse_tool_arguments_json(
@@ -448,4 +590,5 @@ __all__ = [
     "freeze_json_value",
     "model_request_from_regeneration_context",
     "parse_tool_arguments_json",
+    "thaw_json_value",
 ]

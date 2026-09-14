@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import FrozenInstanceError
+from types import MappingProxyType
 
 import pytest
 
@@ -103,6 +105,118 @@ def test_model_call_config_is_immutable() -> None:
 
     with pytest.raises(FrozenInstanceError):
         config.seed = 18  # type: ignore[misc]
+
+
+def test_model_request_retains_complete_execution_configuration(make_request) -> None:
+    input_parameters = {
+        "reasoning": {"effort": "medium"},
+        "tags": ["engineering", "v1.2"],
+    }
+    config = ModelCallConfig(
+        model="test-model",
+        temperature=0.25,
+        seed=41,
+        max_completion_tokens=321,
+        tool_choice=ToolChoice.auto(),
+        top_p=0.8,
+        parallel_tool_calls=False,
+        provider_parameters=input_parameters,
+    )
+    request = model_request_from_regeneration_context(
+        _context(make_request()), config
+    )
+
+    input_parameters["reasoning"]["effort"] = "changed"  # type: ignore[index]
+    assert request.model_config is config
+    assert request.model_config.top_p == 0.8
+    assert request.model_config.parallel_tool_calls is False
+    assert request.model_config.provider_parameters == {
+        "reasoning": {"effort": "medium"},
+        "tags": ("engineering", "v1.2"),
+    }
+    assert type(request.model_config.provider_parameters) is MappingProxyType
+    assert type(request.model_config.provider_parameters["reasoning"]) is (
+        MappingProxyType
+    )
+    with pytest.raises(TypeError):
+        request.model_config.provider_parameters["mode"] = (  # type: ignore[index]
+            "changed"
+        )
+
+
+@pytest.mark.parametrize("top_p", [-0.01, 1.01, float("inf"), float("nan"), True])
+def test_model_call_config_rejects_invalid_top_p(top_p: object) -> None:
+    with pytest.raises(ModelRequestError, match="top_p"):
+        ModelCallConfig(
+            model="test-model",
+            temperature=0.0,
+            seed=1,
+            max_completion_tokens=256,
+            tool_choice=ToolChoice.auto(),
+            top_p=top_p,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("parallel_tool_calls", [0, 1, "false", object()])
+def test_model_call_config_rejects_invalid_parallel_tool_value(
+    parallel_tool_calls: object,
+) -> None:
+    with pytest.raises(ModelRequestError, match="parallel_tool_calls"):
+        ModelCallConfig(
+            model="test-model",
+            temperature=0.0,
+            seed=1,
+            max_completion_tokens=256,
+            tool_choice=ToolChoice.auto(),
+            parallel_tool_calls=parallel_tool_calls,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "provider_parameters",
+    [
+        [],
+        {"unsupported_value": object()},
+        {"non_finite": float("nan")},
+        {1: "non-string key"},
+        {"temperature": 0.2},
+        {"nested": {"api_key": "secret"}},
+    ],
+)
+def test_model_call_config_rejects_invalid_provider_parameters(
+    provider_parameters: object,
+) -> None:
+    with pytest.raises(ModelRequestError, match="provider_parameters"):
+        ModelCallConfig(
+            model="test-model",
+            temperature=0.0,
+            seed=1,
+            max_completion_tokens=256,
+            tool_choice=ToolChoice.auto(),
+            provider_parameters=provider_parameters,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(("temperature", "top_p"), [(0, -0.0), (-0.0, 1)])
+def test_sampling_numbers_are_normalized_to_canonical_floats(
+    temperature: float,
+    top_p: float,
+) -> None:
+    config = ModelCallConfig(
+        model="test-model",
+        temperature=temperature,
+        seed=1,
+        max_completion_tokens=256,
+        tool_choice=ToolChoice.auto(),
+        top_p=top_p,
+    )
+
+    assert type(config.temperature) is float
+    assert type(config.top_p) is float
+    if config.temperature == 0.0:
+        assert math.copysign(1.0, config.temperature) == 1.0
+    if config.top_p == 0.0:
+        assert math.copysign(1.0, config.top_p) == 1.0
 
 
 def test_provider_neutral_request_contains_only_messages_tools_and_config(

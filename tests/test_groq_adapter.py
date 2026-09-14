@@ -20,6 +20,7 @@ from retry_semantics.models import (
     ModelRateLimitError,
     ModelRejectedGenerationError,
     ModelRequest,
+    ModelRequestError,
     ModelResponseError,
     ModelTimeoutError,
     ToolChoice,
@@ -67,7 +68,15 @@ def _context(request):
     )
 
 
-def _request(make_request, *, tool_choice=None, seed=23):
+def _request(
+    make_request,
+    *,
+    tool_choice=None,
+    seed=23,
+    top_p=None,
+    parallel_tool_calls=None,
+    provider_parameters=None,
+):
     context = _context(
         make_request(customer_id="C", title="X", description="Y")
     )
@@ -79,6 +88,11 @@ def _request(make_request, *, tool_choice=None, seed=23):
             seed=seed,
             max_completion_tokens=321,
             tool_choice=tool_choice or ToolChoice.auto(),
+            top_p=top_p,
+            parallel_tool_calls=parallel_tool_calls,
+            provider_parameters=(
+                {} if provider_parameters is None else provider_parameters
+            ),
         ),
     )
 
@@ -238,13 +252,23 @@ def test_all_tool_choice_modes_map_explicitly(make_request, choice, expected) ->
 
 
 def test_configuration_fields_map_exactly(make_request) -> None:
-    payload = build_groq_chat_completion_kwargs(_request(make_request, seed=99))
+    payload = build_groq_chat_completion_kwargs(
+        _request(
+            make_request,
+            seed=99,
+            top_p=0.75,
+            parallel_tool_calls=False,
+            provider_parameters={},
+        )
+    )
 
     assert payload["model"] == "requested-model"
     assert payload["temperature"] == 0.25
+    assert payload["top_p"] == 0.75
     assert payload["seed"] == 99
     assert payload["max_completion_tokens"] == 321
     assert payload["tool_choice"] == "auto"
+    assert payload["parallel_tool_calls"] is False
 
 
 def test_unspecified_optional_sampling_fields_are_omitted(make_request) -> None:
@@ -262,8 +286,52 @@ def test_unspecified_optional_sampling_fields_are_omitted(make_request) -> None:
     payload = build_groq_chat_completion_kwargs(request)
 
     assert "temperature" not in payload
+    assert "top_p" not in payload
     assert "seed" not in payload
     assert "max_completion_tokens" not in payload
+    assert "parallel_tool_calls" not in payload
+
+
+def test_nonempty_provider_parameters_are_rejected_instead_of_dropped(
+    make_request,
+) -> None:
+    request = _request(
+        make_request,
+        provider_parameters={"unsupported_option": "value"},
+    )
+
+    with pytest.raises(ModelRequestError, match="unsupported_option"):
+        build_groq_chat_completion_kwargs(request)
+
+
+def test_supported_provider_parameter_maps_exactly(make_request) -> None:
+    request = _request(
+        make_request,
+        provider_parameters={"reasoning_effort": "medium"},
+    )
+
+    payload = build_groq_chat_completion_kwargs(request)
+
+    assert payload["reasoning_effort"] == "medium"
+
+
+def test_empty_provider_parameters_do_not_change_groq_request(make_request) -> None:
+    implicit_empty = build_groq_chat_completion_kwargs(_request(make_request))
+    explicit_empty = build_groq_chat_completion_kwargs(
+        _request(make_request, provider_parameters={})
+    )
+
+    assert explicit_empty == implicit_empty
+
+
+def test_invalid_supported_provider_parameter_value_is_rejected(make_request) -> None:
+    request = _request(
+        make_request,
+        provider_parameters={"reasoning_effort": "unsupported"},
+    )
+
+    with pytest.raises(ModelRequestError, match="reasoning_effort"):
+        build_groq_chat_completion_kwargs(request)
 
 
 def test_h0_h1_groq_payloads_are_identical(make_request) -> None:
@@ -482,6 +550,23 @@ class _FakeCompletions:
 class _FakeSdkClient:
     def __init__(self, completions):
         self.chat = SimpleNamespace(completions=completions)
+
+
+def test_unsupported_provider_parameter_fails_before_sdk_invocation(
+    make_request,
+) -> None:
+    completions = _FakeCompletions(result=_completion(content="unused"))
+    client = GroqModelClient(sdk_client=_FakeSdkClient(completions))
+
+    with pytest.raises(ModelRequestError, match="unsupported_option"):
+        client.complete(
+            _request(
+                make_request,
+                provider_parameters={"unsupported_option": "value"},
+            )
+        )
+
+    assert completions.calls == []
 
 
 def test_client_makes_exactly_one_call_and_executes_no_tool(make_request) -> None:

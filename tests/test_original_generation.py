@@ -69,6 +69,9 @@ def _config(*, tool_choice: ToolChoice | None = None, seed: int | None = 7):
         seed=seed,
         max_completion_tokens=123,
         tool_choice=tool_choice or ToolChoice.auto(),
+        top_p=0.85,
+        parallel_tool_calls=False,
+        provider_parameters={"reasoning_effort": "low"},
     )
 
 
@@ -150,9 +153,10 @@ def test_v1_task_renderer_reproduces_the_exact_frozen_template() -> None:
 
 def test_valid_materialized_task_is_accepted_and_transmitted_unchanged() -> None:
     task = _task()
+    config = _config()
     request = build_v1_original_generation_request(
         task_spec=task,
-        model_config=_config(),
+        model_config=config,
     )
 
     assert [message.role for message in request.messages] == ["system", "user"]
@@ -163,6 +167,12 @@ def test_valid_materialized_task_is_accepted_and_transmitted_unchanged() -> None
     assert all(message.tool_calls == () for message in request.messages)
     assert all(message.tool_call_id is None for message in request.messages)
     assert request.tools is FROZEN_TOOL_CATALOG
+    assert request.model_config is config
+    assert request.model_config.top_p == 0.85
+    assert request.model_config.parallel_tool_calls is False
+    assert request.model_config.provider_parameters == {
+        "reasoning_effort": "low"
+    }
     assert [tool.name for tool in request.tools] == [
         "create_ticket",
         "list_tickets",

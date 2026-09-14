@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
@@ -108,6 +108,9 @@ def _config(seed: int | None = 100) -> ModelCallConfig:
         seed=seed,
         max_completion_tokens=128,
         tool_choice=ToolChoice.auto(),
+        top_p=0.7,
+        parallel_tool_calls=False,
+        provider_parameters={"reasoning_effort": "medium"},
     )
 
 
@@ -887,11 +890,23 @@ def test_caller_config_is_immutable_and_only_derived_seed_changes(make_request) 
 
     assert config.seed == 44
     assert [request.model_config.seed for request in client.requests] == [44, 45]
-    for request in client.requests:
+    for model_call_index, request in enumerate(client.requests):
+        assert request.model_config == replace(
+            config, seed=config.seed + model_call_index
+        )
         assert request.model_config.model == config.model
         assert request.model_config.temperature == config.temperature
-        assert request.model_config.max_completion_tokens == config.max_completion_tokens
+        assert request.model_config.top_p == config.top_p
+        assert (
+            request.model_config.max_completion_tokens
+            == config.max_completion_tokens
+        )
         assert request.model_config.tool_choice == config.tool_choice
+        assert (
+            request.model_config.parallel_tool_calls
+            == config.parallel_tool_calls
+        )
+        assert request.model_config.provider_parameters == config.provider_parameters
         assert request.model_config is not config
     assert [item.derived_seed for item in result.model_invocations] == [44, 45]
     with pytest.raises(FrozenInstanceError):

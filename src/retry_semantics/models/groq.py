@@ -32,6 +32,9 @@ from retry_semantics.models.base import (
 GROQ_PROVIDER = "groq"
 _TOOL_USE_FAILED = "tool_use_failed"
 _INVALID_REQUEST_ERROR = "invalid_request_error"
+_GROQ_REASONING_EFFORTS = frozenset(
+    {"none", "default", "low", "medium", "high"}
+)
 
 
 def _map_tool_choice(tool_choice: ToolChoice) -> str | dict[str, Any]:
@@ -90,6 +93,23 @@ def _map_message(message: Any) -> dict[str, Any]:
     raise ModelRequestError(f"unsupported message role: {message.role!r}")
 
 
+def _map_provider_parameters(parameters: Mapping[str, Any]) -> dict[str, Any]:
+    mapped: dict[str, Any] = {}
+    for key in sorted(parameters):
+        value = parameters[key]
+        if key != "reasoning_effort":
+            raise ModelRequestError(
+                "Groq adapter does not support provider parameter " f"{key!r}"
+            )
+        if type(value) is not str or value not in _GROQ_REASONING_EFFORTS:
+            raise ModelRequestError(
+                "Groq reasoning_effort must be one of none, default, low, "
+                "medium, or high"
+            )
+        mapped[key] = value
+    return mapped
+
+
 def build_groq_chat_completion_kwargs(request: ModelRequest) -> dict[str, Any]:
     """Purely map one provider-neutral request to Groq SDK keyword arguments."""
 
@@ -105,12 +125,17 @@ def build_groq_chat_completion_kwargs(request: ModelRequest) -> dict[str, Any]:
         ],
         "tool_choice": _map_tool_choice(config.tool_choice),
     }
+    kwargs.update(_map_provider_parameters(config.provider_parameters))
     if config.temperature is not None:
         kwargs["temperature"] = config.temperature
+    if config.top_p is not None:
+        kwargs["top_p"] = config.top_p
     if config.seed is not None:
         kwargs["seed"] = config.seed
     if config.max_completion_tokens is not None:
         kwargs["max_completion_tokens"] = config.max_completion_tokens
+    if config.parallel_tool_calls is not None:
+        kwargs["parallel_tool_calls"] = config.parallel_tool_calls
     return kwargs
 
 
