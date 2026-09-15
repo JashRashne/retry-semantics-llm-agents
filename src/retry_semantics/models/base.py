@@ -539,6 +539,10 @@ class ModelResponse:
 class ModelClient(Protocol):
     """The complete provider-neutral model-client interface."""
 
+    @property
+    def provider(self) -> str:
+        """Return the explicit provider identity used by this adapter."""
+
     def complete(self, request: ModelRequest) -> ModelResponse:
         """Perform exactly one model invocation."""
 

@@ -300,6 +300,12 @@ def capture_groq_chat_completion(
 class GroqModelClient:
     """Stateless-message Groq client that performs one call per ``complete``."""
 
+    @property
+    def provider(self) -> str:
+        """Return the provider identity used for manifest preflight."""
+
+        return GROQ_PROVIDER
+
     def __init__(
         self,
         *,

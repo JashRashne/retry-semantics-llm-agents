@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import TypeAlias
 
 from retry_semantics.environments.ticket import (
@@ -311,6 +313,7 @@ class EligibleMatchedTrialResult:
     h0_regeneration: RegenerationResult
     h1_replay: ExactReplayResult
     h1_regeneration: RegenerationResult
+    hidden_world_construction_ms: float = field(compare=False)
 
     def __post_init__(self) -> None:
         if type(self.plan) is not ScheduledTrialPlan:
@@ -334,6 +337,14 @@ class EligibleMatchedTrialResult:
         ) is not RegenerationResult:
             raise ScheduledTrialProtocolError(
                 "Regeneration results have the wrong type"
+            )
+        if (
+            type(self.hidden_world_construction_ms) is not float
+            or not math.isfinite(self.hidden_world_construction_ms)
+            or self.hidden_world_construction_ms < 0
+        ):
+            raise ScheduledTrialProtocolError(
+                "hidden-world construction latency must be a non-negative finite float"
             )
 
         frozen = self.original_generation.frozen_executable_request
@@ -461,6 +472,7 @@ def run_scheduled_trial(
             "original-generation boundary returned an unknown result type"
         )
 
+    construction_started_ns = time.perf_counter_ns()
     family = construct_trial_family_states(
         initial_state=initial_state,
         frozen_original_request=original.frozen_executable_request,
@@ -469,6 +481,9 @@ def run_scheduled_trial(
         original_source_stage=SourceStage.ORIGINAL,
         original_arm_id=None,
     )
+    hidden_world_construction_ms = (
+        time.perf_counter_ns() - construction_started_ns
+    ) / 1_000_000
     family_construction = _capture_family_construction_evidence(family)
     context = build_canonical_regeneration_context(
         user_task=original.task_spec.user_task,
@@ -510,6 +525,7 @@ def run_scheduled_trial(
         h0_regeneration=regeneration_results[HiddenWorld.NOT_EXECUTED],
         h1_replay=replay_results[HiddenWorld.EXECUTED_ACK_LOST],
         h1_regeneration=regeneration_results[HiddenWorld.EXECUTED_ACK_LOST],
+        hidden_world_construction_ms=hidden_world_construction_ms,
     )
 
 

@@ -398,8 +398,9 @@ def test_materialization_precedence_and_open_final_study_scope_are_frozen() -> N
     ):
         assert open_dimension in primary
     assert (
-        "Execution of all 16 slots, eligibility-threshold enforcement, eligible "
-        "A/B/C/D coverage, and the engineering-validation runner remain pending"
+        "The runner consumes those entries serially in index order, executes every "
+        "slot exactly once, and never stops, extends, replaces, resamples, or retries "
+        "based on eligibility"
     ) in coverage
 
 

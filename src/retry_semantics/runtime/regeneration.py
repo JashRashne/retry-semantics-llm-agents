@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
+
 from retry_semantics.environments.ticket import (
     EvaluationResult,
     RequestValidationError,
@@ -29,6 +31,7 @@ from retry_semantics.runtime.regeneration_context import (
     CreateTicketArguments,
     ModelVisibleToolCall,
 )
+from retry_semantics.runtime.exact_replay import RecoveryLatency
 from retry_semantics.serialization import canonical_json_bytes, sha256_hex
 
 LLM_REGENERATION = "LLM_REGENERATION"
@@ -105,6 +108,7 @@ class RegenerationResult:
     final_state_snapshot: bytes
     final_state_hash: str
     evaluation: EvaluationResult
+    latency: RecoveryLatency = field(compare=False)
     policy: str = field(default=LLM_REGENERATION, init=False)
 
     @property
@@ -282,6 +286,9 @@ def _finalize(
     tool_action_attempt_count: int,
     recovery_tool_calls_attempted: int,
     recovery_tool_calls_executed: int,
+    recovery_started_ns: int,
+    recovery_model_ns: int,
+    recovery_tool_ns: int,
     infrastructure_exclusion_reason: str | None = None,
 ) -> RegenerationResult:
     if infrastructure_exclusion_reason not in (
@@ -316,6 +323,12 @@ def _finalize(
         final_state_snapshot=final_snapshot,
         final_state_hash=sha256_hex(final_snapshot),
         evaluation=evaluation,
+        latency=RecoveryLatency(
+            recovery_wall_ms=(time.perf_counter_ns() - recovery_started_ns)
+            / 1_000_000,
+            recovery_model_ms=recovery_model_ns / 1_000_000,
+            recovery_tool_ms=recovery_tool_ns / 1_000_000,
+        ),
     )
 
 
@@ -335,6 +348,7 @@ def execute_llm_regeneration(
     performed.
     """
 
+    recovery_started_ns = time.perf_counter_ns()
     intended = _validate_inputs(environment, context, model_config, arm_id)
     invocations: list[RegenerationModelInvocation] = []
     actions: list[RegenerationAction] = []
@@ -342,6 +356,8 @@ def execute_llm_regeneration(
     tool_action_attempt_count = 0
     recovery_tool_calls_attempted = 0
     recovery_tool_calls_executed = 0
+    recovery_model_ns = 0
+    recovery_tool_ns = 0
 
     def finish(
         termination_reason: str,
@@ -358,6 +374,9 @@ def execute_llm_regeneration(
             tool_action_attempt_count=tool_action_attempt_count,
             recovery_tool_calls_attempted=recovery_tool_calls_attempted,
             recovery_tool_calls_executed=recovery_tool_calls_executed,
+            recovery_started_ns=recovery_started_ns,
+            recovery_model_ns=recovery_model_ns,
+            recovery_tool_ns=recovery_tool_ns,
             infrastructure_exclusion_reason=infrastructure_exclusion_reason,
         )
 
@@ -378,9 +397,11 @@ def execute_llm_regeneration(
             )
         )
 
+        model_started_ns = time.perf_counter_ns()
         try:
             response = client.complete(request)
         except ModelRejectedGenerationError as exc:
+            recovery_model_ns += time.perf_counter_ns() - model_started_ns
             invocations.append(
                 RegenerationModelInvocation(
                     model_call_index=model_call_index,
@@ -393,6 +414,7 @@ def execute_llm_regeneration(
             )
             return finish(MODEL_REJECTED_GENERATION)
         except ModelProviderError as exc:
+            recovery_model_ns += time.perf_counter_ns() - model_started_ns
             invocations.append(
                 RegenerationModelInvocation(
                     model_call_index=model_call_index,
@@ -408,6 +430,7 @@ def execute_llm_regeneration(
                 infrastructure_exclusion_reason=_PROVIDER_UNAVAILABLE,
             )
 
+        recovery_model_ns += time.perf_counter_ns() - model_started_ns
         if type(response) is not ModelResponse:
             error = ModelResponseError(
                 "ModelClient.complete() must return ModelResponse, got "
@@ -520,6 +543,7 @@ def execute_llm_regeneration(
                 return finish(INVALID_MODEL_TOOL_CALL)
 
             events_before = len(environment.state.mutation_events)
+            tool_started_ns = time.perf_counter_ns()
             try:
                 observation_bytes = environment.execute_request(
                     validated.serialized_request,
@@ -528,12 +552,14 @@ def execute_llm_regeneration(
                     expected_request_hash=validated.request_hash,
                 )
             except RequestValidationError as exc:
+                recovery_tool_ns += time.perf_counter_ns() - tool_started_ns
                 last = invocations[-1]
                 invocations[-1] = replace(last, infrastructure_error=exc)
                 return finish(
                     INFRASTRUCTURE_FAILURE,
                     infrastructure_exclusion_reason=_IMPLEMENTATION_BUG,
                 )
+            recovery_tool_ns += time.perf_counter_ns() - tool_started_ns
             recovery_tool_calls_executed += 1
             observation = observation_bytes.decode("utf-8")
             new_events = environment.state.mutation_events[events_before:]

@@ -9,13 +9,15 @@ description = "Deterministic controlled environments for retry-semantics experim
 requires-python = ">=3.11"
 dependencies = [
     "groq==1.7.0",
+    "jsonschema==4.25.1",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==8.4.2"]
+dev = [
+    "pytest==8.4.2",
+]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
 pythonpath = ["src"]
 testpaths = ["tests"]
-

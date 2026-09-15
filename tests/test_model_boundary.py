@@ -294,6 +294,10 @@ def test_h0_h1_create_identical_provider_neutral_requests(make_request) -> None:
 
 def test_fake_client_can_implement_the_small_protocol(make_request) -> None:
     class FakeClient:
+        @property
+        def provider(self) -> str:
+            return "fake-provider"
+
         def complete(self, request: ModelRequest) -> ModelResponse:
             raise NotImplementedError
 

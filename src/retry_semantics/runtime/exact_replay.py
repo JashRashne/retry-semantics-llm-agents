@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import math
+import time
 from dataclasses import dataclass, field
 
 from retry_semantics.environments.ticket import (
@@ -24,6 +26,24 @@ class ReplayProtocolError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class RecoveryLatency:
+    """Evaluator-only recovery timing that never enters model context."""
+
+    recovery_wall_ms: float
+    recovery_model_ms: float
+    recovery_tool_ms: float
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("recovery_wall_ms", self.recovery_wall_ms),
+            ("recovery_model_ms", self.recovery_model_ms),
+            ("recovery_tool_ms", self.recovery_tool_ms),
+        ):
+            if type(value) is not float or not math.isfinite(value) or value < 0:
+                raise ReplayProtocolError(f"{name} must be a non-negative finite float")
+
+
+@dataclass(frozen=True, slots=True)
 class ExactReplayResult:
     """Deterministic result boundary for one successful Exact Replay action."""
 
@@ -33,6 +53,7 @@ class ExactReplayResult:
     final_state_snapshot: bytes
     final_state_hash: str
     evaluation: EvaluationResult
+    latency: RecoveryLatency = field(compare=False)
     policy: str = field(default=EXACT_REPLAY, init=False)
     recovery_tool_calls_attempted: int = field(default=1, init=False)
     recovery_tool_calls_executed: int = field(default=1, init=False)
@@ -92,6 +113,7 @@ def execute_exact_replay(
     boundary.
     """
 
+    recovery_started_ns = time.perf_counter_ns()
     _validate_replay_inputs(
         environment=environment,
         frozen_request=frozen_request,
@@ -104,12 +126,14 @@ def execute_exact_replay(
 
     # This exact caller-supplied bytes object crosses the replay boundary. It is
     # not parsed, reconstructed, normalized, or reserialized by the policy.
+    tool_started_ns = time.perf_counter_ns()
     observation = environment.execute_request(
         serialized_original_request,
         source_stage=SourceStage.RECOVERY,
         arm_id=arm_id,
         expected_request_hash=original_request_hash,
     )
+    recovery_tool_ns = time.perf_counter_ns() - tool_started_ns
 
     if environment.dispatch_count - dispatch_count_before != 1:
         raise ReplayProtocolError("Exact Replay must dispatch exactly once")
@@ -146,6 +170,7 @@ def execute_exact_replay(
         description=arguments["description"],
     )
 
+    recovery_wall_ns = time.perf_counter_ns() - recovery_started_ns
     return ExactReplayResult(
         request_hash=original_request_hash,
         model_visible_observation=observation.decode("utf-8"),
@@ -153,4 +178,9 @@ def execute_exact_replay(
         final_state_snapshot=final_state_snapshot,
         final_state_hash=sha256_hex(final_state_snapshot),
         evaluation=evaluation,
+        latency=RecoveryLatency(
+            recovery_wall_ms=recovery_wall_ns / 1_000_000,
+            recovery_model_ms=0.0,
+            recovery_tool_ms=recovery_tool_ns / 1_000_000,
+        ),
     )

@@ -4,6 +4,7 @@ from retry_semantics.runtime.exact_replay import (
     EXACT_REPLAY,
     REPLAY_EXECUTED,
     ExactReplayResult,
+    RecoveryLatency,
     ReplayProtocolError,
     execute_exact_replay,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "ConstructedHiddenWorld",
     "CreateTicketArguments",
     "ExactReplayResult",
+    "RecoveryLatency",
     "FrozenToolDefinition",
     "HiddenWorld",
     "HiddenWorldArmStates",
