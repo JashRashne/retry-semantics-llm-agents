@@ -27,6 +27,14 @@ from retry_semantics.models.base import (
     parse_tool_arguments_json,
     thaw_json_value,
 )
+from retry_semantics.models.fireworks import (
+    DEEPSEEK_V4_FLASH_0731_MODEL,
+    FIREWORKS_CHAT_COMPLETIONS_URL,
+    FIREWORKS_PROVIDER,
+    FireworksModelClient,
+    build_fireworks_chat_completion_payload,
+    capture_fireworks_chat_completion,
+)
 from retry_semantics.models.groq import (
     GROQ_PROVIDER,
     GroqModelClient,
@@ -35,7 +43,11 @@ from retry_semantics.models.groq import (
 )
 
 __all__ = [
+    "DEEPSEEK_V4_FLASH_0731_MODEL",
+    "FIREWORKS_CHAT_COMPLETIONS_URL",
+    "FIREWORKS_PROVIDER",
     "GROQ_PROVIDER",
+    "FireworksModelClient",
     "ImmutableJson",
     "GroqModelClient",
     "ModelAssistantMessage",
@@ -58,7 +70,9 @@ __all__ = [
     "ModelUsage",
     "ToolChoice",
     "ToolChoiceMode",
+    "build_fireworks_chat_completion_payload",
     "build_groq_chat_completion_kwargs",
+    "capture_fireworks_chat_completion",
     "capture_groq_chat_completion",
     "freeze_json_value",
     "model_request_from_regeneration_context",
