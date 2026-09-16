@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retry-semantics.local/schemas/paper_trace_schema_v1.json",
+  "title": "Primary CREATE V1.3 paper recovery-arm trace",
+  "description": "Versioned provenance extension of frozen V1.2 arm evidence. All treatment, state, action and budget constraints reference the unchanged engineering schema. An absent arm trace is represented only in the scheduled-attempt ledger, never by a fabricated Replay execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "experiment_version", "paper_provenance", "git_commit", "timestamp",
+    "identifiers", "mutation_class", "recovery_policy", "model", "sampling",
+    "execution_order", "model_visible", "frozen_original", "recovery_actions",
+    "request_drift", "usage", "latency", "evaluator_only", "errors", "termination_reason"
+  ],
+  "properties": {
+    "schema_version": {"const": "trace-schema-paper-v1"},
+    "experiment_version": {"const": "primary-create-v1.3"},
+    "paper_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "paper_experiment_revision", "execution_semantics_revision", "manifest_kind"],
+      "properties": {
+        "schema_version": {"const": "paper-provenance-v1"},
+        "paper_experiment_revision": {"const": "primary-create-v1.3"},
+        "execution_semantics_revision": {"const": "primary-create-v1.2"},
+        "manifest_kind": {"const": "paper"}
+      }
+    },
+    "git_commit": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/git_commit"},
+    "timestamp": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/timestamp"},
+    "identifiers": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/identifiers"},
+    "mutation_class": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/mutation_class"},
+    "recovery_policy": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/recovery_policy"},
+    "model": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/model"},
+    "sampling": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/sampling"},
+    "execution_order": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/execution_order"},
+    "model_visible": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/model_visible"},
+    "frozen_original": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/frozen_original"},
+    "recovery_actions": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/recovery_actions"},
+    "request_drift": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/request_drift"},
+    "usage": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/usage"},
+    "latency": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/latency"},
+    "evaluator_only": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/evaluator_only"},
+    "errors": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/errors"},
+    "termination_reason": {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/properties/termination_reason"}
+  },
+  "allOf": [
+    {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/allOf/0"},
+    {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/allOf/1"},
+    {"$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/allOf/2"}
+  ]
+}

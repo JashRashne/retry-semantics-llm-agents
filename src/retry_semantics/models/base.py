@@ -60,6 +60,14 @@ class ModelProviderStatusError(ModelProviderError):
 class ModelResponseError(ModelProviderError):
     """The provider response was not structurally readable by the adapter."""
 
+    def __init__(self, message: str, *, structured_evidence=None) -> None:
+        super().__init__(message)
+        # Optional diagnostic capture only; it never changes failure handling or
+        # becomes model-visible history. Providers must sanitize before attaching.
+        self.structured_evidence = (
+            None if structured_evidence is None else _freeze_json(structured_evidence)
+        )
+
 
 class ToolChoiceMode(str, Enum):
     AUTO = "AUTO"

@@ -395,6 +395,22 @@ ScheduledTrialResult: TypeAlias = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedEligibleTrial:
+    """Shared, pre-arm evidence and execution state for one eligible family.
+
+    This boundary exists so collection infrastructure can retain successful arms
+    when a different cloned arm fails.  It does not alter either policy executor.
+    """
+
+    plan: ScheduledTrialPlan
+    original_generation: EligibleOriginalGeneration
+    family: TrialFamilyStates
+    family_construction: TrialFamilyConstructionEvidence
+    regeneration_context: CanonicalRegenerationContext
+    hidden_world_construction_ms: float
+
+
 def _world(
     family: TrialFamilyStates, hidden_world: HiddenWorld
 ) -> ConstructedHiddenWorld:
@@ -444,6 +460,85 @@ def _capture_family_construction_evidence(
     )
 
 
+def prepare_eligible_scheduled_trial(
+    *,
+    plan: ScheduledTrialPlan,
+    original_generation: EligibleOriginalGeneration,
+    initial_state: TicketEnvironment | bytes,
+) -> PreparedEligibleTrial:
+    """Construct one eligible family's unchanged hidden worlds and context."""
+
+    if type(plan) is not ScheduledTrialPlan:
+        raise ScheduledTrialProtocolError("plan must be a ScheduledTrialPlan")
+    if type(original_generation) is not EligibleOriginalGeneration:
+        raise ScheduledTrialProtocolError(
+            "original_generation must be an EligibleOriginalGeneration"
+        )
+    construction_started_ns = time.perf_counter_ns()
+    family = construct_trial_family_states(
+        initial_state=initial_state,
+        frozen_original_request=original_generation.frozen_executable_request,
+        serialized_original_request=original_generation.serialized_original_request,
+        original_request_hash=original_generation.original_request_hash,
+        original_source_stage=SourceStage.ORIGINAL,
+        original_arm_id=None,
+    )
+    hidden_world_construction_ms = (
+        time.perf_counter_ns() - construction_started_ns
+    ) / 1_000_000
+    family_construction = _capture_family_construction_evidence(family)
+    context = build_canonical_regeneration_context(
+        user_task=original_generation.task_spec.user_task,
+        frozen_original_request=original_generation.frozen_executable_request,
+        original_assistant_message=original_generation.original_assistant_message,
+    )
+    return PreparedEligibleTrial(
+        plan=plan,
+        original_generation=original_generation,
+        family=family,
+        family_construction=family_construction,
+        regeneration_context=context,
+        hidden_world_construction_ms=hidden_world_construction_ms,
+    )
+
+
+def execute_prepared_recovery_arm(
+    prepared: PreparedEligibleTrial,
+    *,
+    hidden_world: HiddenWorld,
+    policy: str,
+    client: ModelClient,
+    regeneration_config: ModelCallConfig,
+) -> ExactReplayResult | RegenerationResult:
+    """Execute one already-scheduled arm through the frozen policy boundary."""
+
+    if type(prepared) is not PreparedEligibleTrial:
+        raise ScheduledTrialProtocolError("prepared has the wrong type")
+    if policy not in prepared.plan.arm_order(hidden_world):
+        raise ScheduledTrialProtocolError("policy is not scheduled for this hidden world")
+    constructed_world = _world(prepared.family, hidden_world)
+    arm_id = prepared.plan.arm_id(hidden_world, policy)
+    if policy == EXACT_REPLAY:
+        arm = constructed_world.arm_states.exact_replay_state
+        return execute_exact_replay(
+            arm.environment,
+            frozen_request=arm.frozen_original_request,
+            serialized_original_request=arm.serialized_original_request,
+            original_request_hash=arm.original_request_hash,
+            arm_id=arm_id,
+        )
+    if policy == LLM_REGENERATION:
+        arm = constructed_world.arm_states.llm_regeneration_state
+        return execute_llm_regeneration(
+            arm.environment,
+            context=prepared.regeneration_context,
+            client=client,
+            model_config=regeneration_config,
+            arm_id=arm_id,
+        )
+    raise ScheduledTrialProtocolError(f"unknown recovery policy: {policy!r}")
+
+
 def run_scheduled_trial(
     client: ModelClient,
     *,
@@ -472,70 +567,53 @@ def run_scheduled_trial(
             "original-generation boundary returned an unknown result type"
         )
 
-    construction_started_ns = time.perf_counter_ns()
-    family = construct_trial_family_states(
+    prepared = prepare_eligible_scheduled_trial(
+        plan=plan,
+        original_generation=original,
         initial_state=initial_state,
-        frozen_original_request=original.frozen_executable_request,
-        serialized_original_request=original.serialized_original_request,
-        original_request_hash=original.original_request_hash,
-        original_source_stage=SourceStage.ORIGINAL,
-        original_arm_id=None,
-    )
-    hidden_world_construction_ms = (
-        time.perf_counter_ns() - construction_started_ns
-    ) / 1_000_000
-    family_construction = _capture_family_construction_evidence(family)
-    context = build_canonical_regeneration_context(
-        user_task=original.task_spec.user_task,
-        frozen_original_request=original.frozen_executable_request,
-        original_assistant_message=original.original_assistant_message,
     )
 
     replay_results: dict[HiddenWorld, ExactReplayResult] = {}
     regeneration_results: dict[HiddenWorld, RegenerationResult] = {}
     for hidden_world in plan.hidden_world_order:
-        constructed_world = _world(family, hidden_world)
         for policy in plan.arm_order(hidden_world):
-            arm_id = plan.arm_id(hidden_world, policy)
+            arm_result = execute_prepared_recovery_arm(
+                prepared,
+                hidden_world=hidden_world,
+                policy=policy,
+                client=client,
+                regeneration_config=regeneration_config,
+            )
             if policy == EXACT_REPLAY:
-                arm = constructed_world.arm_states.exact_replay_state
-                replay_results[hidden_world] = execute_exact_replay(
-                    arm.environment,
-                    frozen_request=arm.frozen_original_request,
-                    serialized_original_request=arm.serialized_original_request,
-                    original_request_hash=arm.original_request_hash,
-                    arm_id=arm_id,
-                )
+                assert type(arm_result) is ExactReplayResult
+                replay_results[hidden_world] = arm_result
             else:
-                arm = constructed_world.arm_states.llm_regeneration_state
-                regeneration_results[hidden_world] = execute_llm_regeneration(
-                    arm.environment,
-                    context=context,
-                    client=client,
-                    model_config=regeneration_config,
-                    arm_id=arm_id,
-                )
+                assert type(arm_result) is RegenerationResult
+                regeneration_results[hidden_world] = arm_result
 
     return EligibleMatchedTrialResult(
         plan=plan,
         original_generation=original,
-        family_construction=family_construction,
-        regeneration_context=context,
+        family_construction=prepared.family_construction,
+        regeneration_context=prepared.regeneration_context,
         h0_replay=replay_results[HiddenWorld.NOT_EXECUTED],
         h0_regeneration=regeneration_results[HiddenWorld.NOT_EXECUTED],
         h1_replay=replay_results[HiddenWorld.EXECUTED_ACK_LOST],
         h1_regeneration=regeneration_results[HiddenWorld.EXECUTED_ACK_LOST],
-        hidden_world_construction_ms=hidden_world_construction_ms,
+        hidden_world_construction_ms=prepared.hidden_world_construction_ms,
     )
 
 
 __all__ = [
     "EligibleMatchedTrialResult",
     "HiddenWorldConstructionEvidence",
+    "PreparedEligibleTrial",
     "PreTreatmentFailureTrialResult",
     "ScheduledTrialPlan",
     "ScheduledTrialProtocolError",
     "ScheduledTrialResult",
     "TrialFamilyConstructionEvidence",
+    "execute_prepared_recovery_arm",
+    "prepare_eligible_scheduled_trial",
     "run_scheduled_trial",
 ]

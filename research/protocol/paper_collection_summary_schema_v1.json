@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retry-semantics.local/schemas/paper_collection_summary_schema_v1.json",
+  "title": "Primary CREATE V1.3 operational collection summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "manifest_id", "manifest_sha256", "paper_experiment_revision",
+    "execution_semantics_revision", "manifest_kind", "model_identities",
+    "scheduled_attempts", "attempts_started", "original_generations_attempted",
+    "eligible_original_generations", "ineligible_attempts",
+    "original_generation_infrastructure_failures", "activated_families",
+    "arm_opportunities", "arm_opportunities_attempted", "arm_traces_persisted",
+    "arm_level_infrastructure_failures", "system_family_construction_failures",
+    "completion_status", "collection_events", "collection_events_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": "paper-collection-summary-v1"},
+    "manifest_id": {"type": "string", "minLength": 1},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "paper_experiment_revision": {"const": "primary-create-v1.3"},
+    "execution_semantics_revision": {"const": "primary-create-v1.2"},
+    "manifest_kind": {"const": "paper"},
+    "model_identities": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["provider", "name", "version_or_digest"],
+        "properties": {
+          "provider": {"type": "string", "minLength": 1},
+          "name": {"type": "string", "minLength": 1},
+          "version_or_digest": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "scheduled_attempts": {"const": 160},
+    "attempts_started": {"const": 160},
+    "original_generations_attempted": {"$ref": "#/$defs/count"},
+    "eligible_original_generations": {"$ref": "#/$defs/count"},
+    "ineligible_attempts": {"$ref": "#/$defs/count"},
+    "original_generation_infrastructure_failures": {"$ref": "#/$defs/count"},
+    "activated_families": {"$ref": "#/$defs/count"},
+    "arm_opportunities": {"$ref": "#/$defs/count"},
+    "arm_opportunities_attempted": {"$ref": "#/$defs/count"},
+    "arm_traces_persisted": {"$ref": "#/$defs/count"},
+    "arm_level_infrastructure_failures": {"$ref": "#/$defs/count"},
+    "system_family_construction_failures": {"$ref": "#/$defs/count"},
+    "completion_status": {"const": "COMPLETE_RECORDED"},
+    "collection_events": {"$ref": "#/$defs/count"},
+    "collection_events_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {"count": {"type": "integer", "minimum": 0}}
+}

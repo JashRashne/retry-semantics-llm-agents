@@ -215,6 +215,55 @@ def capture_fireworks_chat_completion(
 ) -> ModelResponse:
     """Capture one readable Fireworks completion without repair or normalization."""
 
+    try:
+        return _capture_fireworks_chat_completion(completion, requested_model=requested_model)
+    except ModelResponseError as exc:
+        if exc.structured_evidence is None:
+            exc.structured_evidence = freeze_json_value(
+                _response_structure_evidence(completion)
+            )
+        raise
+
+
+def _response_structure_evidence(completion: Any) -> dict[str, Any]:
+    """Retain unreadable action structure, never reasoning state or credentials."""
+
+    forbidden = {
+        "reasoning_content", "reasoning_history", "thinking", "reasoning",
+        "api_key", "authorization", "headers", "access_token", "credentials",
+    }
+    def sanitized(value):
+        if isinstance(value, Mapping):
+            return {
+                str(key): sanitized(item)
+                for key, item in value.items()
+                if type(key) is str and key.casefold().replace("-", "_") not in forbidden
+            }
+        if isinstance(value, list):
+            return [sanitized(item) for item in value]
+        if value is None or type(value) in (str, bool, int):
+            return value
+        if type(value) is float and math.isfinite(value):
+            return value
+        return {"unreadable_type": type(value).__name__}
+    # Only provider completion fields needed to reconstruct the parser boundary
+    # are retained. Unknown top-level middleware/session metadata is not copied.
+    retained = (
+        {key: sanitized(completion[key]) for key in (
+            "choices", "id", "model", "usage", "system_fingerprint"
+        ) if key in completion}
+        if isinstance(completion, Mapping)
+        else sanitized(completion)
+    )
+    return {"evidence_version": "fireworks-response-structure-v1", "completion": retained}
+
+
+def _capture_fireworks_chat_completion(
+    completion: Any,
+    *,
+    requested_model: str,
+) -> ModelResponse:
+
     if type(requested_model) is not str or requested_model == "":
         raise ModelResponseError("requested_model must be a non-empty string")
     if not isinstance(completion, Mapping):
@@ -357,7 +406,12 @@ class FireworksModelClient:
             completion = response.json()
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise ModelResponseError(
-                "Fireworks returned a non-JSON success response"
+                "Fireworks returned a non-JSON success response",
+                structured_evidence={
+                    "evidence_version": "fireworks-response-structure-v1",
+                    "boundary_observation": "NON_JSON_SUCCESS_RESPONSE",
+                    "http_status_code": status_code,
+                },
             ) from exc
         return capture_fireworks_chat_completion(
             completion,

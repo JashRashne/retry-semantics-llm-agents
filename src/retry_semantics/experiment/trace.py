@@ -38,6 +38,12 @@ from retry_semantics.runtime.regeneration import (
     RegenerationResult,
 )
 from retry_semantics.runtime.scheduled_trial import EligibleMatchedTrialResult
+from retry_semantics.runtime.scheduled_trial import (
+    PreparedEligibleTrial,
+    TrialFamilyConstructionEvidence,
+)
+from retry_semantics.runtime.original_generation import EligibleOriginalGeneration
+from retry_semantics.runtime.regeneration_context import CanonicalRegenerationContext
 
 TRACE_SCHEMA_VERSION = "trace-schema-v1"
 ENVIRONMENT_VERSION = "ticket-env-v1"
@@ -425,24 +431,28 @@ def _errors(
 
 
 def _lifecycle_events(
-    execution: EligibleMatchedTrialResult,
+    *,
+    initial_state_hash: str,
+    original_generation: EligibleOriginalGeneration,
+    original_request_hash: str,
+    family_construction: TrialFamilyConstructionEvidence,
     hidden_world: HiddenWorld,
     policy: str,
     arm_result: ExactReplayResult | RegenerationResult,
 ) -> list[dict[str, Any]]:
     payloads: list[tuple[str, dict[str, Any]]] = [
         ("RUN_STARTED", {}),
-        ("STATE_INITIALIZED", {"state_hash": execution.initial_state_hash}),
+        ("STATE_INITIALIZED", {"state_hash": initial_state_hash}),
         (
             "ORIGINAL_REQUEST_GENERATED",
-            {"model_response": _model_response(execution.original_generation.model_response)},
+            {"model_response": _model_response(original_generation.model_response)},
         ),
-        ("ORIGINAL_REQUEST_FROZEN", {"request_hash": execution.original_request_hash}),
+        ("ORIGINAL_REQUEST_FROZEN", {"request_hash": original_request_hash}),
     ]
     world = (
-        execution.family_construction.not_executed
+        family_construction.not_executed
         if hidden_world is HiddenWorld.NOT_EXECUTED
-        else execution.family_construction.executed_ack_lost
+        else family_construction.executed_ack_lost
     )
     if world.original_request_executed:
         payloads.extend(
@@ -548,6 +558,11 @@ def _lifecycle_events(
                     else {
                         "type": type(invocation.infrastructure_error).__name__,
                         "message": str(invocation.infrastructure_error),
+                        "structured_evidence": (
+                            None
+                            if getattr(invocation.infrastructure_error, "structured_evidence", None) is None
+                            else thaw_json_value(invocation.infrastructure_error.structured_evidence)
+                        ),
                     }
                 ),
             }
@@ -636,18 +651,93 @@ def arm_trace_as_json(
     arm_result: ExactReplayResult | RegenerationResult = replay if policy == EXACT_REPLAY else regeneration
     replay_evaluation, regeneration_evaluation = _effective_pair_evaluations(execution, hidden_world)
     evaluation = replay_evaluation if policy == EXACT_REPLAY else regeneration_evaluation
-    plan = execution.plan
+    return _arm_trace_from_components(
+        entry=entry,
+        plan=execution.plan,
+        original_generation=execution.original_generation,
+        family_construction=execution.family_construction,
+        regeneration_context=execution.regeneration_context,
+        hidden_world_construction_ms=execution.hidden_world_construction_ms,
+        hidden_world=hidden_world,
+        policy=policy,
+        arm_result=arm_result,
+        evaluation=evaluation,
+        metadata=metadata,
+        experiment_version=EXPERIMENT_VERSION,
+        paper_provenance=None,
+    )
+
+
+def paper_arm_trace_as_json(
+    *,
+    entry: Any,
+    prepared: PreparedEligibleTrial,
+    hidden_world: HiddenWorld,
+    policy: str,
+    arm_result: ExactReplayResult | RegenerationResult,
+    metadata: TraceRunMetadata,
+) -> dict[str, Any]:
+    """Serialize one independently completed paper arm without pair propagation."""
+
+    if prepared.plan != entry.plan:
+        raise TraceSerializationError("prepared plan does not match paper entry")
+    if policy == EXACT_REPLAY and type(arm_result) is not ExactReplayResult:
+        raise TraceSerializationError("Replay paper arm has the wrong result type")
+    if policy == LLM_REGENERATION and type(arm_result) is not RegenerationResult:
+        raise TraceSerializationError("Regeneration paper arm has the wrong result type")
+    return _arm_trace_from_components(
+        entry=entry,
+        plan=prepared.plan,
+        original_generation=prepared.original_generation,
+        family_construction=prepared.family_construction,
+        regeneration_context=prepared.regeneration_context,
+        hidden_world_construction_ms=prepared.hidden_world_construction_ms,
+        hidden_world=hidden_world,
+        policy=policy,
+        arm_result=arm_result,
+        evaluation=arm_result.evaluation,
+        metadata=metadata,
+        experiment_version="primary-create-v1.3",
+        paper_provenance={
+            "schema_version": "paper-provenance-v1",
+            "paper_experiment_revision": "primary-create-v1.3",
+            "execution_semantics_revision": "primary-create-v1.2",
+            "manifest_kind": "paper",
+        },
+    )
+
+
+def _arm_trace_from_components(
+    *,
+    entry: Any,
+    plan: Any,
+    original_generation: EligibleOriginalGeneration,
+    family_construction: TrialFamilyConstructionEvidence,
+    regeneration_context: CanonicalRegenerationContext,
+    hidden_world_construction_ms: float,
+    hidden_world: HiddenWorld,
+    policy: str,
+    arm_result: ExactReplayResult | RegenerationResult,
+    evaluation: EvaluationResult,
+    metadata: TraceRunMetadata,
+    experiment_version: str,
+    paper_provenance: dict[str, str] | None,
+) -> dict[str, Any]:
+    """Common truthful mapping for engineering and independently retained arms."""
+
     arm_id = plan.arm_id(hidden_world, policy)
     pair_order = plan.arm_order(hidden_world)
     world_evidence = (
-        execution.family_construction.not_executed
+        family_construction.not_executed
         if hidden_world is HiddenWorld.NOT_EXECUTED
-        else execution.family_construction.executed_ack_lost
+        else family_construction.executed_ack_lost
     )
-    context = execution.regeneration_context
+    context = regeneration_context
     original_call = context.original_tool_call
     original_arguments = original_call.arguments.as_dict()
     if policy == EXACT_REPLAY:
+        assert type(arm_result) is ExactReplayResult
+        replay = arm_result
         actions = [
             {
                 "action_sequence": 1,
@@ -661,8 +751,8 @@ def arm_trace_as_json(
                     "tool": original_call.tool,
                     "arguments": original_arguments,
                 },
-                "serialized_request": execution.original_generation.serialized_original_request.decode("utf-8"),
-                "request_hash": execution.original_request_hash,
+                "serialized_request": original_generation.serialized_original_request.decode("utf-8"),
+                "request_hash": original_generation.original_request_hash,
                 "validation_status": "VALID",
                 "executed": True,
                 "mutating": True,
@@ -686,14 +776,16 @@ def arm_trace_as_json(
         recovery_usage = {"prompt_tokens": None, "completion_tokens": None, "total_tokens": None}
         regeneration_sampling = None
     else:
+        assert type(arm_result) is RegenerationResult
+        regeneration = arm_result
         actions, classes = _regeneration_actions(regeneration, original_arguments)
         drift = _request_drift(actions, classes)
         recovery_usage = _summed_recovery_usage(regeneration)
         regeneration_sampling = entry.model_config.regeneration.as_trace_sampling_configuration()
     final_state = _state(arm_result.final_state_snapshot)
-    return {
+    trace = {
         "schema_version": TRACE_SCHEMA_VERSION,
-        "experiment_version": EXPERIMENT_VERSION,
+        "experiment_version": experiment_version,
         "git_commit": metadata.git_commit,
         "timestamp": metadata.timestamp,
         "identifiers": {
@@ -736,15 +828,15 @@ def arm_trace_as_json(
             "model_visible_context_hash": context.canonical_context_sha256,
         },
         "frozen_original": {
-            "serialized_original_request": execution.original_generation.serialized_original_request.decode("utf-8"),
-            "original_request_hash": execution.original_request_hash,
+            "serialized_original_request": original_generation.serialized_original_request.decode("utf-8"),
+            "original_request_hash": original_generation.original_request_hash,
             "serialization_format": "canonical-json-v1-utf8-no-bom-no-newline",
             "eligibility_verified": True,
         },
         "recovery_actions": actions,
         "request_drift": drift,
         "usage": {
-            "original_generation": _token_usage(execution.original_generation.model_response),
+            "original_generation": _token_usage(original_generation.model_response),
             "recovery": recovery_usage,
             "additional_llm_calls": arm_result.additional_llm_calls,
             "recovery_tool_calls_attempted": arm_result.recovery_tool_calls_attempted,
@@ -752,7 +844,7 @@ def arm_trace_as_json(
             "reported_cost": None,
         },
         "latency": {
-            "hidden_world_construction_ms": execution.hidden_world_construction_ms,
+            "hidden_world_construction_ms": hidden_world_construction_ms,
             "recovery_wall_ms": arm_result.latency.recovery_wall_ms,
             "recovery_model_ms": arm_result.latency.recovery_model_ms,
             "recovery_tool_ms": arm_result.latency.recovery_tool_ms,
@@ -762,19 +854,31 @@ def arm_trace_as_json(
             "original_request_executed": world_evidence.original_request_executed,
             "environment_version": ENVIRONMENT_VERSION,
             "intended_effect": original_arguments,
-            "initial_state": _state(execution.family_construction.initial_state_snapshot),
-            "initial_state_hash": execution.initial_state_hash,
+            "initial_state": _state(family_construction.initial_state_snapshot),
+            "initial_state_hash": family_construction.initial_state_hash,
             "post_ambiguity_state": _state(world_evidence.post_ambiguity_snapshot),
             "post_ambiguity_state_hash": world_evidence.post_ambiguity_state_hash,
             "committed_effects": final_state["mutation_events"],
             "final_state": final_state,
             "final_state_hash": arm_result.final_state_hash,
             "evaluation": evaluation.as_dict(),
-            "lifecycle_events": _lifecycle_events(execution, hidden_world, policy, arm_result),
+            "lifecycle_events": _lifecycle_events(
+                initial_state_hash=family_construction.initial_state_hash,
+                original_generation=original_generation,
+                original_request_hash=original_generation.original_request_hash,
+                family_construction=family_construction,
+                hidden_world=hidden_world,
+                policy=policy,
+                arm_result=arm_result,
+            ),
         },
         "errors": _errors(arm_id, policy, arm_result, evaluation),
         "termination_reason": arm_result.termination_reason,
     }
+    if paper_provenance is not None:
+        trace["schema_version"] = "trace-schema-paper-v1"
+        trace["paper_provenance"] = paper_provenance
+    return trace
 
 
 __all__ = [
@@ -782,6 +886,7 @@ __all__ = [
     "TraceRunMetadata",
     "TraceSerializationError",
     "arm_trace_as_json",
+    "paper_arm_trace_as_json",
     "model_request_as_json",
     "model_response_as_json",
     "rejected_generation_as_json",

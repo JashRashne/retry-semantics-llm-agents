@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retry-semantics.local/schemas/paper_collection_event_schema_v1.json",
+  "title": "Paper collection durable scheduled-opportunity event",
+  "description": "A start marker is fsynced before entering the corresponding runtime boundary. On a process interruption it proves that an opportunity was started, not that a provider request or tool commit completed. Never resume or retry an interrupted manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_sequence", "manifest_id", "manifest_sha256", "paper_experiment_revision", "execution_semantics_revision", "slot_index", "event_type", "arm_id", "terminal_status"],
+  "properties": {
+    "schema_version": {"const": "paper-collection-event-v1"},
+    "event_sequence": {"type": "integer", "minimum": 1},
+    "manifest_id": {"type": "string", "minLength": 1},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "paper_experiment_revision": {"const": "primary-create-v1.3"},
+    "execution_semantics_revision": {"const": "primary-create-v1.2"},
+    "slot_index": {"type": "integer", "minimum": 0, "maximum": 159},
+    "event_type": {"enum": ["ATTEMPT_STARTED", "ORIGINAL_GENERATION_ATTEMPT_STARTED", "RECOVERY_CONSTRUCTION_STARTED", "ARM_OPPORTUNITY_ATTEMPT_STARTED", "SCHEDULED_ATTEMPT_TERMINATED"]},
+    "arm_id": {"type": ["string", "null"]},
+    "terminal_status": {"type": ["string", "null"], "enum": [null, "INELIGIBLE", "ORIGINAL_GENERATION_INFRASTRUCTURE_FAILURE", "FAMILY_SYSTEM_FAILURE", "RECOVERY_COMPLETE", "RECOVERY_COMPLETE_WITH_ARM_INFRASTRUCTURE"]}
+  }
+}
