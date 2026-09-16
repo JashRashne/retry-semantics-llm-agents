@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Paper measurement evidence V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_version",
+    "model_invocations",
+    "successful_tool_executions"
+  ],
+  "properties": {
+    "evidence_version": {
+      "const": "paper-arm-measurement-v2"
+    },
+    "model_invocations": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/modelInvocation"
+      }
+    },
+    "successful_tool_executions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/toolExecution"
+      }
+    }
+  },
+  "$defs": {
+    "responseFailure": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "evidence_version",
+            "category",
+            "stage"
+          ],
+          "properties": {
+            "evidence_version": {
+              "const": "model-response-failure-v2"
+            },
+            "category": {
+              "const": "PROVIDER_RESPONSE_STRUCTURE"
+            },
+            "stage": {
+              "enum": [
+                "COMPLETION_ENVELOPE",
+                "CHOICE_ENVELOPE",
+                "NON_JSON_SUCCESS_BODY",
+                "FINISH_REASON",
+                "COMPLETION_MODEL",
+                "TOKEN_USAGE",
+                "SYSTEM_FINGERPRINT",
+                "COMPLETION_ID"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "evidence_version",
+            "category",
+            "stage"
+          ],
+          "properties": {
+            "evidence_version": {
+              "const": "model-response-failure-v2"
+            },
+            "category": {
+              "const": "MODEL_GENERATION_STRUCTURE"
+            },
+            "stage": {
+              "enum": [
+                "ASSISTANT_MESSAGE",
+                "TOOL_CALL_LIST",
+                "TOOL_CALL_FUNCTION",
+                "TOOL_CALL_ID",
+                "TOOL_CALL_NAME",
+                "TOOL_CALL_ARGUMENTS",
+                "TOOL_CALL_TYPE",
+                "ASSISTANT_ROLE",
+                "ASSISTANT_CONTENT",
+                "ASSISTANT_MESSAGE_CAPTURE"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "evidence_version",
+            "category",
+            "stage"
+          ],
+          "properties": {
+            "evidence_version": {
+              "const": "model-response-failure-v2"
+            },
+            "category": {
+              "const": "PROTOCOL_COMPATIBILITY"
+            },
+            "stage": {
+              "enum": [
+                "REASONING_POLICY"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "evidence_version",
+            "category",
+            "stage"
+          ],
+          "properties": {
+            "evidence_version": {
+              "const": "model-response-failure-v2"
+            },
+            "category": {
+              "const": "IMPLEMENTATION_INCOHERENCE"
+            },
+            "stage": {
+              "enum": [
+                "LOCAL_CAPTURE_CONFIGURATION",
+                "TOOL_CALL_PARSE_METADATA",
+                "RECOVERY_PARSE_METADATA",
+                "MODEL_CLIENT_RETURN_TYPE"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "boundaryError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exception_type",
+        "message",
+        "structured_evidence"
+      ],
+      "properties": {
+        "exception_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        },
+        "structured_evidence": {}
+      }
+    },
+    "modelInvocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_call_index",
+        "model_request",
+        "model_response",
+        "rejected_generation",
+        "boundary_error",
+        "request_dispatch_evidence_version",
+        "provider_invocation_sequence",
+        "provider_request_dispatched",
+        "provider_response_returned",
+        "response_failure"
+      ],
+      "properties": {
+        "model_call_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "model_request": {
+          "type": "object"
+        },
+        "model_response": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "rejected_generation": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "boundary_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/boundaryError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_dispatch_evidence_version": {
+          "const": "provider-request-dispatch-v1"
+        },
+        "provider_invocation_sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "provider_request_dispatched": {
+          "type": "boolean"
+        },
+        "provider_response_returned": {
+          "type": "boolean"
+        },
+        "response_failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/responseFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "toolExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution_sequence",
+        "tool",
+        "mutating",
+        "source_stage",
+        "arm_id",
+        "request_hash",
+        "tool_call_id"
+      ],
+      "properties": {
+        "execution_sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "tool": {
+          "enum": [
+            "list_tickets",
+            "create_ticket"
+          ]
+        },
+        "mutating": {
+          "type": "boolean"
+        },
+        "source_stage": {
+          "const": "RECOVERY"
+        },
+        "arm_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "tool_call_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$id": "https://retry-semantics.local/schemas/paper_measurement_schema_v2.json"
+}

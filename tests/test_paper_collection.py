@@ -25,7 +25,7 @@ from retry_semantics.experiment.paper import (
     execute_paper_collection,
     paper_arm_traces_as_json,
     persist_paper_collection_run,
-    run_paper_collection,
+    run_paper_collection as _run_paper_collection,
     scheduled_paper_attempt_as_json,
     validate_paper_collection_bundle,
 )
@@ -51,6 +51,12 @@ from retry_semantics.runtime.regeneration import LLM_REGENERATION
 from retry_semantics.serialization import canonical_json_bytes
 
 METADATA = TraceRunMetadata(git_commit="c35be82" + "0" * 33, timestamp="2026-09-16T00:00:00+00:00")
+
+
+def run_paper_collection(**kwargs):
+    # These existing tests exercise frozen V1 evidence compatibility. The new
+    # measurement tests separately cover the durable entry point's V2 default.
+    return _run_paper_collection(**kwargs, evidence_revision="paper-collection-evidence-v1")
 
 
 def call(raw, *, call_id="offline-call", tool="create_ticket", tool_type="function"):

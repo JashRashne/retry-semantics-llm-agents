@@ -228,7 +228,9 @@ def _validate_tool_request(
         parse_success and parsed_arguments != call.parsed_arguments
     ) or (not parse_success and parse_error != call.parse_error):
         raise ModelResponseError(
-            "captured recovery tool-call parse metadata is incoherent"
+            "captured recovery tool-call parse metadata is incoherent",
+            failure_category="IMPLEMENTATION_INCOHERENCE",
+            failure_stage="RECOVERY_PARSE_METADATA",
         )
     if not parse_success:
         return _invalid(parse_error or "arguments_json is malformed")
@@ -434,7 +436,9 @@ def execute_llm_regeneration(
         if type(response) is not ModelResponse:
             error = ModelResponseError(
                 "ModelClient.complete() must return ModelResponse, got "
-                f"{type(response).__name__}"
+                f"{type(response).__name__}",
+                failure_category="IMPLEMENTATION_INCOHERENCE",
+                failure_stage="MODEL_CLIENT_RETURN_TYPE",
             )
             invocations.append(
                 RegenerationModelInvocation(

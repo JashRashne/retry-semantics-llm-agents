@@ -56,6 +56,24 @@ class PrimaryClassification(str, Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class SuccessfulToolExecution:
+    """Operational facts only; excluded from state, snapshots and observations."""
+    execution_sequence: int
+    tool: str
+    mutating: bool
+    source_stage: SourceStage
+    arm_id: str | None
+    request_hash: str
+    tool_call_id: str
+
+    def as_dict(self):
+        return {"execution_sequence": self.execution_sequence, "tool": self.tool,
+                "mutating": self.mutating, "source_stage": self.source_stage.value,
+                "arm_id": self.arm_id, "request_hash": self.request_hash,
+                "tool_call_id": self.tool_call_id}
+
+
+@dataclass(frozen=True, slots=True)
 class Ticket:
     ticket_id: int
     customer_id: str
@@ -405,6 +423,7 @@ class TicketEnvironment:
     def __init__(self) -> None:
         self._state = TicketState.empty()
         self._dispatch_count = 0
+        self._successful_executions: tuple[SuccessfulToolExecution, ...] = ()
 
     @classmethod
     def empty(cls) -> TicketEnvironment:
@@ -428,6 +447,10 @@ class TicketEnvironment:
         """Number of explicit executor-boundary calls; never snapshot state."""
 
         return self._dispatch_count
+
+    @property
+    def successful_execution_journal(self) -> tuple[SuccessfulToolExecution, ...]:
+        return self._successful_executions
 
     def snapshot_bytes(self) -> bytes:
         return canonical_json_bytes(self._state.as_dict())
@@ -459,8 +482,16 @@ class TicketEnvironment:
 
         stage = _validate_stage(source_stage, arm_id)
         if request["tool"] == "list_tickets":
-            return self._list_tickets_result()
-        return self._commit_create(request, serialized_request, stage, arm_id)
+            observation = self._list_tickets_result()
+        else:
+            observation = self._commit_create(request, serialized_request, stage, arm_id)
+        self._successful_executions += (SuccessfulToolExecution(
+            execution_sequence=len(self._successful_executions) + 1,
+            tool=request["tool"], mutating=request["tool"] == "create_ticket",
+            source_stage=stage, arm_id=arm_id, request_hash=sha256_hex(serialized_request),
+            tool_call_id=request["tool_call_id"],
+        ),)
+        return observation
 
     def _list_tickets_result(self) -> bytes:
         tickets = [

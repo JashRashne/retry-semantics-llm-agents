@@ -683,7 +683,7 @@ def test_default_transport_has_zero_retries_finite_timeout_and_no_redirects(
     client.close()
 
     assert transport_kwargs == {"retries": 0}
-    assert client_kwargs["transport"] is sentinel_transport
+    assert client_kwargs["transport"].transport is sentinel_transport
     assert client_kwargs["follow_redirects"] is False
     assert client_kwargs["trust_env"] is False
     assert client_kwargs["timeout"] == httpx.Timeout(12.5)

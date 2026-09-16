@@ -15,6 +15,7 @@ from retry_semantics.runtime.regeneration_context import (
     FrozenToolDefinition,
 )
 from retry_semantics.serialization import canonical_json_bytes, sha256_hex
+from retry_semantics.models.measurement import ResponseFailureEvidence
 
 
 class ModelBoundaryError(Exception):
@@ -60,13 +61,16 @@ class ModelProviderStatusError(ModelProviderError):
 class ModelResponseError(ModelProviderError):
     """The provider response was not structurally readable by the adapter."""
 
-    def __init__(self, message: str, *, structured_evidence=None) -> None:
+    def __init__(self, message: str, *, structured_evidence=None,
+                 failure_category: str | None = None, failure_stage: str | None = None) -> None:
         super().__init__(message)
         # Optional diagnostic capture only; it never changes failure handling or
         # becomes model-visible history. Providers must sanitize before attaching.
         self.structured_evidence = (
             None if structured_evidence is None else _freeze_json(structured_evidence)
         )
+        self.response_failure = (None if failure_category is None and failure_stage is None
+                                 else ResponseFailureEvidence(failure_category, failure_stage))
 
 
 class ToolChoiceMode(str, Enum):

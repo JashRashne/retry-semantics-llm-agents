@@ -1,0 +1,510 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retry-semantics.local/schemas/paper_scheduled_attempt_schema_v2.json",
+  "title": "Primary CREATE V1.3 paper scheduled-attempt evidence — prospective evidence V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "manifest_sha256",
+    "paper_experiment_revision",
+    "execution_semantics_revision",
+    "manifest_kind",
+    "slot_index",
+    "replicate",
+    "scenario_id",
+    "stratum",
+    "model_config_id",
+    "original_generation_seed",
+    "regeneration_base_seed",
+    "provider",
+    "requested_model",
+    "attempt_started",
+    "original_generation_attempted",
+    "eligibility",
+    "original_generation_evidence",
+    "original_generation_infrastructure",
+    "reserved_base_trial_id",
+    "reserved_trial_family_id",
+    "trial_family_activated",
+    "family_id",
+    "recovery_construction_started",
+    "expected_arm_opportunities_attempted",
+    "family_system_failure",
+    "arm_opportunities",
+    "terminal_status",
+    "collection_evidence_revision"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "paper-scheduled-attempt-v2"
+    },
+    "manifest_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifest_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "paper_experiment_revision": {
+      "const": "primary-create-v1.3"
+    },
+    "execution_semantics_revision": {
+      "const": "primary-create-v1.2"
+    },
+    "manifest_kind": {
+      "const": "paper"
+    },
+    "slot_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 159
+    },
+    "replicate": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "scenario_id": {
+      "type": "string",
+      "pattern": "^CREATE-00[1-8]$"
+    },
+    "stratum": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    "model_config_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "original_generation_seed": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "regeneration_base_seed": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requested_model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_started": {
+      "type": "boolean"
+    },
+    "original_generation_attempted": {
+      "type": "boolean"
+    },
+    "eligibility": {
+      "$ref": "#/$defs/eligibility"
+    },
+    "original_generation_evidence": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "original_generation_infrastructure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/infrastructure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reserved_base_trial_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reserved_trial_family_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trial_family_activated": {
+      "type": "boolean"
+    },
+    "family_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "recovery_construction_started": {
+      "type": "boolean"
+    },
+    "expected_arm_opportunities_attempted": {
+      "type": "boolean"
+    },
+    "family_system_failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/infrastructure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "arm_opportunities": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/armOpportunity"
+      }
+    },
+    "terminal_status": {
+      "enum": [
+        "INELIGIBLE",
+        "ORIGINAL_GENERATION_INFRASTRUCTURE_FAILURE",
+        "FAMILY_SYSTEM_FAILURE",
+        "RECOVERY_COMPLETE",
+        "RECOVERY_COMPLETE_WITH_ARM_INFRASTRUCTURE"
+      ]
+    },
+    "collection_evidence_revision": {
+      "const": "paper-collection-evidence-v2"
+    }
+  },
+  "$defs": {
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taxonomy_version",
+        "outcome",
+        "ineligibility_reason",
+        "detail"
+      ],
+      "properties": {
+        "taxonomy_version": {
+          "const": "original-generation-eligibility-v1"
+        },
+        "outcome": {
+          "enum": [
+            "NOT_REACHED",
+            "ELIGIBLE",
+            "INELIGIBLE_BEHAVIORAL",
+            "INFRASTRUCTURE_FAILURE"
+          ]
+        },
+        "ineligibility_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "NO_TOOL_CALL",
+            "MULTIPLE_TOOL_CALLS",
+            "WRONG_TOOL",
+            "INVALID_TOOL_CALL_TYPE",
+            "MISSING_OR_INVALID_TOOL_CALL_ID",
+            "MALFORMED_ARGUMENT_JSON",
+            "INVALID_ARGUMENT_SHAPE",
+            "TASK_INCORRECT_ARGUMENTS",
+            "REJECTED_GENERATION"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exception_type",
+        "message",
+        "status_code",
+        "structured_evidence",
+        "response_failure"
+      ],
+      "properties": {
+        "exception_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        },
+        "status_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "structured_evidence": {},
+        "response_failure": {
+          "anyOf": [
+            {
+              "$ref": "https://retry-semantics.local/schemas/paper_measurement_schema_v2.json#/$defs/responseFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "infrastructure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "stage",
+        "subtype",
+        "policy_attributable",
+        "attributable_arm_id",
+        "attributable_policy",
+        "attributable_hidden_world",
+        "diagnostic"
+      ],
+      "properties": {
+        "scope": {
+          "enum": [
+            "ORIGINAL_GENERATION",
+            "FAMILY_SYSTEM",
+            "ARM",
+            "PERSISTENCE"
+          ]
+        },
+        "stage": {
+          "enum": [
+            "ENVIRONMENT_SETUP",
+            "ENVIRONMENT_CLONE_SETUP",
+            "ORIGINAL_GENERATION",
+            "FAMILY_CONSTRUCTION",
+            "REGENERATION_CONTEXT_CONSTRUCTION",
+            "ARM_EXECUTION",
+            "TRACE_SERIALIZATION",
+            "PERSISTENCE"
+          ]
+        },
+        "subtype": {
+          "enum": [
+            "TIMEOUT",
+            "RATE_LIMIT",
+            "AUTHENTICATION",
+            "HTTP_5XX",
+            "PROVIDER_STATUS",
+            "TRANSPORT",
+            "PROVIDER_RESPONSE",
+            "FAMILY_CONSTRUCTION",
+            "ENVIRONMENT_SETUP",
+            "ENVIRONMENT_CLONE_SETUP",
+            "ARM_EXECUTION",
+            "PERSISTENCE",
+            "IMPLEMENTATION"
+          ]
+        },
+        "policy_attributable": {
+          "type": "boolean"
+        },
+        "attributable_arm_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "attributable_policy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "EXACT_REPLAY",
+            "LLM_REGENERATION"
+          ]
+        },
+        "attributable_hidden_world": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "NOT_EXECUTED",
+            "EXECUTED_ACK_LOST"
+          ]
+        },
+        "diagnostic": {
+          "$ref": "#/$defs/diagnostic"
+        }
+      }
+    },
+    "armOpportunity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arm_id",
+        "hidden_world",
+        "policy",
+        "attempted",
+        "status",
+        "trace_expected",
+        "infrastructure_failure",
+        "pre_trace_evidence",
+        "measurement_evidence"
+      ],
+      "properties": {
+        "arm_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hidden_world": {
+          "enum": [
+            "NOT_EXECUTED",
+            "EXECUTED_ACK_LOST"
+          ]
+        },
+        "policy": {
+          "enum": [
+            "EXACT_REPLAY",
+            "LLM_REGENERATION"
+          ]
+        },
+        "attempted": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "NOT_ACTIVATED",
+            "COMPLETED_TRACE",
+            "INFRASTRUCTURE_FAILURE_WITH_TRACE",
+            "INFRASTRUCTURE_FAILURE_BEFORE_TRACE"
+          ]
+        },
+        "trace_expected": {
+          "type": "boolean"
+        },
+        "infrastructure_failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/infrastructure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pre_trace_evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/preTraceEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "measurement_evidence": {
+          "anyOf": [
+            {
+              "$ref": "https://retry-semantics.local/schemas/paper_measurement_schema_v2.json"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "preTraceEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_version",
+        "model_calls_issued",
+        "model_invocations",
+        "executor_dispatch_count",
+        "authoritative_final_state_snapshot",
+        "authoritative_final_state_sha256",
+        "recovery_commit_event_ids",
+        "state_capture_error",
+        "successful_tool_executions"
+      ],
+      "properties": {
+        "evidence_version": {
+          "const": "pre-trace-arm-boundary-v2"
+        },
+        "model_calls_issued": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "V2: exact count of post-ambiguity provider transport attempts (provider_request_dispatched=true), not complete() entry count."
+        },
+        "model_invocations": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "$ref": "https://retry-semantics.local/schemas/paper_measurement_schema_v2.json#/$defs/modelInvocation"
+          }
+        },
+        "executor_dispatch_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Diagnostic only; never executed-call evidence."
+        },
+        "authoritative_final_state_snapshot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authoritative_final_state_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "recovery_commit_event_ids": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "state_capture_error": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "successful_tool_executions": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "https://retry-semantics.local/schemas/paper_measurement_schema_v2.json#/$defs/toolExecution"
+          }
+        }
+      }
+    }
+  }
+}

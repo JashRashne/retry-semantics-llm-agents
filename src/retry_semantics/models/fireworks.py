@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import math
 import os
+from dataclasses import replace
 from collections.abc import Mapping
 from typing import Any
 
 import httpx
+from retry_semantics.models.measurement import ProviderRequestDispatchEvidence, ResponseFailureEvidence
 
 from retry_semantics.models.base import (
     ModelAssistantMessage,
@@ -155,6 +157,24 @@ def build_fireworks_chat_completion_payload(
 _MISSING = object()
 
 
+def _capture_at(category, stage, operation):
+    """Tag the actual failing boundary; never classify diagnostic messages."""
+    try:
+        return operation()
+    except ModelResponseError as exc:
+        if exc.response_failure is None:
+            exc.response_failure = ResponseFailureEvidence(category, stage)
+        raise
+
+
+def _generation_at(stage, operation):
+    return _capture_at("MODEL_GENERATION_STRUCTURE", stage, operation)
+
+
+def _provider_at(stage, operation):
+    return _capture_at("PROVIDER_RESPONSE_STRUCTURE", stage, operation)
+
+
 def _field(value: Any, name: str, default: Any = _MISSING) -> Any:
     if isinstance(value, Mapping) and name in value:
         return value[name]
@@ -170,30 +190,34 @@ def _optional_string(value: Any, label: str) -> str | None:
 
 
 def _capture_tool_call(raw_call: Any) -> ModelToolCall:
-    function = _field(raw_call, "function")
-    tool_call_id = freeze_json_value(_field(raw_call, "id", None))
-    name = _field(function, "name")
-    arguments_json = _field(function, "arguments")
+    function = _generation_at("TOOL_CALL_FUNCTION", lambda: _field(raw_call, "function"))
+    tool_call_id = _generation_at("TOOL_CALL_ID", lambda: freeze_json_value(_field(raw_call, "id", None)))
+    name = _generation_at("TOOL_CALL_NAME", lambda: _field(function, "name"))
+    arguments_json = _generation_at("TOOL_CALL_ARGUMENTS", lambda: _field(function, "arguments"))
     if type(name) is not str:
-        raise ModelResponseError("Fireworks tool-call name must be a string")
+        raise ModelResponseError("Fireworks tool-call name must be a string",
+                                 failure_category="MODEL_GENERATION_STRUCTURE", failure_stage="TOOL_CALL_NAME")
     if type(arguments_json) is not str:
         raise ModelResponseError(
-            "Fireworks tool-call arguments must be a raw string"
+            "Fireworks tool-call arguments must be a raw string",
+            failure_category="MODEL_GENERATION_STRUCTURE", failure_stage="TOOL_CALL_ARGUMENTS",
         )
     parse_success, parsed_arguments, parse_error = parse_tool_arguments_json(
         arguments_json
     )
-    return ModelToolCall(
+    # Preserve argument evaluation order: type capture precedes constructor
+    # validation, and constructor parse consistency is internal evidence.
+    tool_type = _generation_at("TOOL_CALL_TYPE", lambda: _optional_string(
+        _field(raw_call, "type", None), "tool-call type"))
+    return _capture_at("IMPLEMENTATION_INCOHERENCE", "TOOL_CALL_PARSE_METADATA", lambda: ModelToolCall(
         tool_call_id=tool_call_id,
         tool_name=name,
         arguments_json=arguments_json,
         parse_success=parse_success,
         parsed_arguments=parsed_arguments,
         parse_error=parse_error,
-        tool_type=_optional_string(
-            _field(raw_call, "type", None), "tool-call type"
-        ),
-    )
+        tool_type=tool_type,
+    ))
 
 
 def _capture_usage(raw_usage: Any) -> ModelUsage | None:
@@ -265,28 +289,34 @@ def _capture_fireworks_chat_completion(
 ) -> ModelResponse:
 
     if type(requested_model) is not str or requested_model == "":
-        raise ModelResponseError("requested_model must be a non-empty string")
+        raise ModelResponseError("requested_model must be a non-empty string",
+                                 failure_category="IMPLEMENTATION_INCOHERENCE", failure_stage="LOCAL_CAPTURE_CONFIGURATION")
     if not isinstance(completion, Mapping):
-        raise ModelResponseError("Fireworks completion must be a JSON object")
-    raw_choices = _field(completion, "choices")
+        raise ModelResponseError("Fireworks completion must be a JSON object",
+                                 failure_category="PROVIDER_RESPONSE_STRUCTURE", failure_stage="COMPLETION_ENVELOPE")
+    raw_choices = _provider_at("COMPLETION_ENVELOPE", lambda: _field(completion, "choices"))
     if not isinstance(raw_choices, list):
-        raise ModelResponseError("Fireworks choices must be a JSON array")
+        raise ModelResponseError("Fireworks choices must be a JSON array",
+                                 failure_category="PROVIDER_RESPONSE_STRUCTURE", failure_stage="COMPLETION_ENVELOPE")
     if len(raw_choices) != 1:
         raise ModelResponseError(
-            "Fireworks completion must contain exactly one choice"
+            "Fireworks completion must contain exactly one choice",
+            failure_category="PROVIDER_RESPONSE_STRUCTURE", failure_stage="COMPLETION_ENVELOPE",
         )
 
     choice = raw_choices[0]
-    raw_message = _field(choice, "message")
+    raw_message = _provider_at("CHOICE_ENVELOPE", lambda: _field(choice, "message"))
     if not isinstance(raw_message, Mapping):
-        raise ModelResponseError("Fireworks assistant message must be an object")
+        raise ModelResponseError("Fireworks assistant message must be an object",
+                                 failure_category="MODEL_GENERATION_STRUCTURE", failure_stage="ASSISTANT_MESSAGE")
     if (
         requested_model == DEEPSEEK_V4_FLASH_0731_MODEL
         and _field(raw_message, "reasoning_content", None) is not None
     ):
         raise ModelResponseError(
             "Fireworks unexpectedly returned reasoning content while "
-            "non-reasoning operation was required"
+            "non-reasoning operation was required",
+            failure_category="PROTOCOL_COMPATIBILITY", failure_stage="REASONING_POLICY",
         )
     raw_tool_calls = _field(raw_message, "tool_calls", None)
     if raw_tool_calls is None:
@@ -295,34 +325,49 @@ def _capture_fireworks_chat_completion(
         tool_calls = tuple(_capture_tool_call(call) for call in raw_tool_calls)
     else:
         raise ModelResponseError(
-            "Fireworks tool_calls must be a JSON array or null"
+            "Fireworks tool_calls must be a JSON array or null",
+            failure_category="MODEL_GENERATION_STRUCTURE", failure_stage="TOOL_CALL_LIST",
         )
 
     return ModelResponse(
-        assistant_message=ModelAssistantMessage(
-            role=_field(raw_message, "role"),
-            content=_optional_string(
+        assistant_message=_generation_at("ASSISTANT_MESSAGE_CAPTURE", lambda: ModelAssistantMessage(
+            role=_generation_at("ASSISTANT_ROLE", lambda: _field(raw_message, "role")),
+            content=_generation_at("ASSISTANT_CONTENT", lambda: _optional_string(
                 _field(raw_message, "content", None), "assistant content"
-            ),
+            )),
             tool_calls=tool_calls,
-        ),
-        finish_reason=_optional_string(
+        )),
+        finish_reason=_provider_at("FINISH_REASON", lambda: _optional_string(
             _field(choice, "finish_reason", None), "finish reason"
-        ),
+        )),
         provider=FIREWORKS_PROVIDER,
         requested_model=requested_model,
-        returned_model=_optional_string(
+        returned_model=_provider_at("COMPLETION_MODEL", lambda: _optional_string(
             _field(completion, "model", None), "returned model"
-        ),
-        usage=_capture_usage(_field(completion, "usage", None)),
-        system_fingerprint=_optional_string(
+        )),
+        usage=_provider_at("TOKEN_USAGE", lambda: _capture_usage(_field(completion, "usage", None))),
+        system_fingerprint=_provider_at("SYSTEM_FINGERPRINT", lambda: _optional_string(
             _field(completion, "system_fingerprint", None),
             "system fingerprint",
-        ),
-        provider_request_id=_optional_string(
+        )),
+        provider_request_id=_provider_at("COMPLETION_ID", lambda: _optional_string(
             _field(completion, "id", None), "completion ID"
-        ),
+        )),
     )
+
+
+class _DispatchEvidenceTransport(httpx.BaseTransport):
+    """Observe the existing single transport attempt; delegate without retries."""
+    def __init__(self, transport, mark_attempt):
+        self.transport = transport
+        self.mark_attempt = mark_attempt
+
+    def handle_request(self, request):
+        self.mark_attempt()
+        return self.transport.handle_request(request)
+
+    def close(self):
+        self.transport.close()
 
 
 class FireworksModelClient:
@@ -353,6 +398,7 @@ class FireworksModelClient:
             if transport is None
             else transport
         )
+        self._last_request_dispatch_evidence = ProviderRequestDispatchEvidence(0)
         self._client = httpx.Client(
             headers={
                 "Authorization": f"Bearer {resolved_api_key}",
@@ -360,13 +406,23 @@ class FireworksModelClient:
             },
             timeout=httpx.Timeout(float(timeout_seconds)),
             follow_redirects=False,
-            transport=resolved_transport,
+            transport=_DispatchEvidenceTransport(resolved_transport, self._mark_transport_attempt),
             trust_env=False,
         )
+
+    def _mark_transport_attempt(self):
+        self._last_request_dispatch_evidence = replace(
+            self._last_request_dispatch_evidence, provider_request_dispatched=True)
+
+    @property
+    def last_request_dispatch_evidence(self) -> ProviderRequestDispatchEvidence:
+        return self._last_request_dispatch_evidence
 
     def complete(self, request: ModelRequest) -> ModelResponse:
         """Validate locally, then issue at most one inference HTTP request."""
 
+        self._last_request_dispatch_evidence = ProviderRequestDispatchEvidence(
+            self._last_request_dispatch_evidence.invocation_sequence + 1)
         payload = build_fireworks_chat_completion_payload(request)
         transport_failure: ModelTimeoutError | ModelTransportError | None = None
         try:
@@ -387,6 +443,8 @@ class FireworksModelClient:
             # cannot retain a request object containing Authorization headers.
             raise transport_failure
 
+        self._last_request_dispatch_evidence = replace(
+            self._last_request_dispatch_evidence, provider_response_returned=True)
         status_code = response.status_code
         if status_code in (401, 403):
             raise ModelAuthenticationError(
@@ -407,6 +465,7 @@ class FireworksModelClient:
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise ModelResponseError(
                 "Fireworks returned a non-JSON success response",
+                failure_category="PROVIDER_RESPONSE_STRUCTURE", failure_stage="NON_JSON_SUCCESS_BODY",
                 structured_evidence={
                     "evidence_version": "fireworks-response-structure-v1",
                     "boundary_observation": "NON_JSON_SUCCESS_RESPONSE",

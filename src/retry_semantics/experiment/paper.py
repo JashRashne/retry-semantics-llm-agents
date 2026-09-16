@@ -74,6 +74,11 @@ from retry_semantics.runtime.scheduled_trial import (
 )
 from retry_semantics.runtime.regeneration_context import RegenerationContextProtocolError
 from retry_semantics.serialization import canonical_json_bytes, sha256_hex
+from retry_semantics.models.measurement import ProviderRequestDispatchEvidence
+from retry_semantics.experiment.paper_measurement import (
+    EVIDENCE_V1, EVIDENCE_V2, capture_arm_measurement, extend_paper_trace,
+    validate_arm_measurement,
+)
 
 _ROOT = Path(__file__).resolve().parents[3]
 _TRACE_SCHEMA_PATH = _ROOT / "research" / "protocol" / "trace_schema_v1.json"
@@ -181,6 +186,7 @@ class InfrastructureEvidence:
     attributable_policy: str | None = None
     attributable_hidden_world: HiddenWorld | None = None
     structured_evidence: object = None
+    response_failure: object = None
 
     def __post_init__(self) -> None:
         if self.scope is InfrastructureScope.ARM:
@@ -214,6 +220,7 @@ class PaperArmExecution:
     result: ArmResult | None
     infrastructure_failure: InfrastructureEvidence | None
     pre_trace_evidence: object = None
+    measurement_evidence: object = None
 
     def __post_init__(self) -> None:
         if type(self.hidden_world) is not HiddenWorld or self.policy not in (EXACT_REPLAY, LLM_REGENERATION):
@@ -264,6 +271,7 @@ class PaperScheduledAttemptExecution:
     family_system_failure: InfrastructureEvidence | None
     arm_executions: tuple[PaperArmExecution, ...]
     terminal_status: ScheduledAttemptStatus
+    collection_evidence_revision: str = EVIDENCE_V1
 
     def __post_init__(self) -> None:
         if type(self.entry) is not PaperManifestEntry or not self.attempt_started:
@@ -356,6 +364,7 @@ class PaperCollectionResult:
     slot_outcomes: tuple[PaperScheduledAttemptExecution, ...]
     summary: PaperCollectionSummary
     collection_events: tuple[dict[str, object], ...]
+    collection_evidence_revision: str = EVIDENCE_V1
 
 
 def _client_provider(client: ModelClient) -> str:
@@ -408,6 +417,13 @@ def _subtype(exc: Exception, *, stage: InfrastructureStage) -> InfrastructureSub
     return InfrastructureSubtype.IMPLEMENTATION
 
 
+def _validate_evidence_client(client, evidence_revision):
+    if evidence_revision not in (EVIDENCE_V1, EVIDENCE_V2):
+        raise PaperCollectionPreflightError("unsupported collection evidence revision")
+    if evidence_revision == EVIDENCE_V2 and type(getattr(client, "last_request_dispatch_evidence", None)) is not ProviderRequestDispatchEvidence:
+        raise PaperCollectionPreflightError("V2 requires exact provider transport dispatch evidence")
+
+
 def _infrastructure(
     exc: Exception,
     *,
@@ -428,14 +444,16 @@ def _infrastructure(
         attributable_policy=policy,
         attributable_hidden_world=hidden_world,
         structured_evidence=getattr(exc, "structured_evidence", None),
+        response_failure=getattr(exc, "response_failure", None),
     )
 
 
 class _ArmEvidenceClient:
     """Pass through the exact client call once while retaining escaped evidence."""
 
-    def __init__(self, client: ModelClient) -> None:
+    def __init__(self, client: ModelClient, evidence_revision=EVIDENCE_V1) -> None:
         self.client = client
+        self.evidence_revision = evidence_revision
         self.invocations: list[dict[str, object]] = []
 
     @property
@@ -443,6 +461,9 @@ class _ArmEvidenceClient:
         return self.client.provider
 
     def complete(self, request):
+        before = (getattr(self.client, "last_request_dispatch_evidence", None)
+                  if self.evidence_revision == EVIDENCE_V2 else None)
+        failure = None
         record = {
             "model_call_index": len(self.invocations),
             "model_request": model_request_as_json(request),
@@ -459,6 +480,7 @@ class _ArmEvidenceClient:
             )
             raise
         except Exception as exc:
+            failure = getattr(exc, "response_failure", None)
             record["boundary_error"] = {
                 "exception_type": type(exc).__name__,
                 "message": str(exc),
@@ -468,12 +490,23 @@ class _ArmEvidenceClient:
                 ),
             }
             raise
-        if type(response) is ModelResponse:
-            record["model_response"] = model_response_as_json(response)
-        return response
+        else:
+            if type(response) is ModelResponse:
+                record["model_response"] = model_response_as_json(response)
+            return response
+        finally:
+            if self.evidence_revision == EVIDENCE_V2:
+                after = getattr(self.client, "last_request_dispatch_evidence", None)
+                if (type(before) is not ProviderRequestDispatchEvidence or type(after) is not ProviderRequestDispatchEvidence
+                    or after.invocation_sequence != before.invocation_sequence + 1):
+                    raise PaperCollectionFatalError("provider dispatch evidence is unavailable or stale",
+                        evidence=_infrastructure(ValueError("invalid dispatch evidence sequence"),
+                            scope=InfrastructureScope.FAMILY_SYSTEM, stage=InfrastructureStage.TRACE_SERIALIZATION))
+                record.update(after.as_dict())
+                record["response_failure"] = None if failure is None else failure.as_dict()
 
 
-def _pre_trace_arm_evidence(prepared, hidden_world, policy, client):
+def _pre_trace_arm_evidence(prepared, hidden_world, policy, client, measurement=None):
     """Capture authoritative facts without inventing executed-call counters."""
 
     world = prepared.family.not_executed if hidden_world is HiddenWorld.NOT_EXECUTED else prepared.family.executed_ack_lost
@@ -499,16 +532,20 @@ def _pre_trace_arm_evidence(prepared, hidden_world, policy, client):
         raise
     except Exception:
         dispatch_count = None
-    return freeze_json_value({
-        "evidence_version": "pre-trace-arm-boundary-v1",
-        "model_calls_issued": len(client.invocations),
+    record = {
+        "evidence_version": "pre-trace-arm-boundary-v1" if measurement is None else "pre-trace-arm-boundary-v2",
+        "model_calls_issued": (len(client.invocations) if measurement is None
+                               else sum(i["provider_request_dispatched"] for i in client.invocations)),
         "model_invocations": client.invocations,
         "executor_dispatch_count": dispatch_count,
         "authoritative_final_state_snapshot": snapshot,
         "authoritative_final_state_sha256": snapshot_hash,
         "recovery_commit_event_ids": commit_ids,
         "state_capture_error": capture_error,
-    })
+    }
+    if measurement is not None:
+        record["successful_tool_executions"] = thaw_json_value(measurement)["successful_tool_executions"]
+    return freeze_json_value(record)
 
 
 def _arm_failure_from_result(
@@ -570,6 +607,7 @@ def _execute_slot(
     entry: PaperManifestEntry,
     client: ModelClient,
     emit: Callable[..., None],
+    evidence_revision=EVIDENCE_V1,
 ) -> PaperScheduledAttemptExecution:
     emit("ATTEMPT_STARTED", entry=entry)
     try:
@@ -671,7 +709,7 @@ def _execute_slot(
         for policy in entry.plan.arm_order(hidden_world):
             arm_id = entry.plan.arm_id(hidden_world, policy)
             emit("ARM_OPPORTUNITY_ATTEMPT_STARTED", entry=entry, arm_id=arm_id)
-            arm_client = _ArmEvidenceClient(client)
+            arm_client = _ArmEvidenceClient(client, evidence_revision)
             try:
                 result = execute_prepared_recovery_arm(
                     prepared,
@@ -682,7 +720,11 @@ def _execute_slot(
                 )
             except MemoryError:
                 raise
+            except PaperCollectionFatalError:
+                raise
             except Exception as exc:
+                measurement = (capture_arm_measurement(prepared, hidden_world, policy, arm_client)
+                               if evidence_revision == EVIDENCE_V2 else None)
                 evidence = _infrastructure(
                     exc,
                     scope=InfrastructureScope.ARM,
@@ -700,7 +742,8 @@ def _execute_slot(
                         status=ArmOpportunityStatus.INFRASTRUCTURE_FAILURE_BEFORE_TRACE,
                         result=None,
                         infrastructure_failure=evidence,
-                        pre_trace_evidence=_pre_trace_arm_evidence(prepared, hidden_world, policy, arm_client),
+                        pre_trace_evidence=_pre_trace_arm_evidence(prepared, hidden_world, policy, arm_client, measurement),
+                        measurement_evidence=measurement,
                     )
                 )
                 continue
@@ -721,6 +764,8 @@ def _execute_slot(
                     status=status,
                     result=result,
                     infrastructure_failure=evidence,
+                    measurement_evidence=(capture_arm_measurement(prepared, hidden_world, policy, arm_client, result)
+                                          if evidence_revision == EVIDENCE_V2 else None),
                 )
             )
     any_arm_failure = any(item.infrastructure_failure is not None for item in arms)
@@ -770,10 +815,12 @@ def execute_paper_collection(
     *,
     event_sink: Callable[[dict[str, object]], None] | None = None,
     scheduled_attempt_sink: Callable[[PaperScheduledAttemptExecution], None] | None = None,
+    evidence_revision: str = EVIDENCE_V1,
 ) -> PaperCollectionResult:
     """Attempt every paper slot once, serially, in manifest order."""
 
     validate_paper_manifest_provider(manifest, client)
+    _validate_evidence_client(client, evidence_revision)
     manifest_hash = manifest.manifest_hash
     events: list[dict[str, object]] = []
     outcomes_list: list[PaperScheduledAttemptExecution] = []
@@ -803,7 +850,8 @@ def execute_paper_collection(
 
     for entry in manifest.entries:
         try:
-            outcome = _execute_slot(entry, client, emit)
+            outcome = replace(_execute_slot(entry, client, emit, evidence_revision),
+                              collection_evidence_revision=evidence_revision)
             if scheduled_attempt_sink is not None:
                 try:
                     scheduled_attempt_sink(outcome)
@@ -835,13 +883,14 @@ def execute_paper_collection(
         slot_outcomes=outcomes,
         summary=_summary(outcomes),
         collection_events=tuple(events),
+        collection_evidence_revision=evidence_revision,
     )
 
 
-def _infrastructure_as_json(evidence: InfrastructureEvidence | None) -> dict[str, object] | None:
+def _infrastructure_as_json(evidence: InfrastructureEvidence | None, evidence_revision=EVIDENCE_V1) -> dict[str, object] | None:
     if evidence is None:
         return None
-    return {
+    record = {
         "scope": evidence.scope.value,
         "stage": evidence.stage.value,
         "subtype": evidence.subtype.value,
@@ -858,6 +907,9 @@ def _infrastructure_as_json(evidence: InfrastructureEvidence | None) -> dict[str
             ),
         },
     }
+    if evidence_revision == EVIDENCE_V2:
+        record["diagnostic"]["response_failure"] = None if evidence.response_failure is None else evidence.response_failure.as_dict()
+    return record
 
 
 def _original_as_json(execution: PaperScheduledAttemptExecution) -> dict[str, object]:
@@ -893,8 +945,9 @@ def scheduled_paper_attempt_as_json(
 ) -> dict[str, object]:
     entry = execution.entry
     behavioral = execution.original_generation if type(execution.original_generation) is OriginalGenerationBehavioralFailure else None
-    return {
-        "schema_version": PAPER_LEDGER_SCHEMA_VERSION,
+    evidence_revision = execution.collection_evidence_revision
+    record = {
+        "schema_version": PAPER_LEDGER_SCHEMA_VERSION if evidence_revision == EVIDENCE_V1 else "paper-scheduled-attempt-v2",
         "manifest_id": entry.plan.manifest_id,
         "manifest_sha256": manifest_hash,
         "paper_experiment_revision": PAPER_EXPERIMENT_REVISION,
@@ -918,14 +971,14 @@ def scheduled_paper_attempt_as_json(
             "detail": None if behavioral is None else behavioral.detail,
         },
         "original_generation_evidence": _original_as_json(execution) if execution.original_generation_attempted else None,
-        "original_generation_infrastructure": _infrastructure_as_json(execution.original_generation_infrastructure),
+        "original_generation_infrastructure": _infrastructure_as_json(execution.original_generation_infrastructure, evidence_revision),
         "reserved_base_trial_id": entry.plan.base_trial_id,
         "reserved_trial_family_id": entry.plan.trial_family_id,
         "trial_family_activated": execution.trial_family_activated,
         "family_id": execution.family_id,
         "recovery_construction_started": execution.recovery_construction_started,
         "expected_arm_opportunities_attempted": execution.expected_arm_opportunities_attempted,
-        "family_system_failure": _infrastructure_as_json(execution.family_system_failure),
+        "family_system_failure": _infrastructure_as_json(execution.family_system_failure, evidence_revision),
         "arm_opportunities": [
             {
                 "arm_id": arm.arm_id,
@@ -934,13 +987,18 @@ def scheduled_paper_attempt_as_json(
                 "attempted": arm.attempted,
                 "status": arm.status.value,
                 "trace_expected": arm.result is not None,
-                "infrastructure_failure": _infrastructure_as_json(arm.infrastructure_failure),
+                "infrastructure_failure": _infrastructure_as_json(arm.infrastructure_failure, evidence_revision),
                 "pre_trace_evidence": None if arm.pre_trace_evidence is None else thaw_json_value(arm.pre_trace_evidence),
             }
             for arm in execution.arm_executions
         ],
         "terminal_status": execution.terminal_status.value,
     }
+    if evidence_revision == EVIDENCE_V2:
+        record["collection_evidence_revision"] = EVIDENCE_V2
+        for serialized, arm in zip(record["arm_opportunities"], execution.arm_executions, strict=True):
+            serialized["measurement_evidence"] = None if arm.measurement_evidence is None else thaw_json_value(arm.measurement_evidence)
+    return record
 
 
 def paper_arm_traces_as_json(
@@ -957,8 +1015,7 @@ def _outcome_arm_traces_as_json(outcomes, metadata):
         for arm in outcome.arm_executions:
             if arm.result is None:
                 continue
-            traces.append(
-                paper_arm_trace_as_json(
+            trace = paper_arm_trace_as_json(
                     entry=outcome.entry,
                     prepared=outcome.prepared,
                     hidden_world=arm.hidden_world,
@@ -966,14 +1023,15 @@ def _outcome_arm_traces_as_json(outcomes, metadata):
                     arm_result=arm.result,
                     metadata=metadata,
                 )
-            )
+            traces.append(extend_paper_trace(trace, arm.measurement_evidence)
+                          if outcome.collection_evidence_revision == EVIDENCE_V2 else trace)
     return tuple(traces)
 
 
 def paper_summary_as_json(result: PaperCollectionResult) -> dict[str, object]:
     summary = result.summary
-    return {
-        "schema_version": PAPER_SUMMARY_SCHEMA_VERSION,
+    record = {
+        "schema_version": PAPER_SUMMARY_SCHEMA_VERSION if result.collection_evidence_revision == EVIDENCE_V1 else "paper-collection-summary-v2",
         "manifest_id": result.manifest_id,
         "manifest_sha256": result.manifest_hash,
         "paper_experiment_revision": PAPER_EXPERIMENT_REVISION,
@@ -999,6 +1057,9 @@ def paper_summary_as_json(result: PaperCollectionResult) -> dict[str, object]:
         "collection_events": len(result.collection_events),
         "collection_events_sha256": sha256_hex(_jsonl(result.collection_events)),
     }
+    if result.collection_evidence_revision == EVIDENCE_V2:
+        record["collection_evidence_revision"] = EVIDENCE_V2
+    return record
 
 
 def _jsonl(records: tuple[dict[str, object], ...]) -> bytes:
@@ -1022,12 +1083,12 @@ def _load_schema(path: Path) -> dict[str, object]:
 
 
 def _run_metadata_as_json(
-    manifest: PaperExperimentManifest, metadata: TraceRunMetadata
+    manifest: PaperExperimentManifest, metadata: TraceRunMetadata, evidence_revision=EVIDENCE_V1
 ) -> dict[str, object]:
     if type(metadata) is not TraceRunMetadata:
         raise PaperCollectionPreflightError("run metadata must be TraceRunMetadata")
     record = {
-        "schema_version": "paper-run-metadata-v1",
+        "schema_version": "paper-run-metadata-v1" if evidence_revision == EVIDENCE_V1 else "paper-run-metadata-v2",
         "manifest_id": manifest.manifest_id,
         "manifest_sha256": manifest.manifest_hash,
         "paper_experiment_revision": PAPER_EXPERIMENT_REVISION,
@@ -1035,13 +1096,19 @@ def _run_metadata_as_json(
         "git_commit": metadata.git_commit,
         "timestamp": metadata.timestamp,
     }
+    if evidence_revision == EVIDENCE_V2:
+        record["collection_evidence_revision"] = EVIDENCE_V2
     _validate_run_metadata(record)
     return record
 
 
 def _validate_run_metadata(record: dict[str, object]) -> None:
+    if record.get("schema_version") not in ("paper-run-metadata-v1", "paper-run-metadata-v2"):
+        raise PaperCollectionError("unsupported run metadata schema")
+    path = (_RUN_METADATA_SCHEMA_PATH if record["schema_version"] == "paper-run-metadata-v1"
+            else _RUN_METADATA_SCHEMA_PATH.with_name("paper_run_metadata_schema_v2.json"))
     jsonschema.Draft202012Validator(
-        _load_schema(_RUN_METADATA_SCHEMA_PATH),
+        _load_schema(path),
         format_checker=jsonschema.FormatChecker(),
     ).validate(record)
     # Reuse the exact frozen trace rules, including strict RFC3339 syntax.
@@ -1053,23 +1120,38 @@ def _validate_records(
     traces: tuple[dict[str, object], ...],
     events: tuple[dict[str, object], ...],
 ) -> None:
-    ledger_validator = jsonschema.Draft202012Validator(_load_schema(_LEDGER_SCHEMA_PATH))
-    frozen_schema = _load_schema(_TRACE_SCHEMA_PATH)
-    registry = Registry().with_resource(frozen_schema["$id"], Resource.from_contents(frozen_schema))
-    trace_validator = jsonschema.Draft202012Validator(
-        _load_schema(_PAPER_TRACE_SCHEMA_PATH),
-        registry=registry,
-        format_checker=jsonschema.FormatChecker(),
-    )
+    registry = Registry()
+    schemas = {}
+    for path in (_TRACE_SCHEMA_PATH, _LEDGER_SCHEMA_PATH, _PAPER_TRACE_SCHEMA_PATH,
+                 _ROOT / "research/protocol/paper_measurement_schema_v2.json",
+                 _ROOT / "research/protocol/paper_scheduled_attempt_schema_v2.json",
+                 _ROOT / "research/protocol/paper_trace_schema_v2.json"):
+        schema = _load_schema(path)
+        schemas[path.name] = schema
+        registry = registry.with_resource(schema["$id"], Resource.from_contents(schema))
+    ledger_validators = {
+        PAPER_LEDGER_SCHEMA_VERSION: jsonschema.Draft202012Validator(schemas["paper_scheduled_attempt_schema_v1.json"],registry=registry),
+        "paper-scheduled-attempt-v2": jsonschema.Draft202012Validator(schemas["paper_scheduled_attempt_schema_v2.json"],registry=registry),
+    }
+    trace_validators = {
+        "trace-schema-paper-v1": jsonschema.Draft202012Validator(schemas["paper_trace_schema_v1.json"],registry=registry,format_checker=jsonschema.FormatChecker()),
+        "trace-schema-paper-v2": jsonschema.Draft202012Validator(schemas["paper_trace_schema_v2.json"],registry=registry,format_checker=jsonschema.FormatChecker()),
+    }
     for record in attempts:
-        ledger_validator.validate(record)
+        version = record.get("schema_version")
+        if version not in (PAPER_LEDGER_SCHEMA_VERSION, "paper-scheduled-attempt-v2"):
+            raise PaperCollectionError("unsupported scheduled evidence schema")
+        ledger_validators[version].validate(record)
     event_validator = jsonschema.Draft202012Validator(_load_schema(_EVENT_SCHEMA_PATH))
     for event in events:
         event_validator.validate(event)
     for trace in traces:
         if not is_trace_datetime(trace.get("timestamp")):
             raise TraceSerializationError("paper arm trace timestamp is invalid")
-        trace_validator.validate(trace)
+        version = trace.get("schema_version")
+        if version not in ("trace-schema-paper-v1", "trace-schema-paper-v2"):
+            raise PaperCollectionError("unsupported paper trace schema")
+        trace_validators[version].validate(trace)
 
 
 def _validate_result_coherence(
@@ -1077,6 +1159,8 @@ def _validate_result_coherence(
 ) -> None:
     if type(manifest) is not PaperExperimentManifest or type(result) is not PaperCollectionResult:
         raise PaperCollectionError("manifest/result has the wrong type")
+    if result.collection_evidence_revision not in (EVIDENCE_V1,EVIDENCE_V2):
+        raise PaperCollectionError("unsupported collection evidence revision")
     if result.manifest_id != manifest.manifest_id or result.manifest_hash != manifest.manifest_hash:
         raise PaperCollectionError("manifest/result identity is incoherent")
     if sha256_hex(manifest.canonical_bytes) != manifest.manifest_hash:
@@ -1084,6 +1168,8 @@ def _validate_result_coherence(
     if len(result.slot_outcomes) != PAPER_SLOT_COUNT:
         raise PaperCollectionError("paper result must retain exactly 160 slots")
     for index, (outcome, entry) in enumerate(zip(result.slot_outcomes, manifest.entries, strict=True)):
+        if outcome.collection_evidence_revision != result.collection_evidence_revision:
+            raise PaperCollectionError("mixed collection evidence revisions")
         if outcome.entry != entry or entry.scheduled_attempt_index != index:
             raise PaperCollectionError("paper result slot order does not match manifest")
         if len({arm.arm_id for arm in outcome.arm_executions}) != 4:
@@ -1174,8 +1260,14 @@ def _validate_bundle_data(
 ) -> None:
     """Cross-check all authoritative bundle identities and operational counts."""
 
-    jsonschema.Draft202012Validator(_load_schema(_SUMMARY_SCHEMA_PATH)).validate(summary)
     _validate_run_metadata(run_metadata)
+    v2 = run_metadata["schema_version"] == "paper-run-metadata-v2"
+    summary_path = _SUMMARY_SCHEMA_PATH if not v2 else _SUMMARY_SCHEMA_PATH.with_name("paper_collection_summary_schema_v2.json")
+    jsonschema.Draft202012Validator(_load_schema(summary_path)).validate(summary)
+    if any(a["schema_version"] != ("paper-scheduled-attempt-v2" if v2 else PAPER_LEDGER_SCHEMA_VERSION) for a in attempts):
+        raise PaperCollectionError("ledger and run evidence revisions differ")
+    if any(t["schema_version"] != ("trace-schema-paper-v2" if v2 else "trace-schema-paper-v1") for t in traces):
+        raise PaperCollectionError("trace and run evidence revisions differ")
     if (
         run_metadata["manifest_id"] != manifest_json["manifest_id"]
         or run_metadata["manifest_sha256"] != manifest_hash
@@ -1309,7 +1401,9 @@ def _validate_bundle_data(
             if pre_trace is not None:
                 snapshot = pre_trace["authoritative_final_state_snapshot"]
                 snapshot_hash = pre_trace["authoritative_final_state_sha256"]
-                if pre_trace["model_calls_issued"] != len(pre_trace["model_invocations"]):
+                expected_calls = (sum(i["provider_request_dispatched"] for i in pre_trace["model_invocations"])
+                                  if v2 else len(pre_trace["model_invocations"]))
+                if pre_trace["model_calls_issued"] != expected_calls:
                     raise PaperCollectionError("pre-trace model-call evidence is incoherent")
                 if snapshot is None:
                     if snapshot_hash is not None or pre_trace["recovery_commit_event_ids"] is not None or pre_trace["state_capture_error"] is None:
@@ -1357,11 +1451,30 @@ def _validate_bundle_data(
             or trace["identifiers"]["run_id"] != f"run-{linked_arm['arm_id']}"
         ):
             raise PaperCollectionError("arm trace identity/configuration is incoherent")
+    if v2:
+        by_id = {t["identifiers"]["arm_id"]:t for t in traces}
+        previous_sequence = 0
+        for attempt in attempts:
+            for field in ("original_generation_infrastructure","family_system_failure"):
+                failure = attempt[field]
+                if failure is not None and failure["diagnostic"]["exception_type"] == "ModelResponseError" and failure["diagnostic"]["response_failure"] is None:
+                    raise PaperCollectionError("V2 response error lacks structured classification")
+            for arm in attempt["arm_opportunities"]:
+                try:
+                    validate_arm_measurement(arm,by_id.get(arm["arm_id"]))
+                except ValueError as exc:
+                    raise PaperCollectionError("V2 arm measurement is incoherent") from exc
+                if arm["measurement_evidence"] is not None:
+                    for invocation in arm["measurement_evidence"]["model_invocations"]:
+                        sequence = invocation["provider_invocation_sequence"]
+                        if sequence <= previous_sequence:
+                            raise PaperCollectionError("provider invocation sequence violates serial collection order")
+                        previous_sequence = sequence
     for key, value in _ledger_counts(attempts).items():
         if summary.get(key) != value:
             raise PaperCollectionError(f"bundle summary count {key} is incoherent")
     if (
-        summary.get("schema_version") != PAPER_SUMMARY_SCHEMA_VERSION
+        summary.get("schema_version") != ("paper-collection-summary-v2" if v2 else PAPER_SUMMARY_SCHEMA_VERSION)
         or summary.get("manifest_id") != manifest_id
         or summary.get("manifest_sha256") != manifest_hash
         or summary.get("paper_experiment_revision") != PAPER_EXPERIMENT_REVISION
@@ -1406,7 +1519,7 @@ def persist_paper_collection_run(
 ) -> None:
     """Publish the six-file completed paper evidence bundle atomically."""
 
-    run_metadata = _run_metadata_as_json(manifest, metadata)
+    run_metadata = _run_metadata_as_json(manifest, metadata, result.collection_evidence_revision)
     _validate_result_coherence(manifest, result)
     attempts = tuple(scheduled_paper_attempt_as_json(item, result.manifest_hash) for item in result.slot_outcomes)
     traces = paper_arm_traces_as_json(result, metadata)
@@ -1514,6 +1627,7 @@ def run_paper_collection(
     client: ModelClient,
     run_root: Path,
     metadata: TraceRunMetadata,
+    evidence_revision: str = EVIDENCE_V2,
 ) -> PaperCollectionResult:
     """Collect once, publish and validate six files, then clean the prefix.
 
@@ -1527,7 +1641,8 @@ def run_paper_collection(
     if not target.parent.is_dir():
         raise PaperCollectionError("target parent directory must already exist")
     validate_paper_manifest_provider(manifest, client)
-    run_metadata = _run_metadata_as_json(manifest, metadata)
+    _validate_evidence_client(client, evidence_revision)
+    run_metadata = _run_metadata_as_json(manifest, metadata, evidence_revision)
     manifest_hash = manifest.manifest_hash
     progress = target.with_name(f".{target.name}.in-progress")
     if progress.exists():
@@ -1552,6 +1667,10 @@ def run_paper_collection(
             "completed_slots_in_memory": len(fatal.completed_slot_outcomes) if result is None else len(result.slot_outcomes),
             "infrastructure_failure": _infrastructure_as_json(fatal.evidence),
         }
+        if evidence_revision == EVIDENCE_V2:
+            diagnostic["schema_version"] = "paper-runner-fatal-v2"
+            diagnostic["collection_evidence_revision"] = EVIDENCE_V2
+            diagnostic["infrastructure_failure"] = _infrastructure_as_json(fatal.evidence,evidence_revision)
         try:
             _write_bytes(progress / "runner_fatal.json", canonical_json_bytes(diagnostic))
         except Exception:
@@ -1579,7 +1698,8 @@ def run_paper_collection(
             append_records("scheduled_attempts.jsonl", (scheduled_paper_attempt_as_json(outcome, manifest_hash),))
             append_records("arm_traces.jsonl", _outcome_arm_traces_as_json((outcome,), metadata))
         result = execute_paper_collection(
-            manifest, client, event_sink=event_sink, scheduled_attempt_sink=scheduled_attempt_sink
+            manifest, client, event_sink=event_sink, scheduled_attempt_sink=scheduled_attempt_sink,
+            evidence_revision=evidence_revision,
         )
         persist_paper_collection_run(
             run_root=target, manifest=manifest, result=result, metadata=metadata
