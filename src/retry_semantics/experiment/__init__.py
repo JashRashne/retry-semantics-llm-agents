@@ -43,6 +43,11 @@ from retry_semantics.experiment.engineering import (
     validate_eligible_family,
     validate_manifest_provider,
 )
+from retry_semantics.experiment.fireworks_engineering import (
+    FIREWORKS_DEEPSEEK_ENGINEERING_CONFIG_ID_PREFIX,
+    FIREWORKS_DEEPSEEK_ENGINEERING_MANIFEST_ID,
+    build_fireworks_deepseek_engineering_manifest,
+)
 from retry_semantics.experiment.trace import (
     TRACE_SCHEMA_VERSION,
     TraceRunMetadata,
@@ -53,6 +58,8 @@ from retry_semantics.experiment.trace import (
 __all__ = [
     "ENGINEERING_SLOT_COUNT",
     "EXPERIMENT_VERSION",
+    "FIREWORKS_DEEPSEEK_ENGINEERING_CONFIG_ID_PREFIX",
+    "FIREWORKS_DEEPSEEK_ENGINEERING_MANIFEST_ID",
     "HIDDEN_WORLD_ORDER_SEED",
     "POLICY_ORDER_SEED",
     "TRACE_SCHEMA_VERSION",
@@ -80,6 +87,7 @@ __all__ = [
     "arm_trace_as_json",
     "arm_traces_as_json",
     "build_engineering_validation_manifest",
+    "build_fireworks_deepseek_engineering_manifest",
     "engineering_summary_as_json",
     "execute_engineering_validation",
     "get_scenario",
