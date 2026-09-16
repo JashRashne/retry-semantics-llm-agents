@@ -1,0 +1,519 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retry-semantics.local/schemas/analysis_arm_schema_v1.json",
+  "title": "Derived Ticket arm analysis V1 (source evidence V2)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "family_id",
+    "reserved_trial_family_id",
+    "pair_id",
+    "arm_id",
+    "scenario_id",
+    "schema_version",
+    "slot_index",
+    "replicate",
+    "stratum",
+    "hidden_world",
+    "world",
+    "policy",
+    "arm_opportunity_status",
+    "attempted",
+    "infrastructure_failure",
+    "raw_infrastructure_failure",
+    "family_system_failure",
+    "terminal_state_snapshot",
+    "terminal_state_sha256",
+    "termination_reason",
+    "authoritative_terminal_state_available",
+    "source_trace_id",
+    "measurement_evidence",
+    "recovery_actions",
+    "matching_ticket_count",
+    "unintended_ticket_count",
+    "model_calls_issued",
+    "read_only_tool_calls_executed",
+    "state_mutating_tool_calls_executed",
+    "recovery_tool_calls_executed",
+    "STATE_CORRECT",
+    "MISSING_MUTATION",
+    "DUPLICATE_MUTATION",
+    "WRONG_MUTATION",
+    "BUDGET_EXHAUSTED",
+    "REJECTED_GENERATION",
+    "MALFORMED_GENERATION",
+    "PROTOCOL_VALID_RECOVERY",
+    "OBSERVATION_BEFORE_WRITE",
+    "STATE_CORRECT_SENSITIVITY",
+    "BEHAVIORALLY_EVALUABLE_ARM"
+  ],
+  "properties": {
+    "family_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reserved_trial_family_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pair_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "arm_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenario_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schema_version": {
+      "const": "ticket-analysis-arm-v1"
+    },
+    "slot_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 159
+    },
+    "replicate": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "stratum": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    "hidden_world": {
+      "enum": [
+        "NOT_EXECUTED",
+        "EXECUTED_ACK_LOST"
+      ]
+    },
+    "world": {
+      "enum": [
+        "H0",
+        "H1"
+      ]
+    },
+    "policy": {
+      "enum": [
+        "EXACT_REPLAY",
+        "LLM_REGENERATION"
+      ]
+    },
+    "arm_opportunity_status": {
+      "enum": [
+        "NOT_ACTIVATED",
+        "COMPLETED_TRACE",
+        "INFRASTRUCTURE_FAILURE_WITH_TRACE",
+        "INFRASTRUCTURE_FAILURE_BEFORE_TRACE"
+      ]
+    },
+    "attempted": {
+      "type": "boolean"
+    },
+    "infrastructure_failure": {
+      "anyOf": [
+        {
+          "$ref": "https://retry-semantics.local/schemas/paper_scheduled_attempt_schema_v2.json#/$defs/infrastructure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "raw_infrastructure_failure": {
+      "anyOf": [
+        {
+          "$ref": "https://retry-semantics.local/schemas/paper_scheduled_attempt_schema_v2.json#/$defs/infrastructure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "family_system_failure": {
+      "anyOf": [
+        {
+          "$ref": "https://retry-semantics.local/schemas/paper_scheduled_attempt_schema_v2.json#/$defs/infrastructure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "terminal_state_snapshot": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "terminal_state_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "termination_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "authoritative_terminal_state_available": {
+      "type": "boolean"
+    },
+    "source_trace_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "measurement_evidence": {
+      "anyOf": [
+        {
+          "$ref": "https://retry-semantics.local/schemas/paper_measurement_schema_v2.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "recovery_actions": {
+      "anyOf": [
+        {
+          "type": "array",
+          "maxItems": 4,
+          "description": "Ordered processed recovery actions. After three in-budget tool actions, at most the first over-budget request is added as BUDGET_REJECTED_TOOL_CALL; later requests from that response are not separate actions.",
+          "items": {
+            "$ref": "https://retry-semantics.local/schemas/trace_schema_v1.json#/$defs/recoveryAction"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "matching_ticket_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "unintended_ticket_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "model_calls_issued": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "read_only_tool_calls_executed": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "state_mutating_tool_calls_executed": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "recovery_tool_calls_executed": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "STATE_CORRECT": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "MISSING_MUTATION": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "DUPLICATE_MUTATION": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "WRONG_MUTATION": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "BUDGET_EXHAUSTED": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "REJECTED_GENERATION": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "MALFORMED_GENERATION": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "PROTOCOL_VALID_RECOVERY": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "OBSERVATION_BEFORE_WRITE": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "STATE_CORRECT_SENSITIVITY": {
+      "enum": [
+        0,
+        1,
+        null
+      ]
+    },
+    "BEHAVIORALLY_EVALUABLE_ARM": {
+      "enum": [
+        0,
+        1
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "policy": {
+            "const": "EXACT_REPLAY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "MALFORMED_GENERATION": {
+            "type": "null"
+          },
+          "REJECTED_GENERATION": {
+            "type": "null"
+          },
+          "BUDGET_EXHAUSTED": {
+            "type": "null"
+          },
+          "OBSERVATION_BEFORE_WRITE": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "BEHAVIORALLY_EVALUABLE_ARM": {
+            "const": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "authoritative_terminal_state_available": {
+            "const": true
+          },
+          "attempted": {
+            "const": true
+          },
+          "infrastructure_failure": {
+            "type": "null"
+          },
+          "family_system_failure": {
+            "type": "null"
+          },
+          "STATE_CORRECT": {
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "MISSING_MUTATION": {
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "DUPLICATE_MUTATION": {
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "WRONG_MUTATION": {
+            "enum": [
+              0,
+              1
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "authoritative_terminal_state_available": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "STATE_CORRECT": {
+            "type": "null"
+          },
+          "MISSING_MUTATION": {
+            "type": "null"
+          },
+          "DUPLICATE_MUTATION": {
+            "type": "null"
+          },
+          "WRONG_MUTATION": {
+            "type": "null"
+          },
+          "matching_ticket_count": {
+            "type": "null"
+          },
+          "unintended_ticket_count": {
+            "type": "null"
+          },
+          "terminal_state_snapshot": {
+            "type": "null"
+          },
+          "terminal_state_sha256": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "attempted": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "PROTOCOL_VALID_RECOVERY": {
+            "type": "null"
+          },
+          "MALFORMED_GENERATION": {
+            "type": "null"
+          },
+          "REJECTED_GENERATION": {
+            "type": "null"
+          },
+          "BUDGET_EXHAUSTED": {
+            "type": "null"
+          },
+          "measurement_evidence": {
+            "type": "null"
+          },
+          "model_calls_issued": {
+            "type": "null"
+          },
+          "read_only_tool_calls_executed": {
+            "type": "null"
+          },
+          "state_mutating_tool_calls_executed": {
+            "type": "null"
+          },
+          "recovery_tool_calls_executed": {
+            "type": "null"
+          },
+          "OBSERVATION_BEFORE_WRITE": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "attempted": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "PROTOCOL_VALID_RECOVERY": {
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "measurement_evidence": {
+            "type": "object"
+          },
+          "model_calls_issued": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "read_only_tool_calls_executed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state_mutating_tool_calls_executed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recovery_tool_calls_executed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  ]
+}

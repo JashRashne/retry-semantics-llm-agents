@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retry-semantics.local/schemas/analysis_statistics_schema_v1.json",
+  "title": "V1.3 Ticket statistical core for already-derived synthetic or validated scores",
+  "description": "Pure statistical-core results for already-derived scores; completed bundle analysis has a distinct analysis_results_schema_v1.json schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "primary",
+    "sensitivity",
+    "operational_fragility",
+    "materially_weakened",
+    "equal_world_summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ticket-analysis-statistical-core-v1"
+    },
+    "status": {
+      "const": "DERIVED_SCORE_CORE_ONLY"
+    },
+    "primary": {
+      "$ref": "#/$defs/population"
+    },
+    "sensitivity": {
+      "$ref": "#/$defs/population"
+    },
+    "operational_fragility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "sign_reversals",
+        "holm_decision_changes",
+        "zero_transitions"
+      ],
+      "properties": {
+        "value": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sign_reversals": {
+          "$ref": "#/$defs/worldList"
+        },
+        "holm_decision_changes": {
+          "$ref": "#/$defs/worldList"
+        },
+        "zero_transitions": {
+          "$ref": "#/$defs/worldList"
+        }
+      }
+    },
+    "materially_weakened": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "equal_world_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "real_world_prevalence_weighted",
+        "policies"
+      ],
+      "properties": {
+        "label": {
+          "const": "DESCRIPTIVE EQUAL-WORLD EXPERIMENTAL SUMMARY"
+        },
+        "real_world_prevalence_weighted": {
+          "const": false
+        },
+        "policies": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "EXACT_REPLAY",
+            "LLM_REGENERATION"
+          ],
+          "properties": {
+            "EXACT_REPLAY": {
+              "$ref": "#/$defs/probability"
+            },
+            "LLM_REGENERATION": {
+              "$ref": "#/$defs/probability"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "probability": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "estimate": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "interval": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          }
+        }
+      ]
+    },
+    "worldList": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 2,
+      "items": {
+        "enum": [
+          "H0",
+          "H1"
+        ]
+      }
+    },
+    "rate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "numerator",
+        "denominator",
+        "rate"
+      ],
+      "properties": {
+        "numerator": {
+          "$ref": "#/$defs/count"
+        },
+        "denominator": {
+          "$ref": "#/$defs/count"
+        },
+        "rate": {
+          "$ref": "#/$defs/probability"
+        }
+      }
+    },
+    "paired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "n11",
+        "n10",
+        "n01",
+        "n00",
+        "N",
+        "replay_correctness",
+        "regeneration_correctness",
+        "delta",
+        "newcombe_paired_method10_95_ci",
+        "exact_mcnemar_raw_p"
+      ],
+      "properties": {
+        "n11": {
+          "$ref": "#/$defs/count"
+        },
+        "n10": {
+          "$ref": "#/$defs/count"
+        },
+        "n01": {
+          "$ref": "#/$defs/count"
+        },
+        "n00": {
+          "$ref": "#/$defs/count"
+        },
+        "N": {
+          "$ref": "#/$defs/count"
+        },
+        "replay_correctness": {
+          "$ref": "#/$defs/rate"
+        },
+        "regeneration_correctness": {
+          "$ref": "#/$defs/rate"
+        },
+        "delta": {
+          "$ref": "#/$defs/estimate"
+        },
+        "newcombe_paired_method10_95_ci": {
+          "$ref": "#/$defs/interval"
+        },
+        "exact_mcnemar_raw_p": {
+          "$ref": "#/$defs/probability"
+        }
+      }
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_p",
+        "holm_adjusted_p",
+        "reject",
+        "role"
+      ],
+      "properties": {
+        "raw_p": {
+          "$ref": "#/$defs/probability"
+        },
+        "holm_adjusted_p": {
+          "$ref": "#/$defs/probability"
+        },
+        "reject": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "role": {
+          "enum": [
+            "CO_PRIMARY",
+            "DESCRIPTIVE"
+          ]
+        }
+      }
+    },
+    "population": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "worlds",
+        "holm",
+        "interaction"
+      ],
+      "properties": {
+        "worlds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "H0",
+            "H1"
+          ],
+          "properties": {
+            "H0": {
+              "$ref": "#/$defs/paired"
+            },
+            "H1": {
+              "$ref": "#/$defs/paired"
+            }
+          }
+        },
+        "holm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "family_fully_estimable",
+            "alpha",
+            "tests"
+          ],
+          "properties": {
+            "family_fully_estimable": {
+              "type": "boolean"
+            },
+            "alpha": {
+              "const": 0.05
+            },
+            "tests": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "H0",
+                "H1"
+              ],
+              "properties": {
+                "H0": {
+                  "$ref": "#/$defs/test"
+                },
+                "H1": {
+                  "$ref": "#/$defs/test"
+                }
+              }
+            }
+          }
+        },
+        "interaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "N",
+            "estimate",
+            "percentile_95_ci",
+            "seed",
+            "replicates"
+          ],
+          "properties": {
+            "N": {
+              "$ref": "#/$defs/count"
+            },
+            "estimate": {
+              "$ref": "#/$defs/estimate"
+            },
+            "percentile_95_ci": {
+              "$ref": "#/$defs/interval"
+            },
+            "seed": {
+              "const": 20260916
+            },
+            "replicates": {
+              "const": 10000
+            }
+          }
+        }
+      }
+    }
+  }
+}

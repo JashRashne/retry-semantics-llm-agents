@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retry-semantics.local/schemas/analysis_family_schema_v1.json",
+  "title": "Derived matched Ticket family analysis V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "slot_index",
+    "family_id",
+    "activated_family_id",
+    "replicate",
+    "scenario_id",
+    "stratum",
+    "H0",
+    "H1",
+    "primary_interaction_complete",
+    "primary_interaction_contribution"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ticket-analysis-family-v1"
+    },
+    "slot_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 159
+    },
+    "family_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "activated_family_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "replicate": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "scenario_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stratum": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    "H0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pair_id",
+        "replay_arm_id",
+        "regeneration_arm_id",
+        "primary",
+        "sensitivity"
+      ],
+      "properties": {
+        "pair_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replay_arm_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "regeneration_arm_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primary": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "enum": [
+                  0,
+                  1
+                ]
+              }
+            }
+          ]
+        },
+        "sensitivity": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "enum": [
+                  0,
+                  1
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "H1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pair_id",
+        "replay_arm_id",
+        "regeneration_arm_id",
+        "primary",
+        "sensitivity"
+      ],
+      "properties": {
+        "pair_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replay_arm_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "regeneration_arm_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primary": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "enum": [
+                  0,
+                  1
+                ]
+              }
+            }
+          ]
+        },
+        "sensitivity": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "enum": [
+                  0,
+                  1
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "primary_interaction_complete": {
+      "type": "boolean"
+    },
+    "primary_interaction_contribution": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": -2,
+      "maximum": 2
+    }
+  }
+}
