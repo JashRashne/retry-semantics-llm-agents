@@ -186,11 +186,13 @@ def test_zero_interval_is_explicit_and_does_not_sleep():
     dict(expected_title='no correlation', expected_body='no correlation'),
     dict(mutation_trace=EngineeringTrace('create_issue')),
     dict(mutation_trace=replace(mutation_trace(), operation='other')),
-    dict(mutation_trace=replace(mutation_trace(), attempts=())),
+    lambda: dict(mutation_trace=replace(mutation_trace(), attempts=())),
 ])
 def test_invalid_control_inputs_fail_before_observation_or_sleep(options):
     adapter, transport = setup()
     with pytest.raises(ValueError):
+        if callable(options):
+            options = options()
         probe(adapter.observe_issues, transport.clock, **options)
     assert not transport.requests and not transport.clock.sleeps
 

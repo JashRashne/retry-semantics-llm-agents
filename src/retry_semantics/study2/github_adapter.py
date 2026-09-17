@@ -1,4 +1,4 @@
-"""Phase 2B engineering adapter. ENGINEERING VALIDATION — NOT PAPER DATA.
+"""Phase 2C engineering adapter. ENGINEERING VALIDATION — NOT PAPER DATA.
 
 No experiment execution or retry policy. An injected transport is trusted test
 code: only the default transport's HTTP dispatch behavior is established here.
@@ -6,6 +6,7 @@ code: only the default transport's HTTP dispatch behavior is established here.
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from enum import Enum
 import http.client
 import json
 import math
@@ -81,6 +82,45 @@ class HTTPResponse:
     read_error: str | None = None
 
 
+class LifecycleStage(str, Enum):
+    REQUEST_PREPARED = "REQUEST_PREPARED"
+    CONNECT_STARTED = "CONNECT_STARTED"
+    CONNECT_COMPLETED = "CONNECT_COMPLETED"
+    REQUEST_SEND_STARTED = "REQUEST_SEND_STARTED"
+    LOCAL_REQUEST_SEND_COMPLETED = "LOCAL_REQUEST_SEND_COMPLETED"
+    RESPONSE_WAIT_STARTED = "RESPONSE_WAIT_STARTED"
+    RESPONSE_HEADERS_RECEIVED = "RESPONSE_HEADERS_RECEIVED"
+    RESPONSE_BODY_COMPLETED = "RESPONSE_BODY_COMPLETED"
+    TRANSPORT_ERROR = "TRANSPORT_ERROR"
+    INJECTED_FAULT = "INJECTED_FAULT"
+
+
+class EngineeringFaultPoint(str, Enum):
+    BEFORE_REQUEST_SEND = "BEFORE_REQUEST_SEND"
+    AFTER_LOCAL_REQUEST_SEND_BEFORE_RESPONSE = "AFTER_LOCAL_REQUEST_SEND_BEFORE_RESPONSE"
+
+
+@dataclass(frozen=True, slots=True)
+class LifecycleEvent:
+    sequence: int
+    stage: LifecycleStage
+    # Only typed, fixed metadata; no buffers, exception text or credentials.
+    fault_point: EngineeringFaultPoint | None = None
+
+    def __post_init__(self) -> None:
+        if type(self.sequence) is not int or self.sequence < 1 or not isinstance(self.stage, LifecycleStage):
+            raise ValueError("invalid lifecycle event")
+        if self.stage is LifecycleStage.INJECTED_FAULT:
+            if not isinstance(self.fault_point, EngineeringFaultPoint):
+                raise ValueError("typed engineering fault point required")
+        elif self.fault_point is not None:
+            raise ValueError("fault metadata only allowed on injected fault")
+
+
+_NORMAL_STAGES = tuple(LifecycleStage)[:8]
+_TRANSPORT_ERRORS = frozenset({"transport_timeout", "transport_connection_error", "transport_error"})
+
+
 @dataclass(frozen=True, slots=True)
 class HTTPAttempt:
     index: int
@@ -90,6 +130,42 @@ class HTTPAttempt:
     outcome: str
     status: int | None = None
     response_metadata: tuple[tuple[str, str], ...] = ()
+    # Empty means historical/opaque transport: no granular evidence available.
+    lifecycle: tuple[LifecycleEvent, ...] = ()
+
+    def __post_init__(self) -> None:
+        if type(self.lifecycle) is not tuple:
+            raise ValueError("immutable lifecycle required")
+        if not self.lifecycle:
+            return
+        # Legacy flags describe a finalized adapter transport-boundary invocation,
+        # not request transmission or provider receipt/execution.
+        if self.dispatch_started is not True or self.dispatch_ended is not True:
+            raise ValueError("instrumented attempt requires finalized transport boundary")
+        stages = []
+        for index, event in enumerate(self.lifecycle, 1):
+            if not isinstance(event, LifecycleEvent) or event.sequence != index:
+                raise ValueError("invalid lifecycle ordering")
+            stages.append(event.stage)
+        terminal = stages[-1] in (LifecycleStage.TRANSPORT_ERROR, LifecycleStage.INJECTED_FAULT)
+        prefix = stages[:-1] if terminal else stages
+        if not prefix or tuple(prefix) != _NORMAL_STAGES[:len(prefix)]:
+            raise ValueError("invalid lifecycle prefix")
+        if terminal:
+            if stages[-1] is LifecycleStage.INJECTED_FAULT:
+                point = self.lifecycle[-1].fault_point
+                expected = (LifecycleStage.CONNECT_COMPLETED if point is EngineeringFaultPoint.BEFORE_REQUEST_SEND
+                            else LifecycleStage.LOCAL_REQUEST_SEND_COMPLETED)
+                if prefix[-1] is not expected or self.outcome != "injected_fault":
+                    raise ValueError("invalid injected fault boundary/outcome")
+            elif self.outcome not in _TRANSPORT_ERRORS:
+                raise ValueError("transport error requires failure outcome")
+        elif tuple(stages) != _NORMAL_STAGES or self.outcome != "http_response":
+            raise ValueError("HTTP response requires complete lifecycle")
+        if (self.status is not None) != (LifecycleStage.RESPONSE_HEADERS_RECEIVED in prefix):
+            raise ValueError("response status and header evidence disagree")
+        if self.response_metadata and LifecycleStage.RESPONSE_HEADERS_RECEIVED not in prefix:
+            raise ValueError("response metadata requires response headers")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +179,15 @@ class EngineeringTrace:
     repeated_identities: int = 0
     distinct_issues: int = 0
     complete: bool = False
+
+    def __post_init__(self) -> None:
+        if (self.outcome == "success") != self.complete:
+            raise ValueError("trace success and completeness disagree")
+        if self.complete or self.outcome == "success":
+            if not self.attempts:
+                raise ValueError("successful trace requires HTTP attempt evidence")
+            if any(a.outcome != "http_response" for a in self.attempts):
+                raise ValueError("successful trace cannot contain terminal attempt failure")
 
     @property
     def attempt_count(self) -> int:
@@ -145,29 +230,81 @@ class GitHubEngineeringError(Exception):
 Transport = Callable[[EngineeringRequest, str, float], HTTPResponse]
 
 
-def https_single_attempt(request: EngineeringRequest, token: str, timeout: float) -> HTTPResponse:
+class _InjectedEngineeringFault(Exception):
+    def __init__(self) -> None:
+        super().__init__("injected_fault")
+
+
+def _event(events: list[LifecycleEvent], stage: LifecycleStage,
+           point: EngineeringFaultPoint | None = None) -> None:
+    events.append(LifecycleEvent(len(events) + 1, stage, point))
+
+
+@dataclass(frozen=True, slots=True)
+class OfflineFaultTransport:
+    """Trusted OFFLINE fake connection factory only; never use against GitHub.
+
+    No default factory: fault injection cannot be enabled on the live default
+    transport or smoke. The caller is responsible for supplying offline machinery.
+    """
+    connection_factory: Callable
+    fault_point: EngineeringFaultPoint
+
+    def __post_init__(self) -> None:
+        if not callable(self.connection_factory) or not isinstance(self.fault_point, EngineeringFaultPoint):
+            raise ValueError("offline factory and typed engineering fault point required")
+
+    def __call__(self, request: EngineeringRequest, token: str, timeout: float,
+                 *, lifecycle: list[LifecycleEvent] | None = None) -> HTTPResponse:
+        return _https_attempt(request, token, timeout, self.connection_factory,
+                              lifecycle if lifecycle is not None else [], self.fault_point)
+
+
+def https_single_attempt(request: EngineeringRequest, token: str, timeout: float,
+                         *, lifecycle: list[LifecycleEvent] | None = None) -> HTTPResponse:
     """Fresh verified TLS/HTTP1 connection; no pool, proxy, redirect or retry.
 
     connect() is explicit and auto_open is disabled: even a missing/closed socket
     cannot trigger implicit reconnection between headers and body. Debug is off.
     http.client removes HTTP transfer framing, but does not decompress content.
     """
+    return _https_attempt(request, token, timeout, http.client.HTTPSConnection,
+                          lifecycle if lifecycle is not None else [])
+
+
+def _https_attempt(request: EngineeringRequest, token: str, timeout: float,
+                   connection_factory: Callable, events: list[LifecycleEvent],
+                   fault_point: EngineeringFaultPoint | None = None) -> HTTPResponse:
     parts = urlsplit(request.url)
-    connection = http.client.HTTPSConnection(parts.hostname, parts.port, timeout=timeout)
-    connection.set_debuglevel(0)
-    connection.auto_open = 0
+    connection = connection_factory(parts.hostname, parts.port, timeout=timeout)
     try:
+        connection.set_debuglevel(0)
+        connection.auto_open = 0
+        _event(events, LifecycleStage.CONNECT_STARTED)
         connection.connect()
+        _event(events, LifecycleStage.CONNECT_COMPLETED)
+        # putrequest/putheader buffer locally; endheaders sends headers AND body.
         connection.putrequest(request.method, request.target_path,
                               skip_host=True, skip_accept_encoding=True)
         for name, value in request.headers:
             connection.putheader(name, value)
         connection.putheader("Authorization", f"Bearer {token}")
+        if fault_point is EngineeringFaultPoint.BEFORE_REQUEST_SEND:
+            _event(events, LifecycleStage.INJECTED_FAULT, fault_point)
+            raise _InjectedEngineeringFault()
+        _event(events, LifecycleStage.REQUEST_SEND_STARTED)
         connection.endheaders(request.body or None, encode_chunked=False)
+        _event(events, LifecycleStage.LOCAL_REQUEST_SEND_COMPLETED)
+        if fault_point is EngineeringFaultPoint.AFTER_LOCAL_REQUEST_SEND_BEFORE_RESPONSE:
+            _event(events, LifecycleStage.INJECTED_FAULT, fault_point)
+            raise _InjectedEngineeringFault()
+        _event(events, LifecycleStage.RESPONSE_WAIT_STARTED)
         response = connection.getresponse()
+        _event(events, LifecycleStage.RESPONSE_HEADERS_RECEIVED)
         # Keep status/headers even if receiving the body fails.
-        headers = tuple(response.getheaders())
+        headers = ()
         try:
+            headers = tuple(response.getheaders())
             body = response.read()
         except TimeoutError:
             return HTTPResponse(response.status, headers, b"", "transport_timeout")
@@ -175,9 +312,14 @@ def https_single_attempt(request: EngineeringRequest, token: str, timeout: float
             return HTTPResponse(response.status, headers, b"", "transport_connection_error")
         except Exception:
             return HTTPResponse(response.status, headers, b"", "transport_error")
+        _event(events, LifecycleStage.RESPONSE_BODY_COMPLETED)
         return HTTPResponse(response.status, headers, body)
     finally:
-        connection.close()
+        # Cleanup must not mask a terminal fault/failure or invent provider facts.
+        try:
+            connection.close()
+        except Exception:
+            pass
 
 
 _METADATA = frozenset({
@@ -294,8 +436,18 @@ class GitHubEngineeringAdapter:
     def _dispatch(self, request: EngineeringRequest, trace: EngineeringTrace) -> tuple[HTTPResponse, EngineeringTrace]:
         response = None
         failure = None
+        events = []
+        instrumented = self._transport is https_single_attempt or isinstance(self._transport, OfflineFaultTransport)
+        if instrumented:
+            _event(events, LifecycleStage.REQUEST_PREPARED)
         try:
-            response = self._transport(request, self.config.token, self.config.timeout_seconds)
+            if instrumented:
+                response = self._transport(request, self.config.token, self.config.timeout_seconds,
+                                           lifecycle=events)
+            else:
+                response = self._transport(request, self.config.token, self.config.timeout_seconds)
+        except _InjectedEngineeringFault:
+            failure = "injected_fault"
         except TimeoutError:
             failure = "transport_timeout"
         except ConnectionError:
@@ -306,11 +458,14 @@ class GitHubEngineeringAdapter:
         status = None
         if response is not None:
             status = response.status
-            failure = response.read_error
+            failure = (response.read_error if response.read_error in _TRANSPORT_ERRORS else
+                       "transport_error" if response.read_error is not None else None)
             metadata = tuple((k.lower(), v.replace(self.config.token, "[REDACTED]"))
                              for k, v in response.headers if k.lower() in _METADATA)
+        if instrumented and failure and failure != "injected_fault":
+            _event(events, LifecycleStage.TRANSPORT_ERROR)
         attempt = HTTPAttempt(trace.attempt_count + 1, request, True, True,
-                              failure or "http_response", status, metadata)
+                              failure or "http_response", status, metadata, tuple(events))
         trace = replace(trace, attempts=trace.attempts + (attempt,))
         if failure:
             # Raise outside except: no credential-bearing exception context.

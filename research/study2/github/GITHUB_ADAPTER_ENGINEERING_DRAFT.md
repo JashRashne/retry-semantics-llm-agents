@@ -1,9 +1,123 @@
 DRAFT — ENGINEERING VALIDATION ONLY — NOT PAPER DATA
 
-Study 2 Phase 2B, 2026-09-17. Engineering implementation only; no protocol,
-runner, ambiguity injection, Replay/Regeneration, LLM calls, paper observations,
+Study 2 Phases 2B–2C, 2026-09-17. Engineering implementation only; no protocol,
+runner, live ambiguity injection, Replay/Regeneration, LLM calls, paper observations,
 statistical analysis, or freeze. Study 1 is closed. ZERO Study 2 paper observations.
 Phase 2A semantics (`58fd400`) and contracts are unchanged.
+
+### Phase 2C local lifecycle and deterministic offline faults
+
+**DRAFT — ENGINEERING VALIDATION ONLY — NOT PAPER DATA.** This phase adds
+client-process evidence and offline engineering faults, not an ambiguity protocol.
+Baseline HEAD inspected before edits: `8308fa84860929e7a9f16529ee00e7d310fa792f`.
+The visibility validation files are part of that adapter commit, not a separate
+visibility milestone commit. No commit is made in Phase 2C.
+
+Each instrumented `HTTPAttempt` contains an immutable tuple of frozen
+`LifecycleEvent` values. Sequence numbers start at one per attempt and provide
+ordering; no clock is needed. Events belong to that attempt's existing prepared
+request (method, URL/path, ordered nonsecret headers, exact body bytes/body hex).
+No fingerprint, socket/TLS buffers, Authorization values, exception text, or
+arbitrary metadata is recorded. The only event metadata is a typed fault point.
+
+| Stage | Local evidence | Limits |
+| --- | --- | --- |
+| `REQUEST_PREPARED` | Adapter has prepared the inspectable request, before connection construction. | No connection or transmission evidence; authentication is excluded. |
+| `CONNECT_STARTED` | About to invoke explicit `connect()`. | Does not prove connection establishment or any request send. |
+| `CONNECT_COMPLETED` | `connect()` returned normally. | No HTTP request transmission or provider mutation evidence. |
+| `REQUEST_SEND_STARTED` | About to invoke `endheaders(body or None, encode_chunked=False)`. | No assertion that any byte was sent or that the complete request was sent. |
+| `LOCAL_REQUEST_SEND_COMPLETED` | That `endheaders` operation returned without reporting a local send failure. | **Does not prove provider receipt, execution, mutation commitment, or guaranteed network delivery.** |
+| `RESPONSE_WAIT_STARTED` | About to invoke `getresponse()`. | No HTTP response yet observed. |
+| `RESPONSE_HEADERS_RECEIVED` | `getresponse()` returned an HTTP response after header processing. | Does not prove complete body receipt or mutation success/commitment. |
+| `RESPONSE_BODY_COMPLETED` | `response.read()` returned normally, including an empty body if applicable. | Complete local body read under `http.client` semantics; status/content still need adapter validation. Not universal provider-state evidence. |
+| `TRANSPORT_ERROR` | Local operation failed; safe fixed category on the attempt. | Does not establish provider state or how many bytes were transmitted. |
+| `INJECTED_FAULT` | A chosen deterministic engineering boundary stopped the attempt. | An engineering intervention, not provider behavior. No later response events. |
+
+The installed Python implementation was inspected: `putrequest`/`putheader`
+buffer request-line/header values locally. After explicit connection establishment,
+the transport buffers those values, including authentication privately, and then
+calls `endheaders`. Its `_send_output` sends buffered headers and then the bytes
+body through `send`/socket `sendall`. The send-start/completion events surround
+the **whole `endheaders` call**, not each socket write. Local send completion
+is not a raw wire-byte delivery guarantee. There is no added remote assertion.
+
+`OfflineFaultTransport` requires an explicit trusted fake connection factory
+and an `EngineeringFaultPoint`; it has no live/default factory. The normal
+`https_single_attempt` transport and live smoke have no fault-setting parameter.
+Caller-supplied factories are trusted test code, not certified against networking
+or hidden internal retries. Do not supply a real connection factory for this phase.
+
+* `BEFORE_REQUEST_SEND`: after explicit connect and local header buffering, before
+  `REQUEST_SEND_STARTED`/`endheaders`. Records one terminal fault, zero HTTP POST
+  transmissions, no response wait, and closes the local connection.
+* `AFTER_LOCAL_REQUEST_SEND_BEFORE_RESPONSE`: only after `endheaders` returned
+  normally and local completion was recorded, before response wait/`getresponse`.
+  Records one terminal fault, exactly one HTTP POST transmission in the offline
+  fake, no HTTP response observed, and closes the local connection. **Connection
+  closure implies nothing about provider receipt, execution, or commitment.**
+
+An error during `endheaders` yields send-start without send-completed. This is
+uncertain local partial-send evidence; neither definitely undispatched nor fully
+sent is inferred. Tests include successful header transmission followed by a
+partial body write and failure. A connect error retains connect-start without
+connect-completed. Header/body response failures retain available status evidence;
+body-completed is absent if the read fails. Cleanup is attempted once in `finally`;
+a cleanup exception is suppressed to preserve the original boundary outcome.
+
+Mutation control flow still invokes transport once with no retry/redirect loop;
+`auto_open=0`, one explicit connect, one `endheaders`, and no second connection.
+Faults stop before response processing. HTTP 429/500/redirect responses are read
+once and then rejected by existing status handling. Attempt count denotes boundary
+invocations, including before-send faults, not POST transmissions. GET uses the
+same lifecycle with fresh per-page numbering; observation remains one exhaustive
+traversal, including canonical-path binding, PR exclusion, and deduplication.
+Visibility helper semantics and polling are unchanged.
+
+Validation requires the exact normal ordered prefix, contiguous sequence numbers,
+and no duplicate/skipped normal stages. Failure prefixes are accepted. Terminal
+errors/faults must end the history and have a matching failure outcome. Fault
+points require their exact boundary prefix. A response outcome requires all eight
+normal stages; status presence must agree with header receipt. A successful or
+complete operation trace cannot contain a failed attempt. Historical/opaque
+transports retain an empty lifecycle (explicitly unavailable granular evidence);
+their former transport-boundary flags do not imply local send completion.
+Historical JSON artifacts require no migration and are not rewritten.
+
+Cross-field remediation: nonempty lifecycle requires both `dispatch_started`
+and `dispatch_ended` to be `True`. These legacy adapter transport-boundary flags
+mean the invocation was entered and returned/failed sufficiently to finalize its
+record; they do not establish request transmission, remote receipt, or mutation
+execution. Without header receipt, status must be absent and response metadata
+empty. Header receipt requires status but no particular metadata; sanitized
+metadata/status may survive a later body-read failure. Empty-lifecycle attempts
+retain compatibility. At operation level, `complete` is true exactly when outcome
+is `success`; intermediate post-HTTP-response traces remain incomplete with their
+existing non-success outcome until higher-level validation succeeds.
+Finalized successful operations necessarily contain HTTP-attempt evidence.
+Remediation validation: **391 focused tests passed in 0.23 seconds** and the
+same complete credential-cleared/socket-disabled offline suite passed **1215
+tests in 74.29 seconds**. All 29 prior lifecycle tests remain unchanged; 24
+cross-field tests were added. Both live artifacts retained their SHA-256 hashes,
+and their three embedded historical traces constructed without migration.
+
+Error categories use fixed strings, including `injected_fault`; unknown injected
+transport read-error strings are normalized to `transport_error`. Exceptions are
+raised outside credential-bearing exception handlers. Response metadata retains
+the existing allowlist and token redaction. No Authorization material is serialized.
+
+**No live fault injection or GitHub request occurs in Phase 2C.** No additional
+issue is created or modified. Existing ignored live artifacts remain historical
+engineering evidence. ZERO Study 2 paper observations exist. No Replay,
+Regeneration, LLM, trial/scenario/manifest, paper protocol, or analysis is added;
+Study 1 artifacts and closed experiments remain untouched. Next: hostile audit.
+
+Phase 2C offline validation: focused contracts, semantics, adapter, visibility,
+smoke-gating, and lifecycle tests passed **367 tests in 0.27 seconds**, with
+credentials cleared and sockets disabled. The complete credential-cleared/
+socket-disabled command recorded below and in `GITHUB_SEMANTICS_DRAFT.md` was
+run verbatim: **1191 passed in 79.19 seconds**. The new lifecycle file adds
+29 deterministic tests. `git diff --check` passed; nothing is staged. Both
+historical ignored live artifacts matched their pre-edit SHA-256 hashes.
 
 ### Transport and HTTP attempt boundary
 
