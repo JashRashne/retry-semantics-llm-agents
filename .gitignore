@@ -19,3 +19,6 @@ artifacts/
 *.sqlite
 *.sqlite3
 *.zip
+
+# Phase 2B live GitHub engineering artifacts — never paper data.
+research/study2/engineering/github/live/
