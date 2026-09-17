@@ -1,8 +1,9 @@
 """PROVISIONAL design records; no marker encoding, clients, or dispatch.
 
-Idempotency knowledge is limited to the supplied Study 2 brief. No external
-documentation was fetched in this offline phase. GitHub/Sheets absence of a
-documented create key is not yet established, so these records use UNKNOWN.
+GitHub documentation reconnaissance is recorded in github_semantics.py and
+research/study2/github/GITHUB_SEMANTICS_DRAFT.md; its capability is provisional.
+Sheets/Stripe knowledge remains limited to the supplied Phase 1 brief.
+GitHub/Sheets absence of a documented create key is not established: UNKNOWN.
 """
 
 from retry_semantics.study2.contracts import (
@@ -80,11 +81,11 @@ def _candidate(
 
 GITHUB_ISSUES = _candidate(
     Provider.GITHUB, "create_issue", "list_issues", "issue",
-    "Plausibly embed a pre-dispatch study identifier in writable issue content; location not selected.",
+    "Official create/list docs expose title and raw body as content candidates; field/format and persistence unvalidated. See github_semantics.py.",
     "How will repository scope and markers distinguish runs, families, stale issues, and engineering activity?",
     ProviderIdempotency(
         capability=IdempotencyCapability.UNKNOWN,
-        basis="No client-controlled create-request mechanism established in the supplied brief; documentation audit pending.",
+        basis="Official REST endpoint/general/conditional-request docs and idempotency/deduplication searches did not establish create-request support or its absence; see GITHUB_SEMANTICS_DRAFT.md (2026-09-17).",
         mechanism=None, runtime_key_requirements=(),
     ),
 )
