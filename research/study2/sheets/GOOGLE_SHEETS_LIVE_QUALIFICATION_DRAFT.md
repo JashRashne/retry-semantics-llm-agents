@@ -11,7 +11,14 @@ and required live-validation gates in `SHEETS_LIVE_GO_CHECKLIST_DRAFT.json` must
 be satisfied through separately authorized phases. Credential preparation and
 fixture provision, including any setup API mutations, require separate authorization.
 This status update does not authorize Step 1 or any Google action.
-Implement and audit the absent real TLS connector and authorization gate first.
+Phase 1 offline prerequisites have passed final hostile audit and are frozen; see
+`GOOGLE_SHEETS_LIVE_GO_PHASE1.md`. The connected socket/deadline/wire-capability
+layer, real credential acquisition, TLS/trust qualification, fixture, actual human
+authorization and all remaining BLOCKED/live-validation gates must still be closed
+before execution. The frozen runtime pin is unchanged.
+Use dedicated OAuth user preparation outside transport with the single `drive.file`
+scope and same-app fixture grant, as designed there. No credential/OAuth flow is
+implemented or authorized. Audit and close the remaining prerequisites first.
 Injection of a fake socket is an offline qualification seam, not live permission.
 A fresh journal does not constitute authorization for another live attempt.
 
