@@ -1,9 +1,121 @@
 DRAFT — ENGINEERING VALIDATION ONLY — NOT PAPER DATA
 
-Study 2 Phases 2B–2C, 2026-09-17. Engineering implementation only; no protocol,
-runner, live ambiguity injection, Replay/Regeneration, LLM calls, paper observations,
+Study 2 Phases 2B–2D, 2026-09-17. Engineering implementation only; no protocol,
+runner, live ambiguity execution, Replay/Regeneration, LLM calls, paper observations,
 statistical analysis, or freeze. Study 1 is closed. ZERO Study 2 paper observations.
 Phase 2A semantics (`58fd400`) and contracts are unchanged.
+
+### Phase 2D separate gated ambiguity engineering implementation
+
+**ENGINEERING VALIDATION — LIVE AMBIGUOUS OUTCOME — NOT PAPER DATA.**
+Baseline HEAD inspected before edits: `8dc17dd1b959e442b13bb36e9a7c21a0a2f47b8c`.
+Implementation and validation are offline only. The new command has NOT been run
+live; no GitHub request or new issue occurs during this phase. ZERO Study 2 paper
+observations exist. Hostile audit must precede any separately authorized single
+live ambiguity engineering run. No commit is made.
+
+`scripts/smoke_study2_github_ambiguous.py` is a separate engineering entry point.
+Both its CLI and direct helper require
+`STUDY2_GITHUB_LIVE_AMBIGUITY_ENGINEERING=1` plus matching nonempty
+`STUDY2_GITHUB_TOKEN`, `STUDY2_GITHUB_OWNER`, `STUDY2_GITHUB_REPO`,
+`STUDY2_GITHUB_API_BASE_URL`, and `STUDY2_GITHUB_API_VERSION`.
+`STUDY2_GITHUB_LIVE_ENGINEERING=1` alone cannot activate it. No dotenv is loaded.
+The banner above is printed and flushed before the mutation invocation.
+
+The private `_LiveAmbiguityTransport` is gated at construction and again at
+dispatch. It accepts only its exact pre-prepared configured issue POST and
+consumes its one-use capability even on refusal or failure. It has no configurable
+fault point or connection factory, and rejects GETs. Default transport, normal
+adapter usage and the old normal smoke have no live fault setting.
+
+The helper generates one `ENGINEERING-AMBIGUITY-ONLY-<uuid>` marker before
+dispatch and puts it in controlled expected title/body. This syntax is engineering
+only. It validates content/bounds and exclusively reserves a new artifact file
+before one logical `create_issue` invocation. That invocation enters the existing
+controlled transport at most once: one connection, explicit connect, `auto_open=0`,
+at most one POST `endheaders` call, no redirect, retry, fallback mutation or
+reconnect-and-resend. Any failure before local send completion stops without
+observation or another mutation.
+
+The fixed fault point is `AFTER_LOCAL_REQUEST_SEND_BEFORE_RESPONSE`: immediately
+after `endheaders(...)` returns and `LOCAL_REQUEST_SEND_COMPLETED` is recorded,
+the transport records `INJECTED_FAULT` and raises. The exception exits the
+transport through connection cleanup before `RESPONSE_WAIT_STARTED` or
+`getresponse()`. Adapter dispatch records `injected_fault` and raises its safe
+engineering error; `create_issue` never reaches response status/JSON processing.
+There is no mutation HTTP status, header, body, resource result or create-response
+identity. Closing the connection neither rolls back nor establishes provider
+execution. Local send completion means only that the local send operation returned
+without reporting a failure; receipt, execution, commitment and network delivery
+remain unknown.
+
+Only the exact validated terminal fault trace enables later observation. A fresh
+normal adapter performs GET-only `observe_issues` traversals: `state=all`, all
+reachable pages, existing safe pagination, PR exclusion, scoped LIST identities,
+deduplication, and matching after completion. No create-response identity is used.
+The previous normal engineering finding (POST 201, immediate complete LIST zero,
+later LIST one exact issue) motivates a bounded visibility check, not a general
+visibility guarantee.
+
+The existing `probe_engineering_visibility` helper remains above the adapter and
+preserves every traversal separately. Its POST-201-only input requirement was a
+genuine blocker: Phase 2D minimally extends input validation to accept the exact
+instrumented after-send fault trace. It never fabricates a successful mutation or
+201 status. Existing success-path behavior, convergence logic and engineering
+defaults are unchanged. Default bounds remain at most 3 complete traversals and
+1 second between successful nonconverged traversals; direct engineering invocation
+can set explicit count/interval values before dispatch. There is no hidden polling
+inside `observe_issues()`. These bounds are conveniences, not a paper schedule or
+total wall-clock deadline for DNS/socket operations or paginated enumeration.
+Observation failure stops immediately with unknown match fields; it is not zero.
+
+Provider-state classifications derive exclusively from completed LIST evidence:
+
+* `PROVIDER_STATE_OBSERVED_EXECUTED`: one distinct marker-matching issue with exact
+  expected title/body becomes visible.
+* `PROVIDER_STATE_NOT_OBSERVED_WITHIN_ENGINEERING_WINDOW`: no matching issue is
+  observed before count exhaustion; unresolved/possibly absent in that window,
+  **not proof of non-execution**.
+* `PROVIDER_STATE_MULTIPLE_MATCHES`: multiple distinct marker-matching LIST
+  identities are observed, including across traversals; an anomaly retained even
+  if a later traversal converges to one.
+* `OBSERVATION_FAILED`: failed/incomplete observation; provider state cannot be
+  established. Earlier completed traversal evidence remains available.
+* `PROVIDER_STATE_CONTENT_MISMATCH`: marker matches exist but exact expected
+  content never converges. No exact-content execution conclusion is made.
+
+Pre-boundary failure is separately `MUTATION_STOPPED_BEFORE_EXPECTED_FAULT` with
+no observation; an impossible normal return is `MUTATION_BOUNDARY_VIOLATION`.
+An observation failure takes precedence in the final classification; any earlier
+multiple-match anomaly remains visible in separately retained records/identities.
+
+A future authorized run writes a new exclusively created JSON artifact under the
+already ignored `research/study2/engineering/github/live/` location. It includes
+banner/classification, UTC timestamp, configured target, pre-dispatch marker,
+expected title/body, one logical invocation count, lossless request body hex and
+mutation lifecycle trace, fixed fault point, explicit local send/fault/response
+absence flags, no create-response identity flag, locally ambiguous outcome,
+explicit engineering count/interval bounds, separate indexed GET traversal traces
+and elapsed times, matching LIST identities, per-identity exact title/body checks,
+engineering provider-state classification, passed flag and warnings/limitations.
+No token, Authorization material, raw provider bodies, unsafe exception text or
+secret environment data is serialized; plaintext/hex authentication checks guard
+serialization. Existing artifacts are never overwritten. A disk/process failure
+after mutation may leave an empty/incomplete reserved artifact; durable recovery
+or a guaranteed artifact is not claimed.
+
+No experiment worlds, retry arms, LLM calls, scenarios, replicates, manifest,
+paper evidence rows, analysis or protocol are introduced. Sheets, Stripe and
+closed Study 1 artifacts/experiments remain untouched. Next: hostile audit.
+
+Phase 2D offline validation: **53 new deterministic tests**, **444 focused Study
+2/GitHub tests passed in 0.31 seconds**, and the complete credential-cleared,
+socket-disabled command recorded below passed **1268 tests in 74.02 seconds**.
+All previous lifecycle/visibility/smoke tests remain passing and unchanged.
+`git diff --check` and whitespace checks of both untracked additions passed;
+nothing is staged. Both prior ignored live artifacts retained their original
+SHA-256 hashes. The live ambiguity command was not executed, no GitHub request
+was made, and ZERO Study 2 paper observations still exist.
 
 ### Phase 2C local lifecycle and deterministic offline faults
 

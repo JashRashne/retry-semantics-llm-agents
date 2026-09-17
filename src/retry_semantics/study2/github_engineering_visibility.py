@@ -12,8 +12,28 @@ import math
 import time
 
 from retry_semantics.study2.github_adapter import (
-    EngineeringTrace, GitHubEngineeringError, ObservationResult,
+    EngineeringFaultPoint, EngineeringTrace, GitHubEngineeringError,
+    LifecycleStage, ObservationResult,
 )
+
+
+def is_after_send_ambiguity_trace(trace: EngineeringTrace) -> bool:
+    """Accept only actual instrumented, response-unread after-send fault evidence."""
+    if (not isinstance(trace, EngineeringTrace) or trace.operation != "create_issue"
+            or trace.complete or trace.outcome != "injected_fault" or trace.attempt_count != 1):
+        return False
+    attempt = trace.attempts[0]
+    return (
+        attempt.request.method == "POST" and attempt.outcome == "injected_fault"
+        and attempt.status is None and not attempt.response_metadata
+        and tuple(event.stage for event in attempt.lifecycle) == (
+            LifecycleStage.REQUEST_PREPARED, LifecycleStage.CONNECT_STARTED,
+            LifecycleStage.CONNECT_COMPLETED, LifecycleStage.REQUEST_SEND_STARTED,
+            LifecycleStage.LOCAL_REQUEST_SEND_COMPLETED, LifecycleStage.INJECTED_FAULT,
+        )
+        and attempt.lifecycle[-1].fault_point
+        is EngineeringFaultPoint.AFTER_LOCAL_REQUEST_SEND_BEFORE_RESPONSE
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +75,10 @@ def probe_engineering_visibility(
 ) -> EngineeringVisibilityResult:
     """Check an existing engineering mutation, without creating anything.
 
+    Requires either a successful single-attempt POST-201 trace or the exact
+    instrumented after-send fault trace (no response evidence). The latter is
+    preserved as a failed locally ambiguous mutation, never converted to 201.
+
     Defaults (3 traversals, 1 second between calls) are engineering convenience,
     not experimental semantics. The first traversal starts immediately; sleep
     occurs only between successful, nonconverged traversals with count remaining.
@@ -73,13 +97,14 @@ def probe_engineering_visibility(
     if (type(interval_seconds) not in (int, float)
             or not math.isfinite(interval_seconds) or interval_seconds < 0):
         raise ValueError("finite nonnegative engineering interval required")
-    if (not isinstance(mutation_trace, EngineeringTrace)
-            or mutation_trace.operation != "create_issue"
-            or mutation_trace.outcome != "success" or not mutation_trace.complete
-            or mutation_trace.attempt_count != 1
-            or mutation_trace.attempts[0].request.method != "POST"
-            or mutation_trace.attempts[0].status != 201):
-        raise ValueError("successful single-attempt engineering mutation trace required")
+    successful_mutation = (isinstance(mutation_trace, EngineeringTrace)
+            and mutation_trace.operation == "create_issue"
+            and mutation_trace.outcome == "success" and mutation_trace.complete
+            and mutation_trace.attempt_count == 1
+            and mutation_trace.attempts[0].request.method == "POST"
+            and mutation_trace.attempts[0].status == 201)
+    if not successful_mutation and not is_after_send_ambiguity_trace(mutation_trace):
+        raise ValueError("successful single-attempt engineering mutation trace or after-send fault required")
 
     start = clock()
     records = []

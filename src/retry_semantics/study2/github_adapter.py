@@ -10,6 +10,7 @@ from enum import Enum
 import http.client
 import json
 import math
+import os
 import re
 from urllib.parse import parse_qsl, quote, urlsplit
 
@@ -260,6 +261,50 @@ class OfflineFaultTransport:
                               lifecycle if lifecycle is not None else [], self.fault_point)
 
 
+def _require_live_ambiguity_opt_in(config: GitHubConfig) -> None:
+    """Dedicated engineering gate, also checked immediately before dispatch."""
+    expected = {
+        "STUDY2_GITHUB_TOKEN": config.token,
+        "STUDY2_GITHUB_OWNER": config.owner,
+        "STUDY2_GITHUB_REPO": config.repository,
+        "STUDY2_GITHUB_API_BASE_URL": config.api_base_url,
+        "STUDY2_GITHUB_API_VERSION": config.api_version,
+    }
+    if (os.environ.get("STUDY2_GITHUB_LIVE_AMBIGUITY_ENGINEERING") != "1"
+            or any(os.environ.get(name) != value for name, value in expected.items())):
+        raise ValueError("dedicated ambiguity opt-in and matching runtime configuration required")
+
+
+class _LiveAmbiguityTransport:
+    """Private, gated, one-use POST transport for the separate engineering script.
+
+    No configurable fault point or connection factory. GETs are forbidden here;
+    observation must use a separate adapter with the normal transport.
+    """
+    def __init__(self, config: GitHubConfig, request: EngineeringRequest):
+        _require_live_ambiguity_opt_in(config)
+        if request.method != "POST" or request.url != config.issue_url:
+            raise ValueError("configured engineering issue POST required")
+        self._config = config
+        self._request = request
+        self._used = False
+
+    def __call__(self, request: EngineeringRequest, token: str, timeout: float,
+                 *, lifecycle: list[LifecycleEvent]) -> HTTPResponse:
+        if self._used:
+            raise ValueError("engineering mutation transport already consumed")
+        # Consume even on refusal/failure: no reconnect-and-resend opportunity.
+        self._used = True
+        _require_live_ambiguity_opt_in(self._config)
+        if (request != self._request or request.method != "POST"
+                or token != self._config.token or timeout != self._config.timeout_seconds):
+            raise ValueError("prepared engineering mutation required")
+        return _https_attempt(
+            request, token, timeout, http.client.HTTPSConnection, lifecycle,
+            EngineeringFaultPoint.AFTER_LOCAL_REQUEST_SEND_BEFORE_RESPONSE,
+        )
+
+
 def https_single_attempt(request: EngineeringRequest, token: str, timeout: float,
                          *, lifecycle: list[LifecycleEvent] | None = None) -> HTTPResponse:
     """Fresh verified TLS/HTTP1 connection; no pool, proxy, redirect or retry.
@@ -437,7 +482,8 @@ class GitHubEngineeringAdapter:
         response = None
         failure = None
         events = []
-        instrumented = self._transport is https_single_attempt or isinstance(self._transport, OfflineFaultTransport)
+        instrumented = self._transport is https_single_attempt or isinstance(
+            self._transport, (OfflineFaultTransport, _LiveAmbiguityTransport))
         if instrumented:
             _event(events, LifecycleStage.REQUEST_PREPARED)
         try:
