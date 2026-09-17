@@ -1,0 +1,30 @@
+{
+  "schema": "sheets-live-go-v1-draft",
+  "live_go": "CLOSED",
+  "engineering_only": true,
+  "paper_observations": 0,
+  "items": [
+    {"id": "runtime_local_pin", "status": "PASS OFFLINE", "evidence": "SHEETS_RUNTIME_PIN_DRAFT.json; direct serialization source hash and exact platform release; runtime/source/platform drift tests"},
+    {"id": "token_export_boundary", "status": "PASS OFFLINE", "evidence": "PreparedToken; readiness, immutable slots, 401 terminal, credential-callback refusal tests"},
+    {"id": "credential_acquisition_and_budget", "status": "BLOCKED", "evidence": "No issuer/scope/expiry provenance or justified dispatch budget/clock uncertainty; no OAuth/token acquisition implemented"},
+    {"id": "https_serializer_guard", "status": "PASS OFFLINE", "evidence": "_Connection and _GuardedSocket; real stdlib serialization/parsing with fake connected socket"},
+    {"id": "real_tls_connector_authorization", "status": "BLOCKED", "evidence": "No real connector/CLI exists; default connector disabled; future one-use live authorization and actual TLS path need implementation/audit"},
+    {"id": "zero_hidden_resend_matrix", "status": "PASS OFFLINE", "evidence": "Connect/TLS-like/header/partial/wait/reset/malformed, 2xx/3xx/401/403/404/429/500/503, status-body-loss, deliberate resend tests"},
+    {"id": "ambiguity_replay_boundary", "status": "PASS OFFLINE", "evidence": "One initiation plus completion, no status, explicit policy entry; exact original bytes object; one replay maximum"},
+    {"id": "get_only_capability", "status": "PASS OFFLINE", "evidence": "ReadOnlyVerifier; actual wire GET/path/header guard and mutation/method-override/read-resend attacks"},
+    {"id": "sparse_literal_parser", "status": "PASS OFFLINE", "evidence": "Empty/one/duplicate/unrelated/trailing grid, malformed/incomplete/missing sheet, formula/display distinctions tests"},
+    {"id": "actual_grid_response_shapes", "status": "REQUIRES LIVE VALIDATION", "evidence": "Strict explicit single grid accepted; absent data block remains uncertainty; Google empty/sparse/body framing not yet observed"},
+    {"id": "fixture_template_and_hash", "status": "PASS OFFLINE", "evidence": "fixtures/qualification_fixture_draft.json; null actual IDs/namespace; bound Fixture hash tests"},
+    {"id": "actual_fixture_and_reservation", "status": "BLOCKED", "evidence": "No actual IDs, namespace reservation registry, frozen live manifest or fixture exists"},
+    {"id": "baseline_isolation", "status": "REQUIRES LIVE VALIDATION", "evidence": "Whole 3-column GRID empty baseline; no Tables/formulas/merges/automation/concurrent writers; operator attestation also needed"},
+    {"id": "allowlisted_evidence_and_storage", "status": "PASS OFFLINE", "evidence": "Exclusive JSONL reservation; per-event fsync; lifecycle/status/result/GET summary persistence; storage failure prevents resend"},
+    {"id": "secret_exclusion_selected_inputs", "status": "PASS OFFLINE", "evidence": "Credential-dataflow exclusion/noninterference via typed evidence allowlists; supplemental pre-action raw/lower/upper-hex collision defense; future independently generated 404 status equality and writer-input tests"},
+    {"id": "crash_recovery", "status": "BLOCKED", "evidence": "Power/process-loss durability and recovery not qualified; incomplete artifacts must abort and never cause reissue"},
+    {"id": "hostile_audit_and_freeze", "status": "PASS OFFLINE", "evidence": "v0.3 final hostile freeze-check passed; prior findings resolved; offline live-preparation baseline frozen; LIVE-GO remains closed"},
+    {"id": "separate_live_authorization", "status": "BLOCKED", "evidence": "Current task forbids real credentials/OAuth, live reads/mutations; no new authorization"},
+    {"id": "clean_success_placement", "status": "REQUIRES LIVE VALIDATION", "evidence": "One clean dispatch; full three-cell marker in row 0; actual append placement/preservation unvalidated"},
+    {"id": "live_ambiguity_boundary", "status": "REQUIRES LIVE VALIDATION", "evidence": "Actual TLS send/close before status and hidden-resend instrumentation must be qualified after clean success"},
+    {"id": "visibility_bounds", "status": "BLOCKED", "evidence": "No Sheets read visibility schedule selected; no GitHub schedule transferred; no hidden polling"},
+    {"id": "paper_protocol", "status": "BLOCKED", "evidence": "No final endpoint winner, LLM arms/orchestration, paper collection or observations authorized"}
+  ]
+}
