@@ -22,6 +22,22 @@ implemented or authorized. Audit and close the remaining prerequisites first.
 Injection of a fake socket is an offline qualification seam, not live permission.
 A fresh journal does not constitute authorization for another live attempt.
 
+Phase 2 now supplies frozen offline-tested fixture/reservation, connected GET-only
+wire, same-socket typed TLS evidence persisted before HTTP serialization, final
+raw-send authorization/readiness checks after request-start fsync, explicit spawn
+implementation hashing, monotonic total-deadline and permanent local consumption
+machinery; see `GOOGLE_SHEETS_LIVE_GO_PHASE2.md` and checklist `phase2_update`.
+This is additive current-state provenance, not a change to the frozen steps below.
+The independent Phase 2 audit required repairs; independent re-audit passed with
+verdict SAFE TO FREEZE GOOGLE SHEETS PHASE 2 OFFLINE PREREQUISITES. Phase 2 offline
+prerequisites are frozen; no real read is authorized by this freeze.
+`drive.file` permits same-app-file operations including mutations; LIVE_READ_GO
+is a local wire capability, not a read-only bearer grant. The read path must never
+expose the bearer to a generic mutation-capable client. All real fixture,
+acquisition, trust, actual response-shape and separate human read gates remain outstanding. No genuine
+LIVE_READ_GO, real fixture, token, Google request or paper observation exists from
+this phase. The original runtime pin and qualification steps remain unchanged.
+
 1. Provision an isolated engineering spreadsheet and dedicated GRID sheet under
    separate setup authorization. Bind actual IDs, title, exactly three columns and
    frozen row count into the fixture manifest; store canonical manifest and hash.

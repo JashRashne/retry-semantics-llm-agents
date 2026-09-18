@@ -4,6 +4,55 @@
   "engineering_only": true,
   "paper_observations": 0,
   "phase1_update": {"phase": "GOOGLE SHEETS LIVE-GO CLOSURE \u2014 PHASE 1 FROZEN OFFLINE PREREQUISITES", "baseline_commit": "66f7374", "original_counts": {"PASS OFFLINE": 11, "BLOCKED": 7, "REQUIRES LIVE VALIDATION": 4}, "original_blocked_ids": ["credential_acquisition_and_budget", "real_tls_connector_authorization", "actual_fixture_and_reservation", "crash_recovery", "separate_live_authorization", "visibility_bounds", "paper_protocol"], "audit_scope": "hostile_audit_and_freeze remains scoped to frozen preparation baseline; Phase 1 v0.2 offline prerequisites passed final independent hostile audit with verdict SAFE TO FREEZE PHASE 1 OFFLINE PREREQUISITES and are frozen; LIVE-GO remains CLOSED; no live authorization", "change_policy": "Retain broad parent IDs/status/meaning; add explicit scoped sub-gates; no live-only promotion"},
+  "phase2_update": {
+    "phase": "FROZEN OFFLINE LIVE-GO PHASE 2; INDEPENDENT HOSTILE RE-AUDIT PASSED; FREEZE UNCOMMITTED",
+    "independent_reaudit_verdict": "SAFE TO FREEZE GOOGLE SHEETS PHASE 2 OFFLINE PREREQUISITES",
+    "baseline_commit": "d55ddf8",
+    "document": "GOOGLE_SHEETS_LIVE_GO_PHASE2.md",
+    "live_go": "CLOSED",
+    "live_reads": 0,
+    "live_mutations": 0,
+    "paper_observations": 0,
+    "status_policy": "Original 28 item IDs/status/evidence preserved: 16 PASS OFFLINE, 7 BLOCKED, 5 REQUIRES LIVE VALIDATION. No promotion; below are independently re-audited, frozen offline subconditions only; no live action authorized.",
+    "offline_tested_subconditions": [
+      {
+        "parent_id": "actual_fixture_and_reservation",
+        "scope": "Typed canonical specification/identity, explicit same-app assertion provenance, deterministic namespace, private durable collision-checked local reservation. No actual fixture/grant/reservation provisioned.",
+        "evidence": "sheets_phase2_control.py; qualification_fixture_phase2_template.json; test_study2_sheets_phase2.py"
+      },
+      {
+        "parent_id": "real_tls_connector_authorization",
+        "scope": "Connected GET-only boundary, exact raw-send envelope and final authorization/readiness after request-start fsync; same verified fake TLS socket observation durably recorded before serialization; TLS/storage failure blocks HTTP. One connection/request, no probe/retry; actual TLS/trust/route and mutation/fault boundary remain unqualified.",
+        "evidence": "sheets_phase2_read.py; test_study2_sheets_phase2.py"
+      },
+      {
+        "parent_id": "credential_acquisition_and_budget",
+        "scope": "Authorization-bound total deadline, explicit POSIX spawn source/native hashes, monotonic watchdog/activation/lifeline and decreasing allowance. No hard realtime guarantee, justified production values, real acquisition SDK/source/version, token/grant or clock qualification.",
+        "evidence": "sheets_phase2_read.py; test_study2_sheets_phase2.py"
+      },
+      {
+        "parent_id": "crash_recovery",
+        "scope": "Permanent exclusive file+directory-fsynced local claims, process restart/death/competition and incomplete evidence-prefix tests. No unconsume/resume. Real power loss, storage failure qualification and live incident procedure remain blocked.",
+        "evidence": "sheets_phase2_control.py; sheets_phase2_read.py; test_study2_sheets_phase2.py"
+      },
+      {
+        "parent_id": "separate_live_authorization",
+        "scope": "Inherited operator assertion with LOCAL GET-only enforcement, exact original assertion digest/fixture/runtime/source/root binding, final expiry validation after durable pre-send work. drive.file remains mutation-capable; no generic mutation client in read path. TEST_ONLY assertions only; no genuine authorization issuance.",
+        "evidence": "sheets_phase2_control.py; sheets_phase2_read.py; test_study2_sheets_phase2.py"
+      }
+    ],
+    "frozen_history_policy": "phase1_update, original item evidence and phase1_remaining fields remain historical provenance; this additive metadata states Phase 2 scope without changing their earlier claims.",
+    "non_operational_facts": "No Google/API/OAuth/token acquisition/refresh/DNS/TCP/TLS/live read/mutation/fixture provisioning/paper observation occurred.",
+    "hostile_audit_repair": {
+      "independent_verdict": "REPAIR REQUIRED \u2014 NOT SAFE TO FREEZE YET",
+      "state": "Both blockers repaired; independent hostile re-audit passed; Phase 2 offline prerequisites frozen; no authorization issuance or live action",
+      "authorization_at_send": "Exact assertion digest and LIVE_READ_GO fixture/runtime/source/time validation at raw send after REQUEST_STARTED fsync; repeated remaining-budget token readiness; fresh temporal check after validator CPU work; refusal spends permission and sends zero HTTP bytes in deterministic tests. Clock/send are not atomic under OS scheduling.",
+      "tls_observation": "sheets-phase2-tls-observation-v1 from the exact verified TLS socket: host/SNI/context policy, negotiated protocol/cipher, leaf DER SHA-256 only, ALPN and bounded canonical endpoint. Typed TLS_OBSERVED file-fsynced before HTTP serialization; failure spends claim and blocks HTTP. Fake TLS only; actual_tls_trust_phase1 remains REQUIRES LIVE VALIDATION.",
+      "oauth_capability": "drive.file is not read-only; the bearer permits same-app-file mutations. LIVE_READ_GO is LOCAL wire enforcement; never expose the bearer to a generic mutation-capable read-path client. Scope unchanged.",
+      "spawn_binding": "Explicit 15 relevant Python-source and 4 native implementation file hashes for pinned CPython/macOS POSIX spawn enter Phase 2 runtime authorization binding. No generic enumeration; frozen runtime pin unchanged.",
+      "framing_and_watchdog": "Content-Length-only unchanged; actual_grid_response_shapes remains REQUIRES LIVE VALIDATION. Kill/death detection are not instantaneous; no hard realtime or remote cancellation claim; no retry/reissue."
+    }
+  },
   "items": [
     {"id": "runtime_local_pin", "status": "PASS OFFLINE", "evidence": "SHEETS_RUNTIME_PIN_DRAFT.json; direct serialization source hash and exact platform release; runtime/source/platform drift tests"},
     {"id": "token_export_boundary", "status": "PASS OFFLINE", "evidence": "PreparedToken; readiness, immutable slots, 401 terminal, credential-callback refusal tests"},
