@@ -1,0 +1,17 @@
+{
+  "schema": "sheets-phase3-operator-plan-v1-draft",
+  "executable": false,
+  "live_go": "CLOSED",
+  "configuration": null,
+  "runtime_pin_candidate": null,
+  "expected_head": null,
+  "hostile_audit_approved": false,
+  "private_posix_storage_reviewed": false,
+  "trust_material_stable_for_attempt": false,
+  "clock_basis_reviewed": false,
+  "provisioning_reviewed": false,
+  "credential_metadata": null,
+  "authorization": null,
+  "receipt": null,
+  "paper_observations": 0
+}
