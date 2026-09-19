@@ -240,7 +240,9 @@ def test_create_response_exact_structure(config, reviewed, attack):
     with pytest.raises(credentials.CredentialRefused): setup.validated_identity(canonical_json_bytes(value), config, reviewed)
 
 
-@pytest.mark.parametrize('attack', ['web', 'service-account', 'adc', 'scope', 'auth', 'token', 'redirect', 'extra', 'duplicate', 'mode'])
+@pytest.mark.parametrize('attack', ['web', 'service-account', 'adc', 'scope', 'auth', 'token', 'cert',
+    'redirect', 'extra', 'duplicate', 'inner-duplicate', 'client-id', 'project-id', 'secret-empty',
+    'secret-control', 'mode', 'oversized'])
 def test_client_review_rejects_unknown_or_unsafe_inputs(client, tmp_path, attack):
     value = client_file(client)
     if attack == 'web': value = {'web': value['installed']}
@@ -249,13 +251,21 @@ def test_client_review_rejects_unknown_or_unsafe_inputs(client, tmp_path, attack
     if attack == 'scope': value['installed']['scope'] = 'drive'
     if attack == 'auth': value['installed']['auth_uri'] = 'https://evil.invalid/' + CLIENT_SECRET
     if attack == 'token': value['installed']['token_uri'] = 'https://evil.invalid/' + CLIENT_SECRET
+    if attack == 'cert': value['installed']['auth_provider_x509_cert_url'] = 'https://evil.invalid/' + CLIENT_SECRET
     if attack == 'redirect': value['installed']['redirect_uris'] = ['https://evil.invalid/' + CLIENT_SECRET]
     if attack == 'extra': value['installed']['unknown'] = CLIENT_SECRET
+    if attack == 'client-id': value['installed']['client_id'] = 'invalid-client-id'
+    if attack == 'project-id': value['installed']['project_id'] = 'unsafe project id'
+    if attack == 'secret-empty': value['installed']['client_secret'] = ''
+    if attack == 'secret-control': value['installed']['client_secret'] = 'bad\nsecret'
     path = tmp_path / 'client.json'
     path.write_text(json.dumps(value))
     path.chmod(0o600)
     if attack == 'duplicate': path.write_text('{"installed":{},"installed":{}}')
+    if attack == 'inner-duplicate': path.write_text(json.dumps(value).replace(
+        '"project_id":', '"project_id":"duplicate","project_id":', 1))
     if attack == 'mode': path.chmod(0o644)
+    if attack == 'oversized': path.write_bytes(b' ' * 16385)
     with pytest.raises(credentials.CredentialRefused) as error: setup.review_client(path)
     assert error.value.args == () and error.value.__context__ is None and error.value.__cause__ is None
     assert CLIENT_SECRET not in repr(error.value)
@@ -271,6 +281,109 @@ def test_review_valid_download_excludes_secret_and_secret_hash(client, tmp_path)
     assert setup.review_client(path) == first
     assert CLIENT_SECRET not in json.dumps(first)
     assert sha256_hex(CLIENT_SECRET.encode()) not in json.dumps(first)
+
+
+def test_legacy_auth_metadata_review_uses_current_runtime_endpoint(client, tmp_path):
+    value = client_file(client)
+    value['installed']['auth_uri'] = setup.LEGACY_AUTH_METADATA_URI
+    path = tmp_path / 'client.json'
+    path.write_text(json.dumps(value))
+    path.chmod(0o600)
+    review = setup.review_client(path)
+    loaded = setup.load_client_config(path, reviewed_public_hash=review['public_sha256'])
+    assert review['public_sha256'] == client.public_hash
+    assert review['public'] == loaded.public_projection()
+    assert review['public']['auth_uri'] == credentials.AUTH_URI
+    assert credentials.DesktopPreparer(loaded).authorization_url('http://127.0.0.1:12345/').startswith(
+        credentials.AUTH_URI + '?')
+    assert CLIENT_SECRET not in json.dumps(review)
+
+
+def test_current_auth_metadata_review_still_accepted(client, tmp_path):
+    path = tmp_path / 'client.json'
+    path.write_text(json.dumps(client_file(client)))
+    path.chmod(0o600)
+    assert setup.review_client(path)['public_sha256'] == client.public_hash
+
+
+@pytest.mark.parametrize('auth_uri', [
+    'https://evil.invalid', 'http://accounts.google.com/o/oauth2/auth',
+    'https://accounts.google.com/', 'https://accounts.google.com/o/oauth2/auth.evil',
+    'https://accounts.google.com/o/oauth2/auth?next=evil',
+    'https://accounts.google.com/o/oauth2/v2/auth#fragment',
+    'https://accounts.google.com.evil.invalid/o/oauth2/v2/auth',
+])
+def test_phase4_rejects_other_auth_metadata(client, tmp_path, auth_uri):
+    value = client_file(client)
+    value['installed']['auth_uri'] = auth_uri
+    path = tmp_path / 'client.json'
+    path.write_text(json.dumps(value))
+    path.chmod(0o600)
+    with pytest.raises(credentials.CredentialRefused):
+        setup.review_client(path)
+    with pytest.raises(credentials.CredentialRefused):
+        setup.load_client_config(path, reviewed_public_hash=client.public_hash)
+
+
+def test_legacy_review_and_acquisition_share_public_hash_binding(offline, client, prepared, tmp_path, monkeypatch):
+    value = client_file(client)
+    value['installed']['auth_uri'] = setup.LEGACY_AUTH_METADATA_URI
+    path = tmp_path / 'client.json'
+    path.write_text(json.dumps(value))
+    path.chmod(0o600)
+    review = setup.review_client(path)
+    assert review == offline['review']
+    with pytest.raises(credentials.CredentialRefused):
+        setup.load_client_config(path, reviewed_public_hash='0' * 64)
+    monkeypatch.setattr(credentials, 'load_client_config',
+        lambda *a, **kw: pytest.fail('frozen Phase 3 loader called'))
+    seen = []
+    def fake_acquire(self, **kwargs):
+        seen.append(self._config.public_hash)
+        assert self._config.public_projection() == review['public']
+        assert self._config.client_secret == CLIENT_SECRET
+        return prepared
+    monkeypatch.setattr(credentials.DesktopPreparer, 'acquire', fake_acquire)
+    assert setup.acquire(**offline, client_path=path, execute_oauth=True,
+        operator_confirmation=credentials.ACQUISITION_CONFIRMATION,
+        present_url=lambda _: pytest.fail('unexpected browser')) == prepared
+    assert seen == [review['public_sha256']]
+    evidence = b''.join(p.read_bytes() for p in Path(offline['config'].storage_root).iterdir() if p.is_file())
+    assert CLIENT_SECRET.encode() not in evidence
+    assert sha256_hex(CLIENT_SECRET.encode()).encode() not in evidence
+
+
+def test_legacy_acquisition_rejects_substituted_public_client(offline, client, tmp_path, monkeypatch):
+    value = client_file(replace(client, client_id='999-other.apps.googleusercontent.com'))
+    value['installed']['auth_uri'] = setup.LEGACY_AUTH_METADATA_URI
+    path = tmp_path / 'client.json'
+    path.write_text(json.dumps(value))
+    path.chmod(0o600)
+    monkeypatch.setattr(credentials.DesktopPreparer, 'acquire',
+        lambda *a, **kw: pytest.fail('substituted client reached OAuth'))
+    with pytest.raises(credentials.CredentialRefused):
+        setup.acquire(**offline, client_path=path, execute_oauth=True,
+            operator_confirmation=credentials.ACQUISITION_CONFIRMATION,
+            present_url=lambda _: pytest.fail('unexpected browser'))
+    assert not offline['config'].path('oauth-intent.json').exists()
+
+
+@pytest.mark.parametrize('attack', ['symlink', 'hardlink', 'mode', 'oversized'])
+def test_compat_acquisition_loader_rejects_unsafe_client_file(client, tmp_path, attack):
+    path = tmp_path / 'client.json'
+    value = client_file(client)
+    value['installed']['auth_uri'] = setup.LEGACY_AUTH_METADATA_URI
+    path.write_text(json.dumps(value))
+    path.chmod(0o600)
+    if attack == 'symlink':
+        link = tmp_path / 'link.json'
+        link.symlink_to(path)
+        path = link
+    if attack == 'hardlink': os.link(path, tmp_path / 'other.json')
+    if attack == 'mode': path.chmod(0o644)
+    if attack == 'oversized': path.write_bytes(b' ' * 16385)
+    with pytest.raises(credentials.CredentialRefused):
+        setup.load_client_config(path, reviewed_public_hash=client.public_hash)
 
 
 @pytest.mark.parametrize('n', ['minimum_handoff_seconds', 'authorization_seconds', 'consent_seconds', 'exchange_seconds', 'create_seconds'])

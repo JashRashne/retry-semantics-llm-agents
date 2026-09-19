@@ -19,11 +19,42 @@ from retry_semantics.study2 import sheets_phase4_control as control
 
 CREATE_CONFIRMATION = "EXPLICIT_ONE_ENGINEERING_FIXTURE_CREATE"
 CREATE_FIELDS = "spreadsheetId,properties(title),sheets(properties(sheetId,title,sheetType,gridProperties(rowCount,columnCount)))"
+LEGACY_AUTH_METADATA_URI = "https://accounts.google.com/o/oauth2/auth"
+
+
+@credentials.secret_safe
+def load_client_config(path: Path, *, reviewed_public_hash: str):
+    """Accept two Google Desktop auth metadata values; keep the frozen runtime endpoint."""
+    p2.digest(reviewed_public_hash)
+    p2.require(isinstance(path, Path) and path.is_absolute() and ".." not in path.parts
+               and not path.is_relative_to(frozen.ROOT)
+               and not any(p.is_symlink() for p in (path, *path.parents)))
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        p2._private_fd(fd)
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            body = stream.read(16385)
+        p2.require(len(body) <= 16384)
+    finally:
+        os.close(fd)
+    obj = p2.strict_json(body)
+    p2.require(type(obj) is dict and set(obj) == {"installed"})
+    value = obj["installed"]
+    p2.require(type(value) is dict and set(value) == {"client_id", "project_id", "auth_uri",
+        "token_uri", "auth_provider_x509_cert_url", "client_secret", "redirect_uris"})
+    p2.require(type(value["auth_uri"]) is str and value["auth_uri"] in
+               (credentials.AUTH_URI, LEGACY_AUTH_METADATA_URI)
+               and value["token_uri"] == credentials.TOKEN_URI
+               and value["auth_provider_x509_cert_url"] == "https://www.googleapis.com/oauth2/v1/certs"
+               and value["redirect_uris"] == ["http://localhost"])
+    client = credentials.ClientConfig(value["client_id"], value["client_secret"], value["project_id"])
+    p2.require(client.public_hash == reviewed_public_hash)
+    return client
 
 
 @credentials.secret_safe
 def review_client(path: Path):
-    """Accept the frozen exact download shape; no secret hash or error context."""
+    """Review the exact Desktop shape; no secret hash or error context."""
     p2.require(path.is_absolute() and ".." not in path.parts
                and not path.is_relative_to(frozen.ROOT)
                and not any(p.is_symlink() for p in (path, *path.parents)))
@@ -41,9 +72,9 @@ def review_client(path: Path):
     p2.require(type(value) is dict)
     candidate = credentials.ClientConfig(value.get("client_id"), value.get("client_secret"),
                                          value.get("project_id"))
-    # Frozen loader checks all keys/endpoints/redirects/modes, including a second
-    # bounded read. It deliberately does not hash the secret-bearing document.
-    client = credentials.load_client_config(path, reviewed_public_hash=candidate.public_hash)
+    # The same Phase 4 loader used at acquisition makes a second bounded read.
+    # Neither read hashes or persists the secret-bearing document.
+    client = load_client_config(path, reviewed_public_hash=candidate.public_hash)
     return control.validate_review({"schema": "sheets-phase4-client-review-v1",
         "public": client.public_projection(), "public_sha256": client.public_hash})
 
@@ -61,7 +92,7 @@ def acquire(config, review, attestation, pin, client_path, *, execute_oauth,
     p2.require(execute_oauth is True and operator_confirmation == credentials.ACQUISITION_CONFIRMATION)
     p2.require(client_path.is_absolute() and not client_path.is_relative_to(frozen.ROOT))
     p2.require(control.offline_preflight(config, review, attestation, pin)["status"] == "PASS")
-    client = credentials.load_client_config(client_path, reviewed_public_hash=review["public_sha256"])
+    client = load_client_config(client_path, reviewed_public_hash=review["public_sha256"])
     p3.write_json(config.path("oauth-intent.json"), oauth_intent(config, review))
     token, metadata = credentials.DesktopPreparer(client).acquire(
         operator_confirmation=operator_confirmation, present_url=present_url,
