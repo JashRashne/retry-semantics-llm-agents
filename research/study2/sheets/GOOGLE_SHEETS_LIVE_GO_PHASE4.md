@@ -1,10 +1,10 @@
 # Google Sheets LIVE-GO Closure — Phase 4
 
-**DRAFT OPERATIONAL LIVE-GO PHASE 4 — LIVE-GO CLOSED — ZERO SHEETS PAPER OBSERVATIONS**
+**FROZEN OFFLINE PHASE 4 DESIGN — LIVE-GO CLOSED — ZERO SHEETS PAPER OBSERVATIONS**
 
 Paper: *Replay or Regenerate? Retry Semantics for State-Mutating LLM Agent Tool Calls Under Ambiguous Outcomes*. Academic byline: **J. Rashne**.
 
-This is the final proposed pre-live setup slice, pending independent ChatGPT hostile audit and independent Phase 3 clean-room re-audit. It is neither frozen nor permission to execute setup. Entry HEAD was `9967146176e9e507768577e99fdaa40b5d821d6d`, clean. Frozen Phase 1/2/3 implementation, tests, runtime pin, templates and history are inherited unchanged. Study 1 is immutable. Study 2 roadmap remains GitHub, Google Sheets, Stripe TEST MODE. Offline engineering tests are not paper data. Real OAuth acquisition, fixture creation, genuine LIVE_READ_GO, Sheets live reads, Sheets live mutations and Sheets paper observations remain **0**; first live qualification remains prohibited.
+This pre-live setup design was frozen at `2ad300227cc786829ed3efa598c66d838493f39a`, then corrected for real Google Desktop OAuth metadata and refrozen at `6525ddbe3e2eadb2dc55d301914e75ed41f8dfe6`. The independent Phase 3 clean-room re-audit and Phase 4 hostile audit passed. Concrete offline preparation through real client review, startup attestation, offline pin generation and Phase 4 preflight also passed at the corrective freeze. None of those results authorizes live setup; this documentation correction itself requires a later audited freeze and refreshed external pins before another offline preflight. Frozen Phase 1/2/3 implementation, tests, runtime pin, templates and history are inherited unchanged. Study 1 is immutable. Study 2 roadmap remains GitHub, Google Sheets, Stripe TEST MODE. Offline engineering tests are not paper data. Real OAuth acquisition, fixture creation, genuine LIVE_READ_GO, Sheets live reads, Sheets live mutations and Sheets paper observations remain **0**; first live qualification has not begun.
 
 ## Provider design and scope
 
@@ -24,7 +24,7 @@ The narrow setup command sends one `POST https://sheets.googleapis.com/v4/spread
 
 The file title includes the retained reservation label to aid manual incident reconciliation; it is **not** an idempotency key. Sheet ID 1 avoids omitted-default-zero ambiguity. Exactly one worksheet, 100 rows, three columns; no values, formulas, tables, merges, ACL changes or app-property mutation. The positive response must have exactly the selected structure, matching title/extent/type/ID and a valid actual spreadsheet ID. HTTP 200, single bounded Content-Length UTF-8 JSON is required. Unsupported real framing fails closed. No provider SDK, redirect following, auth middleware, mutation retry or automatic cleanup.
 
-OAuth happens first because create needs a token. The same acquired token, client/app and operator-attested dedicated account then perform setup and the subsequent GET. There is no hidden refresh, account lookup, discovery, listing, probe or additional Sheets request. The later GET is locally restricted despite the mutation-capable scope. The resident session separates the setup POST and GET by distinct human commands and capabilities. Frozen Phase 1's earlier separate-credential/process provisioning proposal is operationally refined here: one resident transient bearer is deliberately reused, with separate setup authorization and a distinct one-use read assertion. This shared trusted-process choice needs hostile audit.
+OAuth happens first because create needs a token. The same acquired token, client/app and operator-attested dedicated account then perform setup and the subsequent GET. There is no hidden refresh, account lookup, discovery, listing, probe or additional Sheets request. The later GET is locally restricted despite the mutation-capable scope. The resident session separates the setup POST and GET by distinct human commands and capabilities. Frozen Phase 1's earlier separate-credential/process provisioning proposal is operationally refined here: one resident transient bearer is deliberately reused, with separate setup authorization and a distinct one-use read assertion. The hostile audit passed with this shared trusted-process choice and its documented limitations.
 
 ## Explicit real-input schemas
 
@@ -32,7 +32,7 @@ Installed client input: explicit absolute private path, downloaded JSON, outer o
 
 `client-review.json`: exact Phase 4 schema, `public` equal to the Phase 3 public identity projection with the current `/v2/auth` runtime endpoint, `public_sha256` over that projection alone. Secret changes do not alter this hash. Client secrets, raw client JSON and secret hashes never enter evidence. Both review and acquisition use the same Phase 4 compatibility loader; acquisition must match the reviewed public hash.
 
-`operator.json`: exact `OperatorConfiguration` dataclass fields, with nested exact Phase 3 RuntimeConfiguration fields. The repository draft has `expected_head: null` and is deliberately unusable. The future operator must insert the independently audited **full Phase 4 commit**, never automatically take current HEAD as approved.
+`operator.json`: exact `OperatorConfiguration` dataclass fields, with nested exact Phase 3 RuntimeConfiguration fields. The tracked template intentionally retains `expected_head: null` and is unusable as an operational configuration. The external private `operator.json` receives the independently audited full frozen commit; its corrective Phase 4 value was `6525ddbe3e2eadb2dc55d301914e75ed41f8dfe6`. After this documentation correction is audited and frozen, the external expected head must be rebound to that later full SHA, never automatically taken from the current checkout.
 
 `acquisition.json`: exact frozen `AcquisitionMetadata.projection()`, including requested/granted scope, Bearer, exchange-start expiry, Python version, public client hash, independent account alias, bounds, uncertainty and refresh persistence none. It is not token introspection or remote account identity proof. Never persist the compatibility-only Phase 1 `CredentialProvenance.evidence()` (its library label is inherited and incorrect for stdlib acquisition).
 
@@ -50,7 +50,7 @@ The frozen Phase 3 token parser rejects unrecognized response fields, including 
 
 ## Concrete operational budgets
 
-All values below are explicit draft engineering controls, not measured Google latencies or scientific variables. They are editable only in the reviewed private operator configuration and all enter the runtime hash.
+All values below are explicit frozen engineering controls, not measured Google latencies or scientific variables. They are editable only in the reviewed private operator configuration and all enter the runtime hash.
 
 | Setting | Seconds | Basis |
 | --- | ---: | --- |
@@ -78,15 +78,15 @@ DNS/TCP/TLS/etc are **allocations**, not independently enforced stage timeouts: 
 
 ## Startup and trust decision
 
-Accept the trusted-local-operator/machine model **as a draft decision subject to hostile audit**. Parent trust inventory checks before each action, before read and after return bind current default CA material. Frozen Phase 2 builds the verifying context later in its child. A change-and-restore race is not cryptographically prevented. Stable trust/runtime/route through the entire session is an explicit operational prerequisite. Root/admin/same-UID tamper, previously injected code, transparent interceptors and full OS sandboxing remain outside the model. Local inventories never establish the actual Google peer/route.
+The hostile-audited design uses the trusted-local-operator/machine model with the following limits. Parent trust inventory checks before each action, before read and after return bind current default CA material. Frozen Phase 2 builds the verifying context later in its child. A change-and-restore race is not cryptographically prevented. Stable trust/runtime/route through the entire session is an explicit operational prerequisite. Root/admin/same-UID tamper, previously injected code, transparent interceptors and full OS sandboxing remain outside the model. Local inventories never establish the actual Google peer/route.
 
 The clean-session launch below starts a fresh no-startup-files shell with a minimal environment. No proxy/CA overrides, SSL keylog, Google/ADC discovery, GIT/LD/DYLD/Python injection settings. No package, source, interpreter, VPN/proxy, root certificates/system trust or clock adjustments during session. All nine explicit startup flags are required; they are assertions, not measured facts. Storage and clean expected HEAD are also checked. The attestation is deterministic, contains public runtime hash and fixed assumptions, never ambient environment values. No administrator-modification-prevention claim.
 
 ## Runtime pin and storage review
 
-Phase 4 pin binds expected full commit/clean-tree requirement, interpreter resolved identity and inherited version/binary/stdlib/native/lock/platform identity, Phase 1/2/3/4 sources, Phase 4 draft procedure/config template/runner, operator config, client review, trust inventory and schema versions. It additionally records resolved path and file SHA-256 for the directly relevant `_socket` and `fcntl` native extensions, absent from inherited explicit module pins. If either lacks a stable file representation, the Phase 4 gate fails closed pending review; a module name or version is not presented as a content hash. Pre-setup pin has fixture null; after reviewed actual creation, the separate read pin adds the complete descriptor. This is an explicit local pin step, not a trust refresh. Startup remains bound to the unchanged pre-setup projection. Each action recomputes and compares it. Drift of these selected components, trust, source, budget, client identity, fixture and configuration changes alters projection/hash or fails repository/runtime gates. The projection is **not** an exhaustive cryptographic inventory of all code, native libraries, OS services or privileged changes capable of affecting execution. The current uncommitted slice **must BLOCK** operational preflight. Expected Phase 4 commit cannot be known before audit and later authorized freeze; no commit is made here.
+Phase 4 pin binds expected full commit/clean-tree requirement, interpreter resolved identity and inherited version/binary/stdlib/native/lock/platform identity, Phase 1/2/3/4 sources, Phase 4 procedure/config template/runner, operator config, client review, trust inventory and schema versions. It additionally records resolved path and file SHA-256 for the directly relevant `_socket` and `fcntl` native extensions, absent from inherited explicit module pins. If either lacks a stable file representation, the Phase 4 gate fails closed pending review; a module name or version is not presented as a content hash. Pre-setup pin has fixture null; after reviewed actual creation, the separate read pin adds the complete descriptor. This is an explicit local pin step, not a trust refresh. Startup remains bound to the unchanged pre-setup projection. Each action recomputes and compares it. Drift of these selected components, trust, source, budget, client identity, fixture and configuration changes alters projection/hash or fails repository/runtime gates. The projection is **not** an exhaustive cryptographic inventory of all code, native libraries, OS services or privileged changes capable of affecting execution. Because the source projection includes this document, this uncommitted correction intentionally blocks operational preflight. After a docs-only audit and freeze, external `operator.json` expected head, `startup.json` and `offline-pin.json` must be regenerated for the new commit and source hash before preflight runs again.
 
-Storage root (future): `/Users/jashrashne/Library/Application Support/RetrySemantics/sheets-phase4-first-read`; persistent, outside repo, private local POSIX disk. Dedicated parent `RetrySemantics` and root/registry 0700. No symlink ancestry, group/world-writable immediate parent, foreign-owner entries, hard links, nonregular files, unknown root filenames or modes. Operator must review local disk fsync/flock semantics, backup/indexing/terminal and host capture policies; storage-check does not detect backup agents or prove power-loss durability.
+Operational storage root: `/Users/jashrashne/Library/Application Support/RetrySemantics/sheets-phase4-first-read`; persistent, outside repo, private local POSIX disk. Dedicated parent `RetrySemantics` and root/registry 0700. No symlink ancestry, group/world-writable immediate parent, foreign-owner entries, hard links, nonregular files, unknown root filenames or modes. Operator must review local disk fsync/flock semantics, backup/indexing/terminal and host capture policies; storage-check does not detect backup agents or prove power-loss durability.
 
 | Location under root | Mode / creation | Contents / retention |
 | --- | --- | --- |
@@ -105,13 +105,13 @@ Storage root (future): `/Users/jashrashne/Library/Application Support/RetrySeman
 
 No automatic file deletion, overwrite, claim refund, registry reset or cleanup. Fsync failure leaves poisoned residue. Stop and preserve it. Exclusive local creation does not create a global/provider idempotency key. Do not change storage root/ID to evade uncertainty. No temporary bearer file is implemented.
 
-## Exact future operator sequence (DO NOT EXECUTE IN PHASE 4)
+## Exact future live operator sequence (NOT YET EXECUTED)
 
-Only after independent hostile audit, separately authorized freeze/commit and explicit real OAuth/setup permission. These commands are prepared instructions, not execution authority. Do not issue LIVE_READ_GO until actual post-setup PASS.
+Only after this documentation correction has been independently audited and frozen, external configuration and pins have been rebound, offline preflight has passed again, and explicit real OAuth/setup permission has been given. These commands are prepared instructions, not execution authority. Do not issue LIVE_READ_GO until actual post-setup PASS.
 
 1. Obtain the audited full Phase 4 commit from the freeze review. Checkout it under that later permission, verify clean tree. Run regression before the live session. No dependency download/update during session.
 2. Establish independently clock <=2s, dedicated reviewed app/project/account, API enabled/consent configured, no existing unrelated data/default-domain sharing/automation/writers, local trusted disk and capture controls. Cloud/API configuration is a separately authorized human setup prerequisite, not a hidden API call in this tool.
-3. Prepare explicit downloaded installed-client outside repo, 0600, no links; never paste secrets in the shell. Choose its absolute path below. Verify parent permissions and no backup/indexing of secret input. Create storage exactly once under later setup authorization. Existing root means inspect/review, never reset.
+3. For a new operational package, prepare an explicit downloaded installed-client outside repo, 0600, no links; never paste secrets in the shell. Choose its absolute path below. Verify parent permissions and no backup/indexing of secret input. Create storage exactly once under later setup authorization. The current package already has a reviewed client, root and offline artifacts. The following block records the original one-time bootstrap semantics; do not rerun its `mkdir` or exclusive artifact-creation lines against that package. Its external configuration and pins need a separately reviewed rebind after the documentation-only freeze. Existing root means inspect/review, never reset.
 
 ```sh
 cd /Users/jashrashne/Desktop/retry_semantics
@@ -261,27 +261,27 @@ Exact qualification commands, from repository root:
 git diff --check
 ```
 
-Final operational-package qualification (real network/browser disabled; the runner prints its exact `pytest.main([...])` invocation, returned `QUALIFICATION_EXIT_CODE`, and `QUALIFICATION_RUNNER_EXIT_CODE`; launch failure is explicit):
+Latest corrective Phase 4 regression qualification (real network/browser disabled; the runner prints its exact `pytest.main([...])` invocation, returned `QUALIFICATION_EXIT_CODE`, and `QUALIFICATION_RUNNER_EXIT_CODE`; launch failure is explicit):
 
 | Suite | Pass count |
 | --- | ---: |
-| Phase4 focused, warnings as errors | 255 |
-| All Sheets, normal | 1165 |
-| All Sheets, warnings as errors | 1165 |
-| All Study2, warnings as errors | 1609 |
+| Phase4 focused, warnings as errors | 277 |
+| All Sheets, normal | 1187 |
+| All Sheets, warnings as errors | 1187 |
+| All Study2, warnings as errors | 1631 |
 | Forbidden parent network/browser calls | 0 in each run |
 | git diff --check and added-file whitespace checks | PASS |
 
-The delivery report records final command results. Warnings-as-errors also applies to inherited spawned helpers. No operational PASS is asserted for the current dirty/uncommitted draft.
+The final direct Study 2 qualification reported `1631 passed`, `QUALIFICATION_EXIT_CODE: 0`, `QUALIFICATION_RUNNER_EXIT_CODE: 0`, and zero forbidden parent network/browser calls. Warnings-as-errors also applies to inherited spawned helpers. Concrete operational preflight passed at clean corrective commit `6525ddbe3e2eadb2dc55d301914e75ed41f8dfe6`; this document change must be frozen and its external pins refreshed before preflight can pass again.
 
-## Checklist impact and remaining audit
+## Checklist impact and remaining live validation
 
 Only additive `phase4_update` metadata is added to the evolving checklist. All inherited metadata and28 items/status/evidence remain unchanged: **16 PASS OFFLINE, 7 BLOCKED, 5 REQUIRES LIVE VALIDATION**. New operator commands do not promote live-dependent items.
 
-Remaining BLOCKED: credential_acquisition_and_budget (real acquisition/client/clock/setup approval), real_tls_connector_authorization (actual trust/peer/route and later mutation boundary), actual_fixture_and_reservation (real creation/provenance/reservation), separate_live_authorization (operational audit/clean committed pin/genuine human GO), crash_recovery (real storage/power-loss/live incidents), visibility_bounds (no schedule), paper_protocol (no protocol/data authorization).
+Remaining BLOCKED: credential_acquisition_and_budget (real acquisition/setup approval), real_tls_connector_authorization (actual trust/peer/route and later mutation boundary), actual_fixture_and_reservation (real creation/provenance/reservation), separate_live_authorization (fresh clean committed pin after this correction/genuine human GO), crash_recovery (real storage/power-loss/live incidents), visibility_bounds (no schedule), paper_protocol (no protocol/data authorization).
 
 Remaining REQUIRES LIVE VALIDATION: actual_grid_response_shapes, baseline_isolation, clean_success_placement, live_ambiguity_boundary, actual_tls_trust_phase1. First GET can inform only read/TLS/current-baseline subconditions. Mutation work waits for independent read-result review and freeze. Study2 still includes Stripe TEST MODE.
 
-Audit must accept or reject: trusted stable session instead of atomic child trust binding; the same transient bearer across distinctly approved setup/read and anonymous spawn IPC; strict real OAuth/create/read framing, including optional token-field rejection; operator account/client/control/clock attestation rather than remote introspection; unresolved creation requiring a separate incident plan; shared coarse diagnostic categories; selected rather than exhaustive native/runtime pinning; transient application handoff versus OS capture/swap limits; bounded setup operations without hard overall setup watchdog; fixed persistent root retention and no reset/copy escape under trusted operator model. Independent Phase 3 clean-room re-audit remains pending. Expected Phase4 commit is deliberately unresolved until audited later freeze. This phase commits/pushes/freezes nothing and grants no live setup/read permission.
+The passed hostile audit retains these operational limits and live-only risks: trusted stable session instead of atomic child trust binding; the same transient bearer across distinctly approved setup/read and anonymous spawn IPC; strict real OAuth/create/read framing, including optional token-field rejection; operator account/client/control/clock attestation rather than remote introspection; unresolved creation requiring a separate incident plan; shared coarse diagnostic categories; selected rather than exhaustive native/runtime pinning; transient application handoff versus OS capture/swap limits; bounded setup operations without hard overall setup watchdog; fixed persistent root retention and no reset/copy escape under trusted operator model. Real provider OAuth behavior, create/read framing and empty-grid shape remain unvalidated. The independent Phase 3 clean-room re-audit passed; its known limitations remain. No mutation or ambiguity injection has begun. This documentation correction is uncommitted pending its own audit and grants no live setup/read permission.
 
-**READY FOR CHATGPT HOSTILE AUDIT — NOT FROZEN — LIVE-GO CLOSED — ZERO SHEETS PAPER OBSERVATIONS**
+**PHASE 4 CORRECTIVE FREEZE `6525ddbe3e2eadb2dc55d301914e75ed41f8dfe6` — DOCUMENTATION CORRECTION PENDING AUDIT — LIVE-GO CLOSED — ZERO SHEETS PAPER OBSERVATIONS**
