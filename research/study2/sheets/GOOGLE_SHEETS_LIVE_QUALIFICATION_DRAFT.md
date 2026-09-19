@@ -129,3 +129,17 @@ Visible 403/404/429/500/503 and other errors are terminal HTTP results for this
 qualification; retain status and stop. A 2xx with lost body retains its status and
 cannot enter replay qualification. Parser/transport/body-framing failures never
 become zero marker matches. Evidence failure never triggers a mutation retry.
+
+## Additive Phase 4 first-read operational proposal
+
+See `GOOGLE_SHEETS_LIVE_GO_PHASE4.md` for the draft restricted resident-session
+OAuth/setup commands, one-create/no-repeat uncertainty handling, nonsecret client
+review, concrete budgets, trusted stable startup, explicit operational pins,
+separate offline/post-setup gates and genuine human issuance/one-GET commands.
+Phase 4 is not frozen or execution permission. The original fifteen qualification
+steps and abort conditions above are unchanged historical mutation-roadmap
+instructions; Phase 4 supplies a narrower first-read sequence only. No OAuth,
+fixture, authorization, Google request or paper observation is produced by it.
+LIVE-GO stays CLOSED; all inherited checklist statuses remain unchanged.
+Read-result review/freeze must precede any mutation work. Study 2 retains GitHub,
+Google Sheets and Stripe TEST MODE.

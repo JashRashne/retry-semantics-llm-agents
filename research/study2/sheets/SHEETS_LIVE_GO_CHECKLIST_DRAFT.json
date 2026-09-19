@@ -152,5 +152,55 @@
         "evidence": "sheets_phase3_control.py; test_study2_sheets_phase3.py"
       }
     ]
+  },
+  "phase4_update": {
+    "phase": "DRAFT OPERATIONAL LIVE-GO PHASE 4 \u2014 LIVE-GO CLOSED \u2014 ZERO SHEETS PAPER OBSERVATIONS",
+    "baseline_commit": "9967146",
+    "document": "GOOGLE_SHEETS_LIVE_GO_PHASE4.md",
+    "audit_state": "READY FOR INDEPENDENT CHATGPT HOSTILE AUDIT \u2014 NOT FROZEN",
+    "offline_frozen": false,
+    "live_go": "CLOSED",
+    "live_reads": 0,
+    "live_mutations": 0,
+    "paper_observations": 0,
+    "status_policy": "All inherited items/status/evidence and Phase 1/2/3 metadata preserved: 16 PASS OFFLINE, 7 BLOCKED, 5 REQUIRES LIVE VALIDATION. Draft operator procedures add offline subcondition evidence only; no live fact or parent promoted.",
+    "draft_offline_subconditions": [
+      {
+        "parent_id": "credential_acquisition_and_budget",
+        "scope": "Explicit installed-client public review, one-shot frozen PKCE acquisition command, ephemeral parent-to-worker PreparedToken handoff over anonymous spawn IPC, concrete runtime-bound allocations/clock/lifetime. Actual client, OAuth, grant/account and clock remain unresolved.",
+        "evidence": "sheets_phase4_setup.py; sheets_phase4_control.py; sheets_phase4_operator.py; SHEETS_PHASE4_OPERATOR_CONFIGURATION_DRAFT.json; test_study2_sheets_phase4.py"
+      },
+      {
+        "parent_id": "actual_fixture_and_reservation",
+        "scope": "Exactly one separately confirmed same-app sheets.create intent; durable exclusive no-repeat record; typed uncertainty never becomes provenance; explicit review, descriptor and permanent reservation commands. No actual fixture/provenance/reservation.",
+        "evidence": "sheets_phase4_setup.py; test_study2_sheets_phase4.py"
+      },
+      {
+        "parent_id": "real_tls_connector_authorization",
+        "scope": "Explicit trusted local stable startup assumption and attestation, clean source/runtime/trust/config pin with drift refusal; non-atomic frozen-child trust loading remains an audit limit; no actual TLS/peer/route.",
+        "evidence": "sheets_phase4_control.py; GOOGLE_SHEETS_LIVE_GO_PHASE4.md; test_study2_sheets_phase4.py"
+      },
+      {
+        "parent_id": "separate_live_authorization",
+        "scope": "Distinct pre-setup and post-setup local gates; explicit exact LIVE_READ_GO/hash confirmation with 120-second lifetime, durable one-shot issuance/read intents, Phase 4 companion receipt and exactly one frozen Phase 3 wrapper invocation. Synthetic test assertions only; no genuine GO.",
+        "evidence": "sheets_phase4_operator.py; test_study2_sheets_phase4.py"
+      },
+      {
+        "parent_id": "crash_recovery",
+        "scope": "Explicit outside-repository private storage/retention/fsync review, unresolved create/crash no-repeat and local inspection/recovery; no automatic repair/refund/listing/cleanup. Real disk/power-loss/live incident facts unresolved.",
+        "evidence": "GOOGLE_SHEETS_LIVE_GO_PHASE4.md; sheets_phase4_control.py; test_study2_sheets_phase4.py"
+      }
+    ],
+    "remaining_operational_facts": [
+      "independent Phase 4 hostile audit and later separately authorized freeze/commit",
+      "explicit real OAuth/setup authorization",
+      "actual installed client/consent/account and acquisition",
+      "actual one-shot fixture creation, evidence/provenance review and reservation",
+      "independently established clock/stable trust/session/private disk/capture controls",
+      "clean approved Phase 4 full commit and actual operational pins",
+      "explicit genuine human LIVE_READ_GO",
+      "actual one GET qualification and independent result review/freeze"
+    ],
+    "non_operational_facts": "Official public documentation search and trapped fake/offline tests only. No operational Google/OAuth DNS/TCP/TLS/API/browser/token/fixture/genuine authorization/read/mutation/paper data. No commit/push/freeze."
   }
 }

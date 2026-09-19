@@ -1,0 +1,33 @@
+{
+  "storage_root": "/Users/jashrashne/Library/Application Support/RetrySemantics/sheets-phase4-first-read",
+  "expected_head": null,
+  "account_alias": "sheets_engineering_account",
+  "operator_alias": "J_Rashne",
+  "reservation_id": "sheets_phase4_first_fixture",
+  "authorization_id": "sheets_phase4_first_read",
+  "read": {
+    "dns_seconds": 5,
+    "tcp_seconds": 5,
+    "tls_seconds": 10,
+    "tls_evidence_seconds": 3,
+    "construction_seconds": 3,
+    "evidence_fsync_seconds": 5,
+    "status_seconds": 10,
+    "body_seconds": 10,
+    "parser_seconds": 3,
+    "verifier_seconds": 6,
+    "safety_seconds": 10,
+    "clock_uncertainty_seconds": 2,
+    "max_response_bytes": 262144,
+    "max_cell_characters": 512,
+    "registry_root": "/Users/jashrashne/Library/Application Support/RetrySemantics/sheets-phase4-first-read/registry",
+    "operator_basis": "phase4_first_read_conservative_allocation",
+    "schema": "sheets-phase3-runtime-configuration-v1"
+  },
+  "minimum_handoff_seconds": 900,
+  "authorization_seconds": 120,
+  "consent_seconds": 300,
+  "exchange_seconds": 30,
+  "create_seconds": 30,
+  "schema": "sheets-phase4-operator-configuration-v1"
+}
