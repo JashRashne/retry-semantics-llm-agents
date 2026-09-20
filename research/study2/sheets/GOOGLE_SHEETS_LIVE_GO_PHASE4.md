@@ -142,6 +142,7 @@ Operational storage root: `/Users/jashrashne/Library/Application Support/RetrySe
 | client-review.json, startup.json, offline-pin.json | 0600 O_EXCL | Nonsecret review and local pins, permanent; regenerated only in a fresh package |
 | supersession.json | 0600, exclusive hard-link activation | Nonsecret predecessor reference in a fresh pre-live successor |
 | acquisition-attempt.json | 0600, exclusive hard-link activation | Nonsecret predecessor reference in a fresh reviewed acquisition attempt |
+| unused-acquisition-supersession.json | 0600, exclusive hard-link activation | Nonsecret, operator-attested successor of an accepted but unused acquisition |
 | oauth-intent.json, acquisition.json | 0600 O_EXCL, file+parent fsync | Spent acquisition intent and safe metadata, permanent |
 | create-intent.json, create-result.json | 0600 O_EXCL, file+parent fsync | One create intent/typed outcome; permanent even partial |
 | provisioning.json, fixture.json, read-pin.json, conditions.json | 0600 O_EXCL, file+parent fsync | Explicit reviewed provenance and local binding, permanent |
@@ -182,6 +183,73 @@ Creation uses exclusive `mkdir`, private exclusive writes, directory fsyncs, a p
 ```sh
 .venv/bin/python -m retry_semantics.study2.sheets_phase4_operator new-acquisition-attempt --configuration "$SPENT_P4/operator.json" --new-expected-head AUDITED_NEW_FULL_SHA --operator-confirmation EXPLICIT_REVIEWED_NEW_ACQUISITION_ATTEMPT
 ```
+
+## Reviewed successor after an accepted, unused acquisition
+
+OAuth attempt #4 succeeded under `594c95f`: its `oauth-intent.json` and accepted
+`acquisition.json` are present, while `acquisition-failure.json` is absent. The
+resident session reached `phase4>` and the operator intentionally entered
+`stop` before provisioning. CREATE/READ framing was subsequently qualified and
+frozen at `bb8c1d2`. No Sheets create, provisioning, genuine `LIVE_READ_GO`,
+Sheets GET, Sheets mutation or paper observation occurred; paper observations
+remain **0**. The #4 package is historical evidence and must remain untouched.
+
+`supersede-unused-acquisition` is a distinct offline transition. Its predecessor
+must have the complete valid offline package, exactly one valid OAuth intent,
+an accepted acquisition metadata artifact bound to the reviewed client,
+account and runtime clock allowance, and an empty registry. It may have one
+valid earlier provenance record. Acquisition failure, every Sheets setup/read
+artifact, an unknown root entry, or any registry entry blocks it. The existing
+`new-acquisition-attempt` still rejects accepted `acquisition.json`; this
+transition does not call that failed-acquisition path.
+
+The operator supplies a separately audited clean new HEAD and
+`EXPLICIT_UNUSED_ACQUISITION_SESSION_STOPPED`, attesting that the resident
+session ended before provisioning. This fact cannot be inferred from files.
+The accepted `acquisition.json` contains only exact nonsecret metadata and
+`refresh_persistence: none`; the bearer was transient in the resident process.
+The exact predecessor package inventory excludes a persisted token or refresh
+credential. Stopping the session discards its resident state, so this workflow
+requires a fresh OAuth acquisition under the new source. This makes no claim
+that Google revoked the old token, that any copied token is cryptographically
+unusable, or that the remote authorization grant disappeared.
+
+The successor has the fixed one-shot sibling basename
+`sheets-phase4-unused-acquisition-successor-<full SHA-256>`. The digest is over
+canonical nonsecret data containing the absolute predecessor root path. The
+107-byte ASCII basename is independent of both predecessor basename length and
+the supplied new HEAD. Before creation, `PC_NAME_MAX` is read from the actual
+parent filesystem and a missing, invalid or too-small limit fails closed. During
+storage inspection, the predecessor path in the record must be a valid sibling
+and must recompute to the current successor path; a bare dedicated-prefix root
+without activated provenance is refused. Exclusive creation prevents another
+successor even after a later source change. A successful short successor may
+itself undergo the ordinary pre-live supersession if source changes again before
+OAuth.
+Its initial contents are only a new `operator.json` bound to the supplied HEAD,
+an empty `registry/`, and `unused-acquisition-supersession.json` with schema
+`sheets-phase4-reviewed-unused-acquisition-supersession-v1`. The nonsecret record
+binds predecessor/successor paths and heads, hashes of the predecessor public
+operator, OAuth intent and accepted acquisition metadata, the exact allowed
+filenames, the operator's stop attestation, and requirements for a new client
+review, startup/offline pin and separately approved OAuth. No bearer, refresh
+material, prior review, acquisition, or Sheets evidence is copied.
+
+Creation follows the existing exclusive-directory, private-write, file fsync,
+directory fsync, pending-provenance and hard-link activation sequence. The
+predecessor is checked again before and after the final link. A crash, collision
+or concurrent change leaves no usable successor or leaves visible blocked
+residue; there is no cleanup or automatic retry. The predecessor's bytes remain
+unchanged. Inspect reports the missing fresh review/startup/pin, and preflight
+remains `LIVE-GO CLOSED` until those offline steps pass. Passing them does not
+authorize a new OAuth attempt or any Sheets action.
+
+```sh
+.venv/bin/python -m retry_semantics.study2.sheets_phase4_operator supersede-unused-acquisition --configuration "$ACCEPTED_UNUSED_P4/operator.json" --new-expected-head AUDITED_NEW_FULL_SHA --operator-confirmation EXPLICIT_UNUSED_ACQUISITION_SESSION_STOPPED
+```
+
+This command is for a later independently audited and frozen checkout. Its
+presence in the source grants no live-action permission.
 
 ## Remaining controlled live operator sequence
 

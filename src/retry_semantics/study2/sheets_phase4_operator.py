@@ -55,9 +55,18 @@ def phase4_receipt(config, pin, attestation, authorization, receipt):
 
 def inspect_artifacts(config, review):
     control.storage_check(config)
-    control.validate_review(review)
+    fresh_unused = config.path("unused-acquisition-supersession.json").exists()
+    if review is None:
+        p2.require(fresh_unused and not config.path("client-review.json").exists())
+    else:
+        control.validate_review(review)
     output = {"network": "not-performed", "operator": config.projection(), "client_review": review,
               "present": [n for n in control.FILES if config.path(n).exists()], "next_action": "review-no-retry"}
+    if fresh_unused and not config.path("acquisition.json").exists():
+        output["next_action"] = ("fresh-client-review-required" if review is None else
+                                 "fresh-startup-offline-pin-required" if not config.path("startup.json").exists()
+                                 or not config.path("offline-pin.json").exists() else
+                                 "fresh-oauth-requires-separate-approval")
     if config.path("acquisition.json").exists():
         output["acquisition"] = inherited._metadata(p3.load_json(config.path("acquisition.json"))).projection()
     if config.path("create-intent.json").exists():
@@ -304,6 +313,10 @@ def main(argv=None):
     new_attempt.add_argument("--configuration", type=Path, required=True)
     new_attempt.add_argument("--new-expected-head", required=True)
     new_attempt.add_argument("--operator-confirmation", required=True)
+    unused = subs.add_parser("supersede-unused-acquisition")
+    unused.add_argument("--configuration", type=Path, required=True)
+    unused.add_argument("--new-expected-head", required=True)
+    unused.add_argument("--operator-confirmation", required=True)
     for name in ("startup", "phase4-preflight", "session", "inspect", "recover"):
         sub = subs.add_parser(name)
         sub.add_argument("--configuration", type=Path, required=True)
@@ -330,10 +343,16 @@ def main(argv=None):
             p2.require(args.configuration == config.path("operator.json"))
             result = control.new_acquisition_attempt(config, args.new_expected_head,
                                                      args.operator_confirmation)
+        elif args.command == "supersede-unused-acquisition":
+            config = inherited._typed(p3.load_json(args.configuration), control.OperatorConfiguration)
+            p2.require(args.configuration == config.path("operator.json"))
+            result = control.supersede_unused_acquisition(config, args.new_expected_head,
+                                                          args.operator_confirmation)
         else:
             config = inherited._typed(p3.load_json(args.configuration), control.OperatorConfiguration)
             p2.require(args.configuration == config.path("operator.json"))
-            review = p3.load_json(config.path("client-review.json"))
+            review = (p3.load_json(config.path("client-review.json"))
+                      if config.path("client-review.json").exists() else None)
             if args.command == "inspect":
                 result = inspect_artifacts(config, review)
             elif args.command == "recover":
@@ -348,8 +367,9 @@ def main(argv=None):
                 p3.write_json(config.path("offline-pin.json"), control.runtime_projection(config, review))
                 result = {"network": "not-performed", "startup_sha256": control.hash_public(value)}
             elif args.command == "phase4-preflight":
-                result = control.offline_preflight(config, review, p3.load_json(config.path("startup.json")),
-                                                  p3.load_json(config.path("offline-pin.json")))
+                result = control.offline_preflight(config, review,
+                    p3.load_json(config.path("startup.json")) if config.path("startup.json").exists() else None,
+                    p3.load_json(config.path("offline-pin.json")) if config.path("offline-pin.json").exists() else None)
             else:
                 return resident_session(config, args.client, execute_oauth=args.execute_oauth,
                                         operator_confirmation=args.operator_confirmation)
