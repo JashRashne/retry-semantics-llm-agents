@@ -9,7 +9,7 @@ closed. Study 2 paper observations remain **0**. The roadmap remains GitHub,
 Google Sheets, **Stripe TEST MODE**.
 
 Freeze-pass statements below describe the original Phase 3 offline audit, before
-any real OAuth attempt. A later separately authorized attempt is recorded under
+any real OAuth attempt. Later separately authorized attempts are recorded under
 the callback contract and does not change the original freeze-pass results.
 
 The independent ChatGPT hostile audit completed with verdict:
@@ -152,26 +152,30 @@ scope inclusion. It does not open a browser. A later explicit `acquire` call req
 exchange timeout values. A manual UI callback presents the URL; it must not log
 or persist URL/state. A random-port IPv4 loopback listener receives exactly one
 bounded callback. Exact loopback origin/path, one code, constant-time state match,
-no fragment and no extra/duplicate query parameters are required. A later real
-Google authorization redirect exposed an RFC 9207 `iss` field: a successful callback
-must have exactly one each of `code`, `state` and `iss`, with `iss` exactly
-`https://accounts.google.com`. Missing, altered or duplicate issuer values and
-unknown fields fail closed; the expected issuer is fixed in code, not taken from
+no fragment and no extra/duplicate query parameters are required. Real Google
+authorization redirects exposed RFC 9207 `iss` and a `scope` field: a successful
+callback must have exactly one each of `code`, `state`, `iss` and `scope`, with `iss`
+exactly `https://accounts.google.com` and decoded `scope` exactly
+`https://www.googleapis.com/auth/drive.file`. Missing, altered or duplicate issuer
+or scope values and unknown fields fail closed; neither expected value is taken from
 downloaded client metadata or network discovery. An error callback with exactly
 `error`, `state` and the same valid `iss` is still refused without exchange. This is not
 deprecated copy/paste OOB authentication. The token POST includes authorization_code,
 the same redirect and verifier. No DPoP, refresh, retry or second exchange exists.
 [Google desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app).
 
-After the original Phase 3 freeze, one separately authorized real Google OAuth
-attempt reached the loopback callback with `code`, `state` and
-`iss=https://accounts.google.com`. The then-frozen parser rejected `iss` as an
-unexpected field before any token POST. The package retained its spent OAuth intent;
-no successful acquisition artifact was accepted locally. No fixture, genuine
+After the original Phase 3 freeze, separately authorized real Google OAuth attempt
+#1 reached the loopback callback with `code`, `state` and
+`iss=https://accounts.google.com`. Its then-frozen parser rejected `iss` before any
+token POST. Attempt #2 used a fresh reviewed package and reached a callback with
+exactly `code`, `state`, `iss` and `scope`; the issuer matched and the scope was
+exactly `https://www.googleapis.com/auth/drive.file`. Its then-frozen parser rejected
+the unexpected `scope` before token exchange. Both packages retain spent OAuth
+intents; neither accepted a local acquisition artifact. No fixture, genuine
 `LIVE_READ_GO`, Sheets GET, Sheets mutation or paper observation followed. Paper
-observations remain **0**. This local failure does not establish what Google may
-have issued remotely; the spent package is not retried or reset. A reviewed new
-attempt requires a fresh package and separate authorization.
+observations remain **0**. These local failures establish no further claim about
+what Google may have issued remotely. Neither spent package is retried or reset; a
+reviewed attempt #3 requires another fresh package and separate authorization.
 
 The successful response must be bounded strict JSON with acceptable bounded access
 token, finite positive numeric `expires_in` (no bool), exact granted scope set
@@ -547,7 +551,7 @@ selected. At the original Phase 3 offline freeze, no real acquisition had been p
 1. Does the stdlib one-shot acquisition contract, exact Google download/callback/
    response shape and manual loopback handling qualify without an external total
    acquisition watchdog? At the original Phase 3 offline freeze, no real endpoint
-   shape had yet been observed; the later attempt established only the callback shape.
+   shape had yet been observed; the later attempts established only callback shapes.
 2. Is the compatibility-only use of frozen CredentialProvenance acceptable while
    never persisting its incorrect hardcoded library evidence projection?
 3. Can reviewed stable CA files/clean startup suffice for the frozen child, or must

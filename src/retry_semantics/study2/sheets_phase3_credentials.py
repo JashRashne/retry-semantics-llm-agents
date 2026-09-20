@@ -214,13 +214,14 @@ class DesktopPreparer:
         parts = urlsplit(callback_url)
         require(not parts.fragment and parts.scheme + "://" + parts.netloc + parts.path == redirect_uri)
         args = parse_qs(parts.query, strict_parsing=True, keep_blank_values=True)
-        require(set(args) in ({"code", "state", "iss"}, {"error", "state", "iss"})
+        require(set(args) in ({"code", "state", "iss", "scope"}, {"error", "state", "iss"})
                 and all(len(v) == 1 for v in args.values()))
         require(args["iss"][0] == CALLBACK_ISSUER
                 and hmac.compare_digest(args["state"][0], self._state))
         if "error" in args:
             require(0 < len(args["error"][0]) <= 4096)
             raise CredentialRefused()
+        require(args["scope"][0] == p1.SCOPE)
         require(0 < len(args["code"][0]) <= 4096)
         from retry_semantics.study2.sheets_phase3_control import environment_gate
         environment_gate()

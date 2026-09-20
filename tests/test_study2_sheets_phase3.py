@@ -28,6 +28,8 @@ from test_study2_sheets_phase2 import FakeTLS, Wire, payload
 SECRET = "ya29.nonsecret-hostile-phase3-bearer"
 REFRESH = "1//nonsecret-hostile-refresh"
 CLIENT_SECRET = "nonsecret-hostile-client-secret"
+CALLBACK_ISSUER = "&iss=https%3A%2F%2Faccounts.google.com"
+CALLBACK_SCOPE = "&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file"
 
 
 @pytest.fixture(autouse=True)
@@ -296,7 +298,7 @@ def test_fake_token_exchange_one_post_no_retry_or_refresh(config, monkeypatch):
         def close(self): calls.append("close")
     monkeypatch.setattr(credentials.http.client, "HTTPSConnection", Connection)
     uri = "http://127.0.0.1:12345/"
-    callback = uri + "?code=TEST_ONLY_code&state=" + session._state + "&iss=https%3A%2F%2Faccounts.google.com"
+    callback = uri + "?code=TEST_ONLY_code&state=" + session._state + CALLBACK_ISSUER + CALLBACK_SCOPE
     token, metadata = session._exchange(callback, uri, account_alias="engineering_account",
         clock_uncertainty_seconds=1, timeout_seconds=10)
     assert type(token) is frozen.PreparedToken and metadata.public_config_sha256 == config.public_hash
@@ -306,7 +308,7 @@ def test_fake_token_exchange_one_post_no_retry_or_refresh(config, monkeypatch):
     assert session._verifier == session._state == ""
 
 
-@pytest.mark.parametrize("query", ["code=x&state=wrong&iss=https%3A%2F%2Faccounts.google.com",
+@pytest.mark.parametrize("query", ["code=x&state=wrong" + CALLBACK_ISSUER + CALLBACK_SCOPE,
                                     "error=access_denied", "code=x&state=y&scope=drive",
                                     "code=x&code=y&state=z", "code=x", "code=&state=y"])
 def test_callback_refusal_spends_session_no_connect(config, query):
@@ -317,6 +319,37 @@ def test_callback_refusal_spends_session_no_connect(config, query):
     assert session._used
 
 
+@pytest.mark.parametrize("scope_fields,extra", [
+    ("", ""),  # Missing scope fails closed.
+    ("&scope=", ""),
+    ("&scope=drive", ""),
+    (CALLBACK_SCOPE + CALLBACK_SCOPE, ""),
+    (CALLBACK_SCOPE + "%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fspreadsheets", ""),
+    (CALLBACK_SCOPE + "%20drive", ""),
+    (CALLBACK_SCOPE + "%2F", ""),
+    ("&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2FDrive.file", ""),
+    (CALLBACK_SCOPE + "%3Fx%3D1", ""),
+    (CALLBACK_SCOPE + "%23fragment", ""),
+    ("&scope=https%3A%252F%252Fwww.googleapis.com%2Fauth%2Fdrive.file", ""),
+    (CALLBACK_SCOPE, "&unexpected=1"),
+    (CALLBACK_SCOPE, "&code=second"),
+    (CALLBACK_SCOPE, "&state=second"),
+])
+def test_callback_scope_and_extra_fields_refused_before_token_endpoint(
+        config, monkeypatch, scope_fields, extra):
+    session = credentials.DesktopPreparer(config)
+    monkeypatch.setattr(credentials.ssl, "create_default_context",
+                        lambda **kw: pytest.fail("TLS context after invalid callback"))
+    monkeypatch.setattr(credentials.http.client, "HTTPSConnection",
+                        lambda *a, **kw: pytest.fail("token endpoint after invalid callback"))
+    uri = "http://127.0.0.1:12345/"
+    callback = uri + "?code=TEST_ONLY_code&state=" + session._state + CALLBACK_ISSUER + scope_fields + extra
+    with pytest.raises(credentials.CredentialRefused):
+        session._exchange(callback, uri, account_alias="engineering_account",
+                          clock_uncertainty_seconds=1, timeout_seconds=10)
+    assert session._used and session._state == session._verifier == ""
+
+
 @pytest.mark.parametrize("suffix", [
     "",  # Missing issuer fails closed under the observed Google callback contract.
     "&iss=http%3A%2F%2Faccounts.google.com",
@@ -325,7 +358,7 @@ def test_callback_refusal_spends_session_no_connect(config, query):
     "&iss=https%3A%2F%2FAccounts.google.com",
     "&iss=https%3A%2F%2Faccounts.google.com%3Fx%3D1",
     "&iss=https%3A%2F%2Faccounts.google.com%23x",
-    "&iss=https%3A%2F%2Faccounts.google.com&scope=drive",
+    "&iss=https%3A%2F%2Faccounts.google.com&extra=1",
     "&iss=https%3A%2F%2Faccounts.google.com&iss=https%3A%2F%2Faccounts.google.com",
 ])
 def test_callback_issuer_refusal_before_network(config, monkeypatch, suffix):
@@ -334,21 +367,24 @@ def test_callback_issuer_refusal_before_network(config, monkeypatch, suffix):
                         lambda **kw: pytest.fail("TLS context after invalid callback"))
     uri = "http://127.0.0.1:12345/"
     with pytest.raises(credentials.CredentialRefused):
-        session._exchange(uri + "?code=TEST_ONLY_code&state=" + session._state + suffix, uri,
+        session._exchange(uri + "?code=TEST_ONLY_code&state=" + session._state + CALLBACK_SCOPE + suffix, uri,
                           account_alias="engineering_account", clock_uncertainty_seconds=1,
                           timeout_seconds=10)
     assert session._used and session._state == session._verifier == ""
 
 
-@pytest.mark.parametrize("issuer", ["https%3A%2F%2Faccounts.google.com",
-                                      "https%3A%2F%2Faccounts.google.com%2F"])
-def test_error_callback_with_issuer_refused_without_exchange(config, monkeypatch, issuer):
+@pytest.mark.parametrize("issuer,scope", [
+    ("https%3A%2F%2Faccounts.google.com", ""),
+    ("https%3A%2F%2Faccounts.google.com%2F", ""),
+    ("https%3A%2F%2Faccounts.google.com", CALLBACK_SCOPE),
+])
+def test_error_callback_with_issuer_refused_without_exchange(config, monkeypatch, issuer, scope):
     session = credentials.DesktopPreparer(config)
     monkeypatch.setattr(credentials.ssl, "create_default_context",
                         lambda **kw: pytest.fail("TLS context after error callback"))
     uri = "http://127.0.0.1:12345/"
     with pytest.raises(credentials.CredentialRefused):
-        session._exchange(uri + "?error=access_denied&state=" + session._state + "&iss=" + issuer,
+        session._exchange(uri + "?error=access_denied&state=" + session._state + "&iss=" + issuer + scope,
                           uri, account_alias="engineering_account", clock_uncertainty_seconds=1,
                           timeout_seconds=10)
     assert session._used and session._state == session._verifier == ""
@@ -576,7 +612,7 @@ def test_exclusive_artifact_pair_no_overwrite(tmp_path):
 def test_oauth_exchange_failure_one_attempt_secret_safe(config, monkeypatch, fault):
     session = credentials.DesktopPreparer(config)
     uri = "http://127.0.0.1:12345/"
-    callback = uri + "?code=TEST_ONLY_code&state=" + session._state + "&iss=https%3A%2F%2Faccounts.google.com"
+    callback = uri + "?code=TEST_ONLY_code&state=" + session._state + CALLBACK_ISSUER + CALLBACK_SCOPE
     calls = []
     class Response:
         status = 401 if fault == "status" else 200
@@ -634,7 +670,7 @@ def test_fake_loopback_manual_consent_acquisition_no_browser(config, monkeypatch
     def present(url):
         args = parse_qs(urlsplit(url).query)
         callback_paths.append("/?code=TEST_ONLY_code&state=" + args["state"][0]
-                              + "&iss=https%3A%2F%2Faccounts.google.com")
+                              + CALLBACK_ISSUER + CALLBACK_SCOPE)
     def exchange_once(callback, redirect, **kw):
         assert callback == redirect[:-1] + callback_paths[0]
         return token, metadata
