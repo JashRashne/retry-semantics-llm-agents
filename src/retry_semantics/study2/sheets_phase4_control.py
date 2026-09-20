@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+import time
 
 from retry_semantics.serialization import canonical_json_bytes, sha256_hex
 from retry_semantics.study2 import sheets_live_preparation as frozen
@@ -19,6 +20,7 @@ from retry_semantics.study2 import sheets_phase3_operator as operator
 BASE = "9967146176e9e507768577e99fdaa40b5d821d6d"
 FILES = ("operator.json", "client-review.json", "startup.json", "offline-pin.json", "supersession.json",
          "acquisition-attempt.json", "unused-acquisition-supersession.json",
+         "unused-read-authorization-supersession.json", "fixture-adoption.json",
          "oauth-intent.json", "acquisition-failure.json", "acquisition.json", "create-intent.json", "create-result.json",
          "provisioning.json", "fixture.json", "read-pin.json", "conditions.json",
          "issue-intent.json", "authorization.json", "phase3-receipt.json", "phase4-receipt.json",
@@ -29,16 +31,25 @@ ASSUMPTIONS = ("trusted_local_operator_machine", "no_concurrent_source_runtime_c
                "no_terminal_recording_or_core_dumps", "hostile_audit_approved")
 PRELIVE_FILES = frozenset(("operator.json", "client-review.json", "startup.json",
                           "offline-pin.json", "supersession.json", "acquisition-attempt.json",
-                          "unused-acquisition-supersession.json"))
+                          "unused-acquisition-supersession.json",
+                          "unused-read-authorization-supersession.json"))
 SUPERSESSION_CONFIRMATION = "EXPLICIT_OFFLINE_PRELIVE_SUPERSESSION"
 NEW_ACQUISITION_CONFIRMATION = "EXPLICIT_REVIEWED_NEW_ACQUISITION_ATTEMPT"
 UNUSED_ACQUISITION_CONFIRMATION = "EXPLICIT_UNUSED_ACQUISITION_SESSION_STOPPED"
+UNUSED_READ_CONFIRMATION = "EXPLICIT_UNUSED_READ_AUTHORIZATION_EXPIRED_WITHOUT_DISPATCH"
 SPENT_OAUTH_FILES = frozenset(("operator.json", "client-review.json", "startup.json",
     "offline-pin.json", "oauth-intent.json"))
 ACQUIRED_UNUSED_FILES = SPENT_OAUTH_FILES | {"acquisition.json"}
 PREDECESSOR_PROVENANCE = (set(), {"supersession.json"}, {"acquisition-attempt.json"},
-                          {"unused-acquisition-supersession.json"})
+                          {"unused-acquisition-supersession.json"},
+                          {"unused-read-authorization-supersession.json"})
 UNUSED_SUCCESSOR_PREFIX = "sheets-phase4-unused-acquisition-successor-"
+UNUSED_READ_SUCCESSOR_PREFIX = "sheets-phase4-unused-read-successor-"
+UNUSED_READ_REQUIRED = frozenset(("operator.json", "client-review.json", "startup.json",
+    "offline-pin.json", "oauth-intent.json", "acquisition.json", "create-intent.json",
+    "create-result.json", "provisioning.json", "fixture.json", "read-pin.json",
+    "conditions.json", "issue-intent.json", "authorization.json", "phase3-receipt.json",
+    "phase4-receipt.json"))
 
 
 def hash_public(value):
@@ -55,6 +66,17 @@ def _unused_acquisition_successor_root(predecessor_root):
     digest = hash_public({"schema": "sheets-phase4-unused-acquisition-successor-name-v1",
                           "predecessor_root": raw})
     return root.with_name(UNUSED_SUCCESSOR_PREFIX + digest)
+
+
+def _unused_read_successor_root(predecessor_root):
+    p2.require(type(predecessor_root) is str or isinstance(predecessor_root, Path))
+    raw = str(predecessor_root)
+    root = Path(raw)
+    p2.require(root.is_absolute() and ".." not in root.parts and str(root) == raw
+               and not root.is_relative_to(frozen.ROOT))
+    digest = hash_public({"schema": "sheets-phase4-unused-read-successor-name-v1",
+                          "predecessor_root": raw})
+    return root.with_name(UNUSED_READ_SUCCESSOR_PREFIX + digest)
 
 
 def validate_acquisition_failure(value):
@@ -142,7 +164,10 @@ def storage_check(config):
     record_path = root / "supersession.json"
     attempt_path = root / "acquisition-attempt.json"
     unused_path = root / "unused-acquisition-supersession.json"
-    p2.require(sum(path.exists() for path in (record_path, attempt_path, unused_path)) <= 1)
+    unused_read_path = root / "unused-read-authorization-supersession.json"
+    read_successor = root.name.startswith(UNUSED_READ_SUCCESSOR_PREFIX) and successor is None
+    p2.require(sum(path.exists() for path in (record_path, attempt_path, unused_path,
+                                             unused_read_path)) <= 1)
     if attempt or attempt_path.exists():
         p2.require(attempt is not None and attempt.group(2) == config.expected_head)
         record = p3.load_json(attempt_path)
@@ -226,8 +251,150 @@ def storage_check(config):
         p2.require(type(record["offline_files_present"]) is list
                    and record["offline_files_present"] in (
                        sorted(ACQUIRED_UNUSED_FILES | extra) for extra in PREDECESSOR_PROVENANCE))
+    if read_successor or unused_read_path.exists():
+        p2.require(read_successor)
+        record = p3.load_json(unused_read_path)
+        p2.require(type(record) is dict and set(record) == {
+            "schema", "predecessor_root", "predecessor_expected_head", "predecessor_operator_sha256",
+            "predecessor_evidence_sha256", "predecessor_authorization_sha256",
+            "predecessor_fixture_sha256", "successor_root", "successor_expected_head",
+            "successor_authorization_id", "prior_authorization_expired_unused",
+            "fresh_review_startup_oauth_adoption_required", "transitioned_at", "review_confirmation"}
+            and record["schema"] == "sheets-phase4-expired-unused-read-supersession-v1"
+            and record["successor_root"] == config.storage_root
+            and record["successor_expected_head"] == config.expected_head
+            and record["successor_authorization_id"] == config.authorization_id
+            and record["prior_authorization_expired_unused"] is True
+            and record["fresh_review_startup_oauth_adoption_required"] is True
+            and record["review_confirmation"] == UNUSED_READ_CONFIRMATION)
+        frozen._number(record["transitioned_at"], positive=True)
+        predecessor = Path(record["predecessor_root"])
+        p2.require(predecessor.parent == root.parent and predecessor != root
+                   and root == _unused_read_successor_root(predecessor)
+                   and not any(path.is_symlink() for path in (predecessor, *predecessor.parents)))
+        old_config = operator._typed(p3.load_json(predecessor / "operator.json"), OperatorConfiguration)
+        p2.require(old_config.storage_root == str(predecessor)
+                   and record["predecessor_expected_head"] == old_config.expected_head
+                   and record["predecessor_operator_sha256"] == hash_public(old_config.projection()))
+        old = _expired_unused_read_snapshot(old_config)
+        p2.require(record["predecessor_evidence_sha256"] == old["evidence_sha256"]
+                   and record["predecessor_authorization_sha256"] == old["authorization_sha256"]
+                   and record["predecessor_fixture_sha256"] == old["descriptor"]["fixture_hash"]
+                   and config.account_alias == old_config.account_alias
+                   and config.operator_alias == old_config.operator_alias
+                   and config.reservation_id == old_config.reservation_id
+                   and config.authorization_id != old_config.authorization_id
+                   and config.authorization_id == "successor-" + root.name[-64:-32]
+                   and record["transitioned_at"] >
+                       p3.load_json(old_config.path("authorization.json"))["expires_at"]
+                       + old_config.runtime().clock_uncertainty_seconds
+                   and record["transitioned_at"] <= time.time()
+                       + config.runtime().clock_uncertainty_seconds)
     return {"root": config.storage_root, "directory_mode": "0700", "file_mode": "0600",
             "secrets": "excluded", "retention": "permanent-no-automatic-cleanup"}
+
+
+def _expired_unused_read_snapshot(config, *, now=None):
+    """Validate a completed setup and expired issuance without inferring a GET."""
+    from retry_semantics.study2 import sheets_phase4_setup as setup
+    storage_check(config)
+    root = Path(config.storage_root)
+    names = set(os.listdir(root))
+    p2.require(names in (UNUSED_READ_REQUIRED | {"registry"} | extra
+        for extra in PREDECESSOR_PROVENANCE))
+    p2.require(p3.load_json(config.path("operator.json")) == config.projection())
+    review = validate_review(p3.load_json(config.path("client-review.json")))
+    offline_pin = p3.load_json(config.path("offline-pin.json"))
+    startup_record = p3.load_json(config.path("startup.json"))
+    p2.require(type(offline_pin) is dict and set(offline_pin) == {
+        "schema", "expected_head", "clean_tree_required", "python_executable", "sources",
+        "operator", "client_review", "phase4_support_implementations",
+        "native_operational_implementations", "phase3", "fixture", "schemas"}
+        and offline_pin["schema"] == "sheets-phase4-runtime-pin-v1"
+        and offline_pin["expected_head"] == config.expected_head
+        and offline_pin["clean_tree_required"] is True
+        and offline_pin["operator"] == config.projection()
+        and offline_pin["client_review"] == review and offline_pin["fixture"] is None)
+    p2.require(type(startup_record) is dict and set(startup_record) == {
+        "schema", "runtime_sha256", "assumptions", "environment", "model"}
+        and startup_record["schema"] == "sheets-phase4-startup-v1"
+        and startup_record["runtime_sha256"] == hash_public(offline_pin)
+        and type(startup_record["assumptions"]) is dict
+        and set(startup_record["assumptions"]) == set(ASSUMPTIONS)
+        and all(value is True for value in startup_record["assumptions"].values())
+        and startup_record["environment"] == "PASS_NAMES_ONLY"
+        and startup_record["model"] == "trusted-local-operator-no-os-sandbox")
+    p2.require(p3.load_json(config.path("oauth-intent.json")) == setup.oauth_intent(config, review))
+    metadata = operator._metadata(p3.load_json(config.path("acquisition.json")))
+    p2.require(metadata.public_config_sha256 == review["public_sha256"]
+        and metadata.account_alias == config.account_alias
+        and metadata.clock_uncertainty_seconds == config.runtime().clock_uncertainty_seconds)
+    intent = setup.create_intent(config, review)
+    p2.require(p3.load_json(config.path("create-intent.json")) == intent)
+    result = setup.validate_create_result(p3.load_json(config.path("create-result.json")), config, review)
+    record = operator._typed(p3.load_json(config.path("provisioning.json")), p3.ProvisioningRecord)
+    descriptor = p3.load_json(config.path("fixture.json"))
+    fixture = p3.parse_fixture_descriptor(descriptor)
+    p2.require(descriptor == p3.fixture_descriptor(record)
+        and record.spreadsheet_id == result["spreadsheet_id"]
+        and record.public_app_config_sha256 == review["public_sha256"]
+        and record.account_alias == config.account_alias
+        and record.reservation_id == config.reservation_id
+        and record.operator_alias == config.operator_alias
+        and record.confirmed_at >= metadata.prepared_at)
+    read_pin = p3.load_json(config.path("read-pin.json"))
+    p2.require(read_pin == {**offline_pin, "fixture": descriptor})
+    conditions = operator._typed(p3.load_json(config.path("conditions.json")), p3.LocalConditions)
+    conditions.validate()
+    authorization = p3.parse_authorization(p3.load_json(config.path("authorization.json")))
+    p2.require(authorization.capability.value == "LIVE_READ_GO"
+        and authorization.engineering_only is True
+        and authorization.authorization_id == config.authorization_id
+        and authorization.operator_alias == config.operator_alias
+        and authorization.fixture_manifest_sha256 == descriptor["fixture_hash"]
+        and authorization.runtime_pin_sha256 == read_pin["phase3"]["phase2_runtime_hash"]
+        and authorization.connector_source_sha256 == read_pin["phase3"]["phase2_source_hash"]
+        and authorization.expires_at - authorization.authorized_at == config.authorization_seconds
+        and authorization.authorized_at >= metadata.prepared_at)
+    clock_now = time.time() if now is None else now
+    frozen._number(clock_now, positive=True)
+    p2.require(clock_now > authorization.expires_at + config.runtime().clock_uncertainty_seconds)
+    expected_issue = {"schema": "sheets-phase4-issue-intent-v1",
+        "authorization_id": config.authorization_id, "runtime_sha256": hash_public(read_pin),
+        "fixture_sha256": descriptor["fixture_hash"], "source_sha256": hash_public(read_pin["sources"]),
+        "startup_sha256": hash_public(startup_record)}
+    p2.require(p3.load_json(config.path("issue-intent.json")) == expected_issue)
+    auth_hash = p2.authorization_hash(authorization)
+    receipt = {"schema": "sheets-phase3-issuance-receipt-v1", "authorization_hash": auth_hash,
+        "phase3_runtime_hash": hash_public(read_pin["phase3"]),
+        "phase3_source_hash": read_pin["phase3"]["phase3_source_hash"],
+        "local_conditions": asdict(conditions)}
+    p2.require(p3.load_json(config.path("phase3-receipt.json")) == receipt)
+    phase4 = {"schema": "sheets-phase4-issuance-receipt-v1", "engineering_only": True,
+        "phase4_runtime_sha256": hash_public(read_pin),
+        "phase4_source_sha256": hash_public(read_pin["sources"]),
+        "startup_sha256": hash_public(startup_record), "authorization_sha256": auth_hash,
+        "phase3_receipt_sha256": hash_public(receipt), "authorization_id": config.authorization_id,
+        "capability": "LIVE_READ_GO"}
+    p2.require(p3.load_json(config.path("phase4-receipt.json")) == phase4)
+    registry = root / "registry"
+    expected_reservation = f"reservation-{config.reservation_id}.json"
+    p2.require(set(os.listdir(registry)) == {"registry.lock", expected_reservation}
+               and (registry / "registry.lock").read_bytes() == b"")
+    inspection = p3.RegistryInspection(str(registry))
+    try:
+        p2.require(inspection._reservations() == [p2.LocalRegistry.reservation(fixture)])
+    finally:
+        inspection.close()
+    evidence = {name: p3.load_json(root / name) for name in sorted(names - {"registry"})}
+    evidence["registry/reservation"] = p2.LocalRegistry.reservation(fixture)
+    evidence["registry/lock"] = "empty"
+    signature = tuple((str(path.relative_to(root)), *(getattr(path.lstat(), field) for field in
+        ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")))
+        for path in sorted([*(root / name for name in names), registry / expected_reservation,
+                            registry / "registry.lock"]))
+    return {"descriptor": descriptor, "review": review, "authorization_sha256": auth_hash,
+            "evidence_sha256": hash_public(evidence), "signature": signature}
 
 
 def _prelive_snapshot(config, *, spent_oauth=False, unused_acquisition=False):
@@ -291,6 +458,23 @@ def _prelive_snapshot(config, *, spent_oauth=False, unused_acquisition=False):
     return sorted(names - {"registry"}), signature
 
 
+def reused_fixture_origin(config):
+    """Follow validated pre-live successors to the unused-read provenance."""
+    storage_check(config)
+    if config.path("unused-read-authorization-supersession.json").exists():
+        return p3.load_json(config.path("unused-read-authorization-supersession.json"))
+    if not config.path("supersession.json").exists():
+        return None
+    record = p3.load_json(config.path("supersession.json"))
+    predecessor = Path(record["predecessor_root"])
+    old_config = operator._typed(p3.load_json(predecessor / "operator.json"), OperatorConfiguration)
+    p2.require(hash_public(old_config.projection()) == record["predecessor_operator_sha256"]
+               and old_config.storage_root == str(predecessor)
+               and old_config.expected_head == record["predecessor_expected_head"])
+    p2.require(_prelive_snapshot(old_config)[0] == record["offline_files_present"])
+    return reused_fixture_origin(old_config)
+
+
 def _fsync_directory(path):
     fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -350,6 +534,7 @@ def new_acquisition_attempt(config, new_head, operator_confirmation):
     """Authorize a fresh package after local evidence of a spent, unacquired OAuth attempt."""
     p2.require(operator_confirmation == NEW_ACQUISITION_CONFIRMATION)
     config.__post_init__()
+    p2.require(reused_fixture_origin(config) is None)
     p2.require(type(new_head) is str and re.fullmatch(r"[0-9a-f]{40}", new_head)
                and new_head != config.expected_head)
     p3.environment_gate()
@@ -397,6 +582,7 @@ def supersede_unused_acquisition(config, new_head, operator_confirmation):
     """Attest a stopped resident session and preserve its accepted acquisition."""
     p2.require(operator_confirmation == UNUSED_ACQUISITION_CONFIRMATION)
     config.__post_init__()
+    p2.require(reused_fixture_origin(config) is None)
     p2.require(type(new_head) is str and re.fullmatch(r"[0-9a-f]{40}", new_head)
                and new_head != config.expected_head)
     p3.environment_gate()
@@ -451,6 +637,138 @@ def supersede_unused_acquisition(config, new_head, operator_confirmation):
             "client_review": "required-again", "live_go": "CLOSED"}
 
 
+def supersede_unused_read_authorization(config, new_head, operator_confirmation):
+    """Preserve a validated fixture and a first issuance that expired before read dispatch."""
+    p2.require(operator_confirmation == UNUSED_READ_CONFIRMATION)
+    config.__post_init__()
+    p2.require(type(new_head) is str and re.fullmatch(r"[0-9a-f]{40}", new_head)
+               and new_head != config.expected_head)
+    p3.environment_gate()
+    p3.repository_check(new_head)
+    before = _expired_unused_read_snapshot(config)
+    old_root = Path(config.storage_root)
+    new_root = _unused_read_successor_root(old_root)
+    try:
+        name_max = os.pathconf(new_root.parent, "PC_NAME_MAX")
+    except (OSError, ValueError, AttributeError):
+        raise p2.Refused() from None
+    p2.require(type(name_max) is int and name_max > 0
+               and len(new_root.name.encode("utf-8")) <= name_max)
+    new_id = "successor-" + new_root.name[-64:-32]
+    new_config = replace(config, storage_root=str(new_root), expected_head=new_head,
+                         authorization_id=new_id,
+                         read={**config.read, "registry_root": str(new_root / "registry")})
+    record = {"schema": "sheets-phase4-expired-unused-read-supersession-v1",
+        "predecessor_root": config.storage_root, "predecessor_expected_head": config.expected_head,
+        "predecessor_operator_sha256": hash_public(config.projection()),
+        "predecessor_evidence_sha256": before["evidence_sha256"],
+        "predecessor_authorization_sha256": before["authorization_sha256"],
+        "predecessor_fixture_sha256": before["descriptor"]["fixture_hash"],
+        "successor_root": str(new_root), "successor_expected_head": new_head,
+        "successor_authorization_id": new_id,
+        "transitioned_at": time.time(),
+        "prior_authorization_expired_unused": True,
+        "fresh_review_startup_oauth_adoption_required": True,
+        "review_confirmation": UNUSED_READ_CONFIRMATION}
+    os.mkdir(new_root, 0o700)
+    _fsync_directory(new_root.parent)
+    p2.require(new_root.stat().st_uid == os.getuid()
+               and stat.S_IMODE(new_root.stat().st_mode) == 0o700)
+    os.mkdir(new_root / "registry", 0o700)
+    p2.require((new_root / "registry").stat().st_uid == os.getuid()
+               and stat.S_IMODE((new_root / "registry").stat().st_mode) == 0o700)
+    _fsync_directory(new_root)
+    p3.write_json(new_root / "unused-read-authorization-supersession.pending.json", record)
+    p3.write_json(new_config.path("operator.json"), new_config.projection())
+    p2.require(_expired_unused_read_snapshot(config) == before)
+    p3.repository_check(new_head)
+    _fsync_directory(new_root / "registry")
+    _fsync_directory(new_root)
+    _fsync_directory(new_root.parent)
+    os.link(new_root / "unused-read-authorization-supersession.pending.json",
+            new_root / "unused-read-authorization-supersession.json")
+    _fsync_directory(new_root)
+    p2.require(_expired_unused_read_snapshot(config) == before)
+    os.unlink(new_root / "unused-read-authorization-supersession.pending.json")
+    return {"schema": "sheets-phase4-expired-unused-read-supersession-result-v1",
+        "network": "not-performed", "predecessor": config.storage_root, "successor": str(new_root),
+        "expected_head": new_head, "prior_authorization": "expired-unused-no-read-dispatch",
+        "fixture": "validated-historical-adoption-required", "live_go": "CLOSED"}
+
+
+def adopted_fixture(config, review):
+    """Return only the previously validated public fixture after local adoption."""
+    storage_check(config)
+    provenance = reused_fixture_origin(config)
+    p2.require(provenance is not None)
+    old_config = operator._typed(p3.load_json(Path(provenance["predecessor_root"]) / "operator.json"),
+                                 OperatorConfiguration)
+    old = _expired_unused_read_snapshot(old_config)
+    descriptor = old["descriptor"]
+    validate_review(review)
+    p2.require(review["public_sha256"] == old["review"]["public_sha256"])
+    from retry_semantics.study2 import sheets_phase4_setup as setup
+    p2.require(p3.load_json(config.path("oauth-intent.json")) == setup.oauth_intent(config, review))
+    adoption = p3.load_json(config.path("fixture-adoption.json"))
+    metadata = operator._metadata(p3.load_json(config.path("acquisition.json")))
+    p2.require(metadata.prepared_at > provenance["transitioned_at"]
+               and metadata.public_config_sha256 == review["public_sha256"]
+               and metadata.account_alias == config.account_alias
+               and metadata.projection() != p3.load_json(old_config.path("acquisition.json")))
+    p2.require(adoption == {"schema": "sheets-phase4-fixture-adoption-v1",
+        "predecessor_evidence_sha256": old["evidence_sha256"],
+        "predecessor_authorization_sha256": old["authorization_sha256"],
+        "fixture_sha256": descriptor["fixture_hash"],
+        "successor_operator_sha256": hash_public(config.projection()),
+        "successor_review_sha256": hash_public(review),
+        "successor_acquisition_sha256": hash_public(p3.load_json(config.path("acquisition.json"))),
+        "prior_authorization": "expired-unused-no-read-dispatch"})
+    p2.require(p3.load_json(config.path("fixture.json")) == descriptor)
+    return descriptor
+
+
+def adopt_existing_fixture(config, review, metadata, operator_confirmation):
+    p2.require(operator_confirmation == "EXPLICIT_ADOPT_VALIDATED_EXISTING_FIXTURE")
+    provenance = reused_fixture_origin(config)
+    p2.require(provenance is not None)
+    p2.require(not any(config.path(name).exists() for name in (
+        "fixture-adoption.json", "fixture.json", "read-pin.json", "conditions.json",
+        "create-intent.json", "create-result.json", "provisioning.json", "issue-intent.json",
+        "authorization.json", "phase3-receipt.json", "phase4-receipt.json",
+        "read-intent.json", "result.json")))
+    p2.require(p3.load_json(config.path("acquisition.json")) == metadata.projection())
+    from retry_semantics.study2 import sheets_phase4_setup as setup
+    p2.require(p3.load_json(config.path("oauth-intent.json")) == setup.oauth_intent(config, review))
+    p2.require(metadata.public_config_sha256 == review["public_sha256"]
+               and metadata.account_alias == config.account_alias)
+    p2.require(p3.load_json(config.path("offline-pin.json")) == runtime_projection(config, review))
+    attestation = p3.load_json(config.path("startup.json"))
+    p2.require(attestation == startup(config, review, attestation["assumptions"]))
+    old_config = operator._typed(p3.load_json(Path(provenance["predecessor_root"]) / "operator.json"),
+                                 OperatorConfiguration)
+    old = _expired_unused_read_snapshot(old_config)
+    p2.require(review["public_sha256"] == old["review"]["public_sha256"]
+               and metadata.prepared_at > provenance["transitioned_at"]
+               and metadata.projection() != p3.load_json(old_config.path("acquisition.json"))
+               and not os.listdir(Path(config.runtime().registry_root)))
+    descriptor = old["descriptor"]
+    adoption = {"schema": "sheets-phase4-fixture-adoption-v1",
+        "predecessor_evidence_sha256": old["evidence_sha256"],
+        "predecessor_authorization_sha256": old["authorization_sha256"],
+        "fixture_sha256": descriptor["fixture_hash"],
+        "successor_operator_sha256": hash_public(config.projection()),
+        "successor_review_sha256": hash_public(review),
+        "successor_acquisition_sha256": hash_public(metadata.projection()),
+        "prior_authorization": "expired-unused-no-read-dispatch"}
+    p3.write_json(config.path("fixture-adoption.json"), adoption)
+    p3.write_json(config.path("fixture.json"), descriptor)
+    with p2.LocalRegistry(Path(config.runtime().registry_root)) as registry:
+        registry.reserve(p3.parse_fixture_descriptor(descriptor))
+    p3.write_json(config.path("read-pin.json"), runtime_projection(config, review, descriptor))
+    return {"fixture_sha256": descriptor["fixture_hash"], "network": "not-performed",
+            "create": "not-repeated", "prior_authorization": "historical-expired-unused"}
+
+
 def validate_review(review):
     p2.require(type(review) is dict and set(review) == {"schema", "public", "public_sha256"}
                and review["schema"] == "sheets-phase4-client-review-v1")
@@ -502,6 +820,8 @@ def runtime_projection(config, review, descriptor=None):
             "schemas": ["sheets-phase4-startup-v1", "sheets-phase4-prelive-supersession-v1",
                         "sheets-phase4-reviewed-acquisition-attempt-v1",
                         "sheets-phase4-reviewed-unused-acquisition-supersession-v1",
+                        "sheets-phase4-expired-unused-read-supersession-v1",
+                        "sheets-phase4-fixture-adoption-v1",
                         "sheets-phase4-acquisition-failure-v1",
                         "sheets-phase4-create-result-v1",
                         "sheets-phase3-fixture-descriptor-v1", "sheets-phase3-acquisition-metadata-v1",
@@ -576,17 +896,22 @@ def post_setup_preflight(config, review, attestation, offline_pin, pin, descript
         reasons.append("credential_readiness")
     try:
         from retry_semantics.study2.sheets_phase4_setup import validate_create_result, create_intent, oauth_intent
-        result = validate_create_result(p3.load_json(config.path("create-result.json")), config, review)
-        p2.require(p3.load_json(config.path("create-intent.json")) == create_intent(config, review))
         p2.require(p3.load_json(config.path("oauth-intent.json")) == oauth_intent(config, review))
-        record = operator._typed(p3.load_json(config.path("provisioning.json")), p3.ProvisioningRecord)
-        p2.require(descriptor == p3.fixture_descriptor(record)
-                   and record.spreadsheet_id == result["spreadsheet_id"]
-                   and record.sheet_id == 1 and record.rows == 100
-                   and record.account_alias == config.account_alias
-                   and record.public_app_config_sha256 == review["public_sha256"]
-                   and record.reservation_id == config.reservation_id
-                   and record.operator_alias == config.operator_alias)
+        if reused_fixture_origin(config) is not None:
+            p2.require(descriptor == adopted_fixture(config, review)
+                and not any(config.path(n).exists() for n in
+                    ("create-intent.json", "create-result.json", "provisioning.json")))
+        else:
+            result = validate_create_result(p3.load_json(config.path("create-result.json")), config, review)
+            p2.require(p3.load_json(config.path("create-intent.json")) == create_intent(config, review))
+            record = operator._typed(p3.load_json(config.path("provisioning.json")), p3.ProvisioningRecord)
+            p2.require(descriptor == p3.fixture_descriptor(record)
+                       and record.spreadsheet_id == result["spreadsheet_id"]
+                       and record.sheet_id == 1 and record.rows == 100
+                       and record.account_alias == config.account_alias
+                       and record.public_app_config_sha256 == review["public_sha256"]
+                       and record.reservation_id == config.reservation_id
+                       and record.operator_alias == config.operator_alias)
         p2.require(not config.path("issue-intent.json").exists())
         p2.require(not any(config.path(n).exists() for n in ("authorization.json", "phase3-receipt.json",
                                                           "phase4-receipt.json", "read-intent.json", "result.json")))
@@ -610,13 +935,18 @@ def post_setup_preflight(config, review, attestation, offline_pin, pin, descript
 def check_setup_records(config, review, descriptor, metadata):
     """Repeat immutable setup dataflow bindings at consumption, not just issue."""
     from retry_semantics.study2.sheets_phase4_setup import validate_create_result, create_intent, oauth_intent
-    result = validate_create_result(p3.load_json(config.path("create-result.json")), config, review)
-    p2.require(p3.load_json(config.path("create-intent.json")) == create_intent(config, review))
     p2.require(p3.load_json(config.path("oauth-intent.json")) == oauth_intent(config, review))
-    record = operator._typed(p3.load_json(config.path("provisioning.json")), p3.ProvisioningRecord)
-    p2.require(descriptor == p3.fixture_descriptor(record)
-        and record.spreadsheet_id == result["spreadsheet_id"] and record.sheet_id == 1 and record.rows == 100
-        and record.account_alias == config.account_alias and metadata.account_alias == config.account_alias
-        and record.public_app_config_sha256 == review["public_sha256"] == metadata.public_config_sha256
-        and record.reservation_id == config.reservation_id and record.operator_alias == config.operator_alias)
+    if reused_fixture_origin(config) is not None:
+        p2.require(descriptor == adopted_fixture(config, review)
+            and not any(config.path(n).exists() for n in
+                ("create-intent.json", "create-result.json", "provisioning.json")))
+    else:
+        result = validate_create_result(p3.load_json(config.path("create-result.json")), config, review)
+        p2.require(p3.load_json(config.path("create-intent.json")) == create_intent(config, review))
+        record = operator._typed(p3.load_json(config.path("provisioning.json")), p3.ProvisioningRecord)
+        p2.require(descriptor == p3.fixture_descriptor(record)
+            and record.spreadsheet_id == result["spreadsheet_id"] and record.sheet_id == 1 and record.rows == 100
+            and record.account_alias == config.account_alias and metadata.account_alias == config.account_alias
+            and record.public_app_config_sha256 == review["public_sha256"] == metadata.public_config_sha256
+            and record.reservation_id == config.reservation_id and record.operator_alias == config.operator_alias)
     p2.require(p3.load_json(config.path("acquisition.json")) == metadata.projection())

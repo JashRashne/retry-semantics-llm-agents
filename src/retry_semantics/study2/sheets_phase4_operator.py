@@ -56,13 +56,19 @@ def phase4_receipt(config, pin, attestation, authorization, receipt):
 def inspect_artifacts(config, review):
     control.storage_check(config)
     fresh_unused = config.path("unused-acquisition-supersession.json").exists()
+    fresh_read = control.reused_fixture_origin(config) is not None
     if review is None:
-        p2.require(fresh_unused and not config.path("client-review.json").exists())
+        p2.require((fresh_unused or fresh_read) and not config.path("client-review.json").exists())
     else:
         control.validate_review(review)
     output = {"network": "not-performed", "operator": config.projection(), "client_review": review,
               "present": [n for n in control.FILES if config.path(n).exists()], "next_action": "review-no-retry"}
     if fresh_unused and not config.path("acquisition.json").exists():
+        output["next_action"] = ("fresh-client-review-required" if review is None else
+                                 "fresh-startup-offline-pin-required" if not config.path("startup.json").exists()
+                                 or not config.path("offline-pin.json").exists() else
+                                 "fresh-oauth-requires-separate-approval")
+    if fresh_read and not config.path("acquisition.json").exists():
         output["next_action"] = ("fresh-client-review-required" if review is None else
                                  "fresh-startup-offline-pin-required" if not config.path("startup.json").exists()
                                  or not config.path("offline-pin.json").exists() else
@@ -208,6 +214,8 @@ def session_parser():
     provision = subs.add_parser("provision")
     provision.add_argument("--execute-provisioning", action="store_true")
     provision.add_argument("--operator-confirmation", required=True)
+    adoption = subs.add_parser("adopt-existing-fixture")
+    adoption.add_argument("--operator-confirmation", required=True)
     review = subs.add_parser("review-provisioning")
     review.add_argument("--operator-confirmation", required=True)
     review.add_argument("--isolated", action="store_true")
@@ -236,15 +244,18 @@ def dispatch(args, config, review, token, metadata):
     p2.require(attestation == control.startup(config, review, attestation["assumptions"]))
     p2.require(p3.load_json(config.path("offline-pin.json")) == control.runtime_projection(config, review))
     if args.action == "provision":
+        p2.require(control.reused_fixture_origin(config) is None)
         result = setup.provision(config, review, token, metadata, execute_provisioning=args.execute_provisioning,
                                  operator_confirmation=args.operator_confirmation)
         p2.require(result["outcome"] == "CREATE_RESPONSE_VALIDATED")
         return result
     if args.action == "review-provisioning":
+        p2.require(control.reused_fixture_origin(config) is None)
         record = setup.review_provisioning(config, review, operator_confirmation=args.operator_confirmation,
                                           isolated=args.isolated, no_writers=args.no_writers)
         return {"provisioning_sha256": record.evidence_hash}
     if args.action == "reserve-and-descriptor":
+        p2.require(control.reused_fixture_origin(config) is None)
         record = inherited._typed(p3.load_json(config.path("provisioning.json")), p3.ProvisioningRecord)
         descriptor = p3.fixture_descriptor(record)
         with p2.LocalRegistry(Path(config.runtime().registry_root)) as registry:
@@ -252,6 +263,8 @@ def dispatch(args, config, review, token, metadata):
         p3.write_json(config.path("fixture.json"), descriptor)
         p3.write_json(config.path("read-pin.json"), control.runtime_projection(config, review, descriptor))
         return {"fixture_sha256": descriptor["fixture_hash"]}
+    if args.action == "adopt-existing-fixture":
+        return control.adopt_existing_fixture(config, review, metadata, args.operator_confirmation)
     if args.action == "attest-post-setup":
         p2.require(args.provisioning_reviewed is True)
         p3.write_json(config.path("conditions.json"), asdict(p3.LocalConditions(True, True, True, True, True)))
@@ -317,6 +330,10 @@ def main(argv=None):
     unused.add_argument("--configuration", type=Path, required=True)
     unused.add_argument("--new-expected-head", required=True)
     unused.add_argument("--operator-confirmation", required=True)
+    expired = subs.add_parser("supersede-unused-read-authorization")
+    expired.add_argument("--configuration", type=Path, required=True)
+    expired.add_argument("--new-expected-head", required=True)
+    expired.add_argument("--operator-confirmation", required=True)
     for name in ("startup", "phase4-preflight", "session", "inspect", "recover"):
         sub = subs.add_parser(name)
         sub.add_argument("--configuration", type=Path, required=True)
@@ -348,6 +365,11 @@ def main(argv=None):
             p2.require(args.configuration == config.path("operator.json"))
             result = control.supersede_unused_acquisition(config, args.new_expected_head,
                                                           args.operator_confirmation)
+        elif args.command == "supersede-unused-read-authorization":
+            config = inherited._typed(p3.load_json(args.configuration), control.OperatorConfiguration)
+            p2.require(args.configuration == config.path("operator.json"))
+            result = control.supersede_unused_read_authorization(config, args.new_expected_head,
+                                                                 args.operator_confirmation)
         else:
             config = inherited._typed(p3.load_json(args.configuration), control.OperatorConfiguration)
             p2.require(args.configuration == config.path("operator.json"))

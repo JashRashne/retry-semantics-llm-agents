@@ -1795,6 +1795,321 @@ def test_unused_success_one_shot_even_with_different_later_head(unused_success, 
         'operator.json', 'registry', 'unused-acquisition-supersession.json']
 
 
+@pytest.fixture
+def expired_unused_read(positive, monkeypatch):
+    issue(positive)
+    real_now = time.time()
+    monkeypatch.setattr(time, 'time', lambda: real_now + 200)
+    monkeypatch.setattr(p3, 'repository_check', lambda head: p2.require(head in (HEAD, NEXT_HEAD, 'c' * 40)))
+    return positive
+
+
+def expired_read_path(config):
+    return control._unused_read_successor_root(config.storage_root)
+
+
+def test_expired_unused_read_success_preserves_fixture_and_requires_fresh_work(expired_unused_read):
+    old = expired_unused_read['config']
+    root = Path(old.storage_root)
+    before = {str(p.relative_to(root)): p.read_bytes() for p in root.rglob('*') if p.is_file()}
+    assert control._expired_unused_read_snapshot(old)['descriptor'] == expired_unused_read['descriptor']
+    result = control.supersede_unused_read_authorization(old, NEXT_HEAD, control.UNUSED_READ_CONFIRMATION)
+    destination = expired_read_path(old)
+    assert result['successor'] == str(destination)
+    assert {str(p.relative_to(root)): p.read_bytes() for p in root.rglob('*') if p.is_file()} == before
+    assert sorted(p.name for p in destination.iterdir()) == [
+        'operator.json', 'registry', 'unused-read-authorization-supersession.json']
+    fresh = inherited._typed(p3.load_json(destination / 'operator.json'), control.OperatorConfiguration)
+    assert fresh.authorization_id != old.authorization_id
+    assert fresh.reservation_id == old.reservation_id
+    assert control.storage_check(fresh)['secrets'] == 'excluded'
+    assert control.offline_preflight(fresh, None, None, None)['status'] == 'BLOCKED'
+    with pytest.raises(credentials.CredentialRefused):
+        setup.provision(fresh, expired_unused_read['review'], expired_unused_read['token'],
+            expired_unused_read['metadata'], execute_provisioning=True,
+            operator_confirmation=setup.CREATE_CONFIRMATION)
+    assert not (destination / 'create-intent.json').exists()
+    for secret in (BEARER, CLIENT_SECRET, 'synthetic-refresh'):
+        assert secret.encode() not in b''.join(p.read_bytes() for p in destination.rglob('*') if p.is_file())
+
+
+@pytest.mark.parametrize('attack', [
+    'live', 'read-intent', 'result', 'read-evidence', 'missing-issue', 'bad-authorization',
+    'wrong-capability', 'authorization-hash', 'bad-phase3-receipt', 'bad-phase4-receipt',
+    'fixture-hash', 'provisioning', 'ambiguous-create', 'acquisition-failure',
+    'unknown-root', 'registry-lock', 'registry-second-reservation', 'missing-create-intent',
+    'missing-create-result', 'missing-read-pin', 'bad-offline-pin', 'bad-startup',
+])
+def test_expired_unused_read_rejects_contradictory_predecessor(expired_unused_read, monkeypatch, attack):
+    config = expired_unused_read['config']
+    if attack == 'live':
+        monkeypatch.setattr(time, 'time', lambda: p3.load_json(config.path('authorization.json'))['expires_at'] - 1)
+    elif attack in ('read-intent', 'result'):
+        p3.write_json(config.path(attack + '.json'), {})
+    elif attack == 'read-evidence':
+        p3.write_json(Path(config.runtime().registry_root) / f'attempt-{config.authorization_id}.jsonl', {})
+    elif attack == 'missing-issue': config.path('issue-intent.json').unlink()
+    elif attack in ('bad-authorization', 'wrong-capability', 'authorization-hash'):
+        value = p3.load_json(config.path('authorization.json'))
+        if attack == 'bad-authorization': value['expires_at'] = 'bad'
+        if attack == 'wrong-capability': value['capability'] = 'CREATE'
+        if attack == 'authorization-hash': value['fixture_manifest_sha256'] = '0' * 64
+        config.path('authorization.json').write_bytes(canonical_json_bytes(value) + b'\n')
+    elif attack in ('bad-phase3-receipt', 'bad-phase4-receipt'):
+        name = 'phase3-receipt.json' if attack == 'bad-phase3-receipt' else 'phase4-receipt.json'
+        value = p3.load_json(config.path(name))
+        value['authorization_hash' if attack == 'bad-phase3-receipt' else 'authorization_sha256'] = '0' * 64
+        config.path(name).write_bytes(canonical_json_bytes(value) + b'\n')
+    elif attack == 'fixture-hash':
+        value = p3.load_json(config.path('fixture.json'))
+        value['fixture_hash'] = '0' * 64
+        config.path('fixture.json').write_bytes(canonical_json_bytes(value) + b'\n')
+    elif attack == 'provisioning':
+        value = p3.load_json(config.path('provisioning.json'))
+        value['spreadsheet_id'] = 'B' * 44
+        config.path('provisioning.json').write_bytes(canonical_json_bytes(value) + b'\n')
+    elif attack == 'ambiguous-create':
+        value = p3.load_json(config.path('create-result.json'))
+        value.update(outcome='CREATE_UNCERTAIN_RECONCILIATION_REQUIRED', spreadsheet_id=None)
+        config.path('create-result.json').write_bytes(canonical_json_bytes(value) + b'\n')
+    elif attack == 'acquisition-failure': p3.write_json(config.path('acquisition-failure.json'), {})
+    elif attack == 'unknown-root': (Path(config.storage_root) / 'unknown.json').write_text('{}')
+    elif attack == 'registry-lock':
+        (Path(config.runtime().registry_root) / 'registry.lock').write_text('tampered')
+    elif attack == 'registry-second-reservation':
+        p3.write_json(Path(config.runtime().registry_root) / 'reservation-OTHER.json', {})
+    elif attack in ('missing-create-intent', 'missing-create-result', 'missing-read-pin'):
+        config.path(attack.removeprefix('missing-') + '.json').unlink()
+    elif attack in ('bad-offline-pin', 'bad-startup'):
+        name = attack.removeprefix('bad-') + '.json'
+        value = p3.load_json(config.path(name))
+        value['schema'] = 'tampered'
+        config.path(name).write_bytes(canonical_json_bytes(value) + b'\n')
+    with pytest.raises(Exception):
+        control.supersede_unused_read_authorization(config, NEXT_HEAD, control.UNUSED_READ_CONFIRMATION)
+    assert not expired_read_path(config).exists()
+
+
+def test_expired_read_successor_fresh_adoption_and_bindings(expired_unused_read, client, monkeypatch):
+    old = expired_unused_read['config']
+    control.supersede_unused_read_authorization(old, NEXT_HEAD, control.UNUSED_READ_CONFIRMATION)
+    fresh = inherited._typed(p3.load_json(expired_read_path(old) / 'operator.json'), control.OperatorConfiguration)
+    review = expired_unused_read['review']
+    old_sources = expired_unused_read['pin']['sources']
+    original_sources = control.source_projection
+    def changed_sources():
+        return {**original_sources(), 'sheets_phase4_control.py': 'f' * 64}
+    monkeypatch.setattr(control, 'source_projection', changed_sources)
+    p3.write_json(fresh.path('client-review.json'), review)
+    attestation = control.startup(fresh, review, dict.fromkeys(control.ASSUMPTIONS, True))
+    offline_pin = control.runtime_projection(fresh, review)
+    p3.write_json(fresh.path('startup.json'), attestation)
+    p3.write_json(fresh.path('offline-pin.json'), offline_pin)
+    assert control.offline_preflight(fresh, review, attestation, offline_pin)['status'] == 'PASS'
+    with pytest.raises(Exception):
+        control.adopt_existing_fixture(fresh, review, expired_unused_read['metadata'],
+                                       'EXPLICIT_ADOPT_VALIDATED_EXISTING_FIXTURE')
+    now = time.time()
+    body = canonical_json_bytes(dict(access_token='ya29.synthetic-fresh-bearer', expires_in=3600,
+                                     scope=p1.SCOPE, token_type='Bearer'))
+    token, metadata = credentials.validate_token_response(body, client,
+        account_alias=fresh.account_alias, exchange_started_at=now + 1,
+        prepared_at=now + 2, clock_uncertainty_seconds=2)
+    p3.write_json(fresh.path('oauth-intent.json'), setup.oauth_intent(fresh, review))
+    p3.write_json(fresh.path('acquisition.json'), metadata.projection())
+    with pytest.raises(Exception):
+        control.supersede_unused_acquisition(fresh, 'c' * 40,
+                                             control.UNUSED_ACQUISITION_CONFIRMATION)
+    result = control.adopt_existing_fixture(fresh, review, metadata,
+                                             'EXPLICIT_ADOPT_VALIDATED_EXISTING_FIXTURE')
+    assert result['create'] == 'not-repeated'
+    assert p3.load_json(fresh.path('fixture.json')) == expired_unused_read['descriptor']
+    assert p3.load_json(fresh.path('read-pin.json')) == control.runtime_projection(
+        fresh, review, expired_unused_read['descriptor'])
+    assert p3.load_json(fresh.path('read-pin.json')) != expired_unused_read['pin']
+    assert p3.load_json(fresh.path('read-pin.json'))['sources'] != old_sources
+    assert control.hash_public(p3.load_json(fresh.path('read-pin.json'))) != control.hash_public(
+        expired_unused_read['pin'])
+    assert not any(fresh.path(name).exists() for name in ('create-intent.json', 'create-result.json',
+        'provisioning.json', 'issue-intent.json', 'authorization.json', 'phase3-receipt.json',
+        'phase4-receipt.json'))
+    p3.write_json(fresh.path('conditions.json'), asdict(p3.LocalConditions(True, True, True, True, True)))
+    monkeypatch.setattr(time, 'time', lambda: now + 3)
+    inputs = operator.post_inputs(fresh, token, metadata)
+    assert control.post_setup_preflight(**inputs)['status'] == 'PASS', control.post_setup_preflight(**inputs)
+    second = issue(inputs)
+    assert second['authorization_sha256'] != control._expired_unused_read_snapshot(old)['authorization_sha256']
+    assert p3.load_json(fresh.path('authorization.json'))['authorization_id'] == fresh.authorization_id
+    with pytest.raises(credentials.CredentialRefused):
+        operator.execute_read(inputs=inputs, execute_live_read=True,
+            authorization=p3.parse_authorization(p3.load_json(old.path('authorization.json'))),
+            receipt=p3.load_json(fresh.path('phase3-receipt.json')),
+            operational_receipt=p3.load_json(fresh.path('phase4-receipt.json')))
+    assert not fresh.path('read-intent.json').exists()
+    with pytest.raises(credentials.CredentialRefused):
+        setup.provision(fresh, review, token, metadata, execute_provisioning=True,
+                        operator_confirmation=setup.CREATE_CONFIRMATION)
+
+
+@pytest.mark.parametrize('limit', [0, 10, None])
+def test_expired_read_name_max_fail_closed(expired_unused_read, monkeypatch, limit):
+    config = expired_unused_read['config']
+    if limit is None:
+        def pathconf(*args): raise OSError('synthetic')
+    else:
+        def pathconf(*args): return limit
+    monkeypatch.setattr(control.os, 'pathconf', pathconf)
+    with pytest.raises(Exception):
+        control.supersede_unused_read_authorization(config, NEXT_HEAD, control.UNUSED_READ_CONFIRMATION)
+    assert not expired_read_path(config).exists()
+
+
+def test_expired_read_one_successor_even_if_new_head_changes(expired_unused_read):
+    config = expired_unused_read['config']
+    first = control.supersede_unused_read_authorization(config, NEXT_HEAD, control.UNUSED_READ_CONFIRMATION)
+    assert first['successor'] == str(expired_read_path(config))
+    with pytest.raises(Exception):
+        control.supersede_unused_read_authorization(config, 'c' * 40, control.UNUSED_READ_CONFIRMATION)
+    assert sorted(p.name for p in expired_read_path(config).iterdir()) == [
+        'operator.json', 'registry', 'unused-read-authorization-supersession.json']
+
+
+@pytest.mark.parametrize('attack', ['forged-path', 'forged-hash', 'bare'])
+def test_expired_read_successor_storage_provenance_fail_closed(expired_unused_read, attack):
+    config = expired_unused_read['config']
+    destination = expired_read_path(config)
+    if attack == 'bare':
+        destination.mkdir(mode=0o700)
+        (destination / 'registry').mkdir(mode=0o700)
+        candidate = replace(config, storage_root=str(destination), expected_head=NEXT_HEAD,
+            authorization_id='successor-' + destination.name[-64:-32],
+            read={**config.read, 'registry_root': str(destination / 'registry')})
+        p3.write_json(candidate.path('operator.json'), candidate.projection())
+    else:
+        control.supersede_unused_read_authorization(config, NEXT_HEAD, control.UNUSED_READ_CONFIRMATION)
+        candidate = inherited._typed(p3.load_json(destination / 'operator.json'), control.OperatorConfiguration)
+        path = candidate.path('unused-read-authorization-supersession.json')
+        record = p3.load_json(path)
+        if attack == 'forged-path': record['predecessor_root'] = str(destination)
+        else: record['predecessor_fixture_sha256'] = '0' * 64
+        path.write_bytes(canonical_json_bytes(record) + b'\n')
+    with pytest.raises(Exception): control.storage_check(candidate)
+
+
+def test_expired_read_fsync_crash_residue_stays_blocked(expired_unused_read, monkeypatch):
+    config = expired_unused_read['config']
+    destination = expired_read_path(config)
+    real = control._fsync_directory
+    def fail(path):
+        if Path(path) == destination / 'registry': raise OSError('synthetic crash')
+        return real(path)
+    monkeypatch.setattr(control, '_fsync_directory', fail)
+    with pytest.raises(OSError):
+        control.supersede_unused_read_authorization(config, NEXT_HEAD, control.UNUSED_READ_CONFIRMATION)
+    assert (destination / 'unused-read-authorization-supersession.pending.json').exists()
+    candidate = inherited._typed(p3.load_json(destination / 'operator.json'), control.OperatorConfiguration)
+    with pytest.raises(Exception): control.storage_check(candidate)
+
+
+def test_expired_read_successor_can_prelive_supersede_without_losing_fixture_lock(expired_unused_read):
+    old = expired_unused_read['config']
+    control.supersede_unused_read_authorization(old, NEXT_HEAD, control.UNUSED_READ_CONFIRMATION)
+    first = inherited._typed(p3.load_json(expired_read_path(old) / 'operator.json'),
+                             control.OperatorConfiguration)
+    result = control.supersede_prelive(first, 'c' * 40, control.SUPERSESSION_CONFIRMATION)
+    later = inherited._typed(p3.load_json(Path(result['successor']) / 'operator.json'),
+                             control.OperatorConfiguration)
+    assert control.reused_fixture_origin(later)['predecessor_root'] == old.storage_root
+    assert control.storage_check(later)['secrets'] == 'excluded'
+    with pytest.raises(credentials.CredentialRefused):
+        setup.provision(later, expired_unused_read['review'], expired_unused_read['token'],
+            expired_unused_read['metadata'], execute_provisioning=True,
+            operator_confirmation=setup.CREATE_CONFIRMATION)
+    assert not later.path('create-intent.json').exists()
+
+
+def test_expired_read_successor_cannot_escape_fixture_lock_after_spent_oauth(expired_unused_read):
+    old = expired_unused_read['config']
+    control.supersede_unused_read_authorization(old, NEXT_HEAD, control.UNUSED_READ_CONFIRMATION)
+    fresh = inherited._typed(p3.load_json(expired_read_path(old) / 'operator.json'),
+                             control.OperatorConfiguration)
+    review = expired_unused_read['review']
+    p3.write_json(fresh.path('client-review.json'), review)
+    attestation = control.startup(fresh, review, dict.fromkeys(control.ASSUMPTIONS, True))
+    p3.write_json(fresh.path('startup.json'), attestation)
+    p3.write_json(fresh.path('offline-pin.json'), control.runtime_projection(fresh, review))
+    p3.write_json(fresh.path('oauth-intent.json'), setup.oauth_intent(fresh, review))
+    with pytest.raises(Exception):
+        control.new_acquisition_attempt(fresh, 'c' * 40, control.NEW_ACQUISITION_CONFIRMATION)
+    assert not Path(fresh.storage_root + '-acquisition-at-' + 'c' * 40).exists()
+
+
+def test_expired_read_long_predecessor_uses_bounded_name(config, reviewed, prepared, monkeypatch):
+    root = Path(config.storage_root).with_name('long-real-world-predecessor-' + 'x' * 160)
+    root.mkdir(mode=0o700)
+    (root / 'registry').mkdir(mode=0o700)
+    long_config = replace(config, storage_root=str(root),
+        read={**config.read, 'registry_root': str(root / 'registry')})
+    monkeypatch.setattr(p3, 'repository_check', lambda head: p2.require(head in (HEAD, NEXT_HEAD)))
+    p3.write_json(long_config.path('operator.json'), long_config.projection())
+    p3.write_json(long_config.path('client-review.json'), reviewed)
+    attestation = control.startup(long_config, reviewed, dict.fromkeys(control.ASSUMPTIONS, True))
+    p3.write_json(long_config.path('startup.json'), attestation)
+    p3.write_json(long_config.path('offline-pin.json'), control.runtime_projection(long_config, reviewed))
+    persist_acquisition(long_config, reviewed, prepared)
+    fake_create(monkeypatch, long_config)
+    assert create(long_config, reviewed, prepared)['outcome'] == 'CREATE_RESPONSE_VALIDATED'
+    parser = operator.session_parser()
+    for line in ('review-provisioning --operator-confirmation ' + p3.PROVISION_CONFIRMATION +
+                 ' --isolated --no-writers', 'reserve-and-descriptor',
+                 'attest-post-setup --provisioning-reviewed'):
+        operator.dispatch(parser.parse_args(line.split()), long_config, reviewed, *prepared)
+    issue(operator.post_inputs(long_config, *prepared))
+    real_now = time.time()
+    monkeypatch.setattr(time, 'time', lambda: real_now + 200)
+    result = control.supersede_unused_read_authorization(long_config, NEXT_HEAD,
+                                                          control.UNUSED_READ_CONFIRMATION)
+    destination = Path(result['successor'])
+    assert len(destination.name.encode('utf-8')) < len(root.name.encode('utf-8'))
+    assert destination.name == control._unused_read_successor_root(root).name
+    assert len(destination.name.encode('utf-8')) <= os.pathconf(destination.parent, 'PC_NAME_MAX')
+
+
+def test_expired_read_concurrent_invocations_have_one_successor(expired_unused_read):
+    config = expired_unused_read['config']
+    child = '''
+import http.client, socket, ssl, sys, time, urllib.request, webbrowser
+from pathlib import Path
+from retry_semantics.study2 import sheets_phase2_control as p2
+from retry_semantics.study2 import sheets_phase3_control as p3
+from retry_semantics.study2 import sheets_phase3_operator as op
+from retry_semantics.study2 import sheets_phase4_control as p4
+def denied(*a, **kw): raise AssertionError("network/browser forbidden")
+for name in ("socket", "create_connection", "getaddrinfo", "gethostbyname"):
+    setattr(socket, name, denied)
+http.client.HTTPSConnection.connect = denied
+ssl.SSLContext.wrap_socket = denied
+urllib.request.urlopen = denied
+webbrowser.open = denied
+time.time = lambda: float(sys.argv[2])
+p3.repository_check = lambda head: p2.require(head == "b" * 40)
+config = op._typed(p3.load_json(Path(sys.argv[1])), p4.OperatorConfiguration)
+try:
+    p4.supersede_unused_read_authorization(config, "b" * 40, p4.UNUSED_READ_CONFIRMATION)
+    print("WIN")
+except Exception:
+    print("BLOCK")
+'''
+    processes = [subprocess.Popen([sys.executable, '-c', child, str(config.path('operator.json')),
+                 str(time.time())], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env={})
+                 for _ in range(2)]
+    outputs = [process.communicate(timeout=30) for process in processes]
+    assert sorted(output.strip() for output, _ in outputs) == ['BLOCK', 'WIN'], outputs
+    assert all(process.returncode == 0 for process in processes)
+    assert sorted(p.name for p in expired_read_path(config).iterdir()) == [
+        'operator.json', 'registry', 'unused-read-authorization-supersession.json']
+
+
 @pytest.mark.parametrize('limit', ['too-small', 'zero', 'unknown', 'invalid-type', 'error'])
 def test_unused_success_name_max_fail_closed(unused_success, monkeypatch, limit):
     allow_successor_head(monkeypatch)

@@ -1460,6 +1460,15 @@ Exit criterion:
 
 ## Phase 4 — Engineering Validation Runs
 
+Google Sheets Study 2 operational note (2026-09-21): OAuth attempt #5
+succeeded, one engineering spreadsheet CREATE returned a validated HTTP 200,
+and provisioning review, reservation and post-setup preflight passed. The first
+120-second `LIVE_READ_GO` expired before `read` execution. No read intent or
+result exists, Sheets GET count is zero, and paper observations remain zero.
+The fixture must be preserved without another CREATE. Further activity needs
+the reviewed expired-unused-authorization successor lifecycle, fresh
+source-bound startup/OAuth/adoption/read pin and a new one-shot read approval.
+
 Run 10–20 base trials.
 
 Manually inspect traces.

@@ -173,6 +173,7 @@ def validate_create_result(result, config, review):
 @credentials.secret_safe
 def provision(config, review, token, metadata, *, execute_provisioning, operator_confirmation):
     p2.require(execute_provisioning is True and operator_confirmation == CREATE_CONFIRMATION)
+    p2.require(control.reused_fixture_origin(config) is None)
     config.__post_init__()
     control.storage_check(config)
     p3.environment_gate()
