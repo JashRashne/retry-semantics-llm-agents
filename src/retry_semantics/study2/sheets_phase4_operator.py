@@ -296,6 +296,10 @@ def main(argv=None):
     review = subs.add_parser("client-review")
     review.add_argument("--client", type=Path, required=True)
     review.add_argument("--output", type=Path, required=True)
+    supersede = subs.add_parser("supersede-prelive")
+    supersede.add_argument("--configuration", type=Path, required=True)
+    supersede.add_argument("--new-expected-head", required=True)
+    supersede.add_argument("--operator-confirmation", required=True)
     for name in ("startup", "phase4-preflight", "session", "inspect", "recover"):
         sub = subs.add_parser(name)
         sub.add_argument("--configuration", type=Path, required=True)
@@ -313,6 +317,10 @@ def main(argv=None):
             value = setup.review_client(args.client)
             p3.write_json(args.output, value)
             result = {"public_sha256": value["public_sha256"], "network": "not-performed"}
+        elif args.command == "supersede-prelive":
+            config = inherited._typed(p3.load_json(args.configuration), control.OperatorConfiguration)
+            p2.require(args.configuration == config.path("operator.json"))
+            result = control.supersede_prelive(config, args.new_expected_head, args.operator_confirmation)
         else:
             config = inherited._typed(p3.load_json(args.configuration), control.OperatorConfiguration)
             p2.require(args.configuration == config.path("operator.json"))

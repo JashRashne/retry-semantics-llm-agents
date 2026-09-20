@@ -42,6 +42,7 @@ _qualification_spec.loader.exec_module(qualification)
 BEARER = 'ya29.synthetic-phase4-bearer'
 CLIENT_SECRET = 'synthetic-phase4-client-secret'
 HEAD = 'a' * 40
+NEXT_HEAD = 'b' * 40
 
 
 @pytest.fixture(autouse=True)
@@ -972,3 +973,252 @@ def test_issuance_rechecks_fresh_minimum_lifetime_after_local_work(positive, mon
     with pytest.raises(credentials.CredentialRefused): issue(positive)
     assert not positive['config'].path('authorization.json').exists()
     assert positive['config'].path('issue-intent.json').exists() == (stage == 'after-phase3-issuance')
+
+
+def successor_path(config):
+    root = Path(config.storage_root)
+    return root.with_name(root.name + '-at-' + NEXT_HEAD)
+
+
+def allow_successor_head(monkeypatch):
+    monkeypatch.setattr(p3, 'repository_check', lambda head: p2.require(head == NEXT_HEAD))
+
+
+def test_prelive_supersession_preserves_old_bytes_and_starts_fresh(offline, monkeypatch):
+    config = offline['config']
+    assert offline['attestation']['runtime_sha256'] == control.hash_public(offline['pin'])
+    old_root = Path(config.storage_root)
+    files = ('operator.json', 'client-review.json', 'startup.json', 'offline-pin.json')
+    before = {name: (sha256_hex((old_root / name).read_bytes()), (old_root / name).stat().st_mtime_ns)
+              for name in files}
+    allow_successor_head(monkeypatch)
+    result = control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    new_root = successor_path(config)
+    assert result['successor'] == str(new_root) and result['network'] == 'not-performed'
+    assert {name: (sha256_hex((old_root / name).read_bytes()), (old_root / name).stat().st_mtime_ns)
+            for name in files} == before
+    assert sorted(p.name for p in old_root.iterdir()) == sorted([*files, 'registry'])
+    assert sorted(p.name for p in new_root.iterdir()) == ['operator.json', 'registry', 'supersession.json']
+    assert not list((new_root / 'registry').iterdir())
+    new_config = inherited._typed(p3.load_json(new_root / 'operator.json'), control.OperatorConfiguration)
+    assert new_config.expected_head == NEXT_HEAD and new_config.storage_root == str(new_root)
+    assert new_config.runtime().registry_root == str(new_root / 'registry')
+    assert control.storage_check(new_config)['secrets'] == 'excluded'
+    record = p3.load_json(new_root / 'supersession.json')
+    assert record['predecessor_expected_head'] == HEAD
+    assert record['offline_files_present'] == sorted(files)
+    assert record['no_live_boundary_artifacts'] is True
+    assert json.loads((frozen.SHEETS_DOCS / 'SHEETS_PHASE4_OPERATOR_CONFIGURATION_DRAFT.json').read_text())['expected_head'] is None
+
+
+def test_stale_but_internally_bound_predecessor_pin_remains_supersedable(offline, monkeypatch, tmp_path):
+    config = offline['config']
+    pin = p3.load_json(config.path('offline-pin.json'))
+    pin['python_executable'] = str(tmp_path / 'former-python')
+    startup_record = p3.load_json(config.path('startup.json'))
+    startup_record['runtime_sha256'] = control.hash_public(pin)
+    config.path('offline-pin.json').write_bytes(canonical_json_bytes(pin) + b'\n')
+    config.path('startup.json').write_bytes(canonical_json_bytes(startup_record) + b'\n')
+    assert pin != control.runtime_projection(config, offline['review'])
+    allow_successor_head(monkeypatch)
+    assert control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)['successor'] == str(successor_path(config))
+
+
+@pytest.mark.parametrize('tamper', ['startup_digest', 'offline_pin'])
+def test_stored_startup_and_pin_must_remain_bound(offline, monkeypatch, tmp_path, tamper):
+    config = offline['config']
+    if tamper == 'startup_digest':
+        path = config.path('startup.json')
+        record = p3.load_json(path)
+        record['runtime_sha256'] = 'f' * 64
+        assert record['runtime_sha256'] != control.hash_public(offline['pin'])
+    else:
+        path = config.path('offline-pin.json')
+        record = p3.load_json(path)
+        record['python_executable'] = str(tmp_path / 'alternate-python')
+        assert control.hash_public(record) != offline['attestation']['runtime_sha256']
+    path.write_bytes(canonical_json_bytes(record) + b'\n')
+    assert p3.load_json(path) == record
+    allow_successor_head(monkeypatch)
+    with pytest.raises(frozen.QualificationError):
+        control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    assert not successor_path(config).exists()
+
+
+def test_successor_requires_fresh_review_startup_pin_before_preflight(offline, reviewed, monkeypatch):
+    allow_successor_head(monkeypatch)
+    config = offline['config']
+    control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    new_root = successor_path(config)
+    successor = inherited._typed(p3.load_json(new_root / 'operator.json'), control.OperatorConfiguration)
+    assert operator.main(['phase4-preflight', '--configuration', str(new_root / 'operator.json')]) == 2
+    p3.write_json(successor.path('client-review.json'), reviewed)
+    attestation = control.startup(successor, reviewed, dict.fromkeys(control.ASSUMPTIONS, True))
+    p3.write_json(successor.path('startup.json'), attestation)
+    pin = control.runtime_projection(successor, reviewed)
+    p3.write_json(successor.path('offline-pin.json'), pin)
+    assert control.offline_preflight(successor, reviewed, attestation, pin)['status'] == 'PASS'
+
+
+@pytest.mark.parametrize('artifact', [name for name in control.FILES if name not in control.PRELIVE_FILES])
+def test_every_phase4_live_boundary_artifact_blocks_supersession(offline, monkeypatch, artifact):
+    allow_successor_head(monkeypatch)
+    config = offline['config']
+    p3.write_json(config.path(artifact), {})
+    with pytest.raises(frozen.QualificationError):
+        control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    assert not successor_path(config).exists()
+    assert config.path(artifact).exists()
+
+
+@pytest.mark.parametrize('name', ['reservation-TEST_ONLY_fixture.json', 'claim-TEST_ONLY_authorization.json',
+                                  'attempt-TEST_ONLY_authorization.jsonl', 'registry.lock'])
+def test_nonempty_registry_blocks_supersession(offline, monkeypatch, name):
+    allow_successor_head(monkeypatch)
+    config = offline['config']
+    p3.write_json(Path(config.runtime().registry_root) / name, {})
+    with pytest.raises(frozen.QualificationError):
+        control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    assert not successor_path(config).exists()
+
+
+@pytest.mark.parametrize('attack', ['unknown', 'hardlink'])
+def test_unknown_file_or_hardlink_blocks_supersession(offline, monkeypatch, tmp_path, attack):
+    allow_successor_head(monkeypatch)
+    config = offline['config']
+    if attack == 'unknown':
+        p3.write_json(Path(config.storage_root) / 'paper-observation.json', {})
+    else:
+        os.link(config.path('operator.json'), tmp_path / 'other-link')
+    with pytest.raises(frozen.QualificationError):
+        control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    assert not successor_path(config).exists()
+
+
+@pytest.mark.parametrize('attack', ['existing', 'symlink'])
+def test_existing_or_symlink_destination_refuses_without_overwrite(offline, monkeypatch, tmp_path, attack):
+    allow_successor_head(monkeypatch)
+    config = offline['config']
+    destination = successor_path(config)
+    if attack == 'existing':
+        destination.mkdir(mode=0o700)
+        (destination / 'marker').write_text('preserve')
+    else:
+        destination.symlink_to(tmp_path)
+    with pytest.raises(FileExistsError):
+        control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    if attack == 'existing': assert (destination / 'marker').read_text() == 'preserve'
+    else: assert destination.is_symlink()
+
+
+@pytest.mark.parametrize('stage', [1, 6])
+def test_directory_fsync_failure_leaves_inactive_successor(offline, monkeypatch, stage):
+    allow_successor_head(monkeypatch)
+    config = offline['config']
+    original = control._fsync_directory
+    calls = []
+    def failing(path):
+        calls.append(str(path))
+        if len(calls) == stage:
+            raise OSError('synthetic fsync failure')
+        return original(path)
+    monkeypatch.setattr(control, '_fsync_directory', failing)
+    with pytest.raises(OSError):
+        control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    destination = successor_path(config)
+    assert destination.exists() and config.path('operator.json').exists()
+    successor = replace(config, storage_root=str(destination), expected_head=NEXT_HEAD,
+                        read={**config.read, 'registry_root': str(destination / 'registry')})
+    with pytest.raises(Exception):
+        control.storage_check(successor)
+
+
+def test_final_predecessor_recheck_blocks_late_oauth_intent(offline, monkeypatch):
+    allow_successor_head(monkeypatch)
+    config = offline['config']
+    destination = successor_path(config)
+    original = control._fsync_directory
+    injected = []
+    def inject_after_final_link_fsync(path):
+        original(path)
+        if path == destination and (destination / 'supersession.json').exists() and not injected:
+            p3.write_json(config.path('oauth-intent.json'), {})
+            injected.append(True)
+    monkeypatch.setattr(control, '_fsync_directory', inject_after_final_link_fsync)
+    with pytest.raises(frozen.QualificationError):
+        control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    assert injected and config.path('oauth-intent.json').exists()
+    assert (destination / 'supersession.pending.json').exists()
+    assert (destination / 'supersession.json').exists()
+    assert (destination / 'supersession.json').stat().st_nlink == 2
+    successor = replace(config, storage_root=str(destination), expected_head=NEXT_HEAD,
+                        read={**config.read, 'registry_root': str(destination / 'registry')})
+    with pytest.raises(frozen.QualificationError):
+        control.storage_check(successor)
+    assert [p for p in destination.parent.iterdir() if p.name.startswith(Path(config.storage_root).name + '-at-')] == [destination]
+
+
+def test_partial_operator_write_and_wrong_head_fail_closed(offline, monkeypatch):
+    config = offline['config']
+    allow_successor_head(monkeypatch)
+    with pytest.raises(frozen.QualificationError):
+        control.supersede_prelive(config, HEAD, control.SUPERSESSION_CONFIRMATION)
+    with pytest.raises(frozen.QualificationError):
+        control.supersede_prelive(config, NEXT_HEAD, 'no-confirmation')
+    assert not successor_path(config).exists()
+    real_write = p3.write_json
+    def failing(path, value):
+        if path.name == 'operator.json' and path.parent == successor_path(config):
+            raise OSError('synthetic crash before operator')
+        return real_write(path, value)
+    monkeypatch.setattr(p3, 'write_json', failing)
+    with pytest.raises(OSError):
+        control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    destination = successor_path(config)
+    assert (destination / 'supersession.pending.json').exists()
+    assert not (destination / 'operator.json').exists()
+
+
+def test_supersession_cli_is_offline_and_reports_successor(offline, monkeypatch, capsys):
+    allow_successor_head(monkeypatch)
+    config = offline['config']
+    assert operator.main(['supersede-prelive', '--configuration', str(config.path('operator.json')),
+        '--new-expected-head', NEXT_HEAD,
+        '--operator-confirmation', control.SUPERSESSION_CONFIRMATION]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result['successor'] == str(successor_path(config))
+    assert result['network'] == 'not-performed' and result['live_go'] == 'CLOSED'
+
+
+def test_two_processes_cannot_create_two_successors(offline):
+    config = offline['config']
+    child = '''
+import http.client, socket, ssl, sys, urllib.request, webbrowser
+from pathlib import Path
+from retry_semantics.study2 import sheets_phase2_control as p2
+from retry_semantics.study2 import sheets_phase3_control as p3
+from retry_semantics.study2 import sheets_phase3_operator as op
+from retry_semantics.study2 import sheets_phase4_control as p4
+def denied(*a, **kw):
+    raise AssertionError("network/browser forbidden")
+for name in ("socket", "create_connection", "getaddrinfo", "gethostbyname"):
+    setattr(socket, name, denied)
+http.client.HTTPSConnection.connect = denied
+ssl.SSLContext.wrap_socket = denied
+urllib.request.urlopen = denied
+webbrowser.open = denied
+p3.repository_check = lambda head: p2.require(head == "b" * 40)
+config = op._typed(p3.load_json(Path(sys.argv[1])), p4.OperatorConfiguration)
+try:
+    p4.supersede_prelive(config, "b" * 40, p4.SUPERSESSION_CONFIRMATION)
+    print("WIN")
+except Exception as error:
+    print(type(error).__name__, file=sys.stderr)
+    print("BLOCK")
+'''
+    processes = [subprocess.Popen([sys.executable, '-c', child, str(config.path('operator.json'))],
+                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env={}) for _ in range(2)]
+    outputs = [process.communicate(timeout=30) for process in processes]
+    assert sorted(output.strip() for output, _ in outputs) == ['BLOCK', 'WIN'], outputs
+    assert all(process.returncode == 0 for process in processes)
+    assert sorted(p.name for p in successor_path(config).iterdir()) == ['operator.json', 'registry', 'supersession.json']

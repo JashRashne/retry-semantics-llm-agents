@@ -1,7 +1,7 @@
 """DRAFT local operational gates. No provider access; trusted operator model."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import importlib
 import os
 from pathlib import Path
@@ -17,7 +17,7 @@ from retry_semantics.study2 import sheets_phase3_credentials as credentials
 from retry_semantics.study2 import sheets_phase3_operator as operator
 
 BASE = "9967146176e9e507768577e99fdaa40b5d821d6d"
-FILES = ("operator.json", "client-review.json", "startup.json", "offline-pin.json",
+FILES = ("operator.json", "client-review.json", "startup.json", "offline-pin.json", "supersession.json",
          "oauth-intent.json", "acquisition.json", "create-intent.json", "create-result.json",
          "provisioning.json", "fixture.json", "read-pin.json", "conditions.json",
          "issue-intent.json", "authorization.json", "phase3-receipt.json", "phase4-receipt.json",
@@ -26,6 +26,9 @@ ASSUMPTIONS = ("trusted_local_operator_machine", "no_concurrent_source_runtime_c
                "no_trust_store_or_system_certificate_changes", "no_vpn_proxy_route_changes",
                "no_package_updates", "clock_within_allowance", "private_storage_reviewed",
                "no_terminal_recording_or_core_dumps", "hostile_audit_approved")
+PRELIVE_FILES = frozenset(("operator.json", "client-review.json", "startup.json",
+                          "offline-pin.json", "supersession.json"))
+SUPERSESSION_CONFIRMATION = "EXPLICIT_OFFLINE_PRELIVE_SUPERSESSION"
 
 
 def hash_public(value):
@@ -103,8 +106,128 @@ def storage_check(config):
                     os.close(file_fd)
         finally:
             os.close(fd)
+    successor = re.fullmatch(r".+-at-([0-9a-f]{40})", root.name)
+    record_path = root / "supersession.json"
+    if successor or record_path.exists():
+        p2.require(successor is not None and successor.group(1) == config.expected_head)
+        record = p3.load_json(record_path)
+        predecessor = root.with_name(root.name[:-44])
+        p2.require(type(record) is dict and set(record) == {"schema", "predecessor_root",
+                   "predecessor_expected_head", "predecessor_operator_sha256", "successor_root",
+                   "successor_expected_head", "offline_files_present", "no_live_boundary_artifacts", "reason"}
+                   and record["schema"] == "sheets-phase4-prelive-supersession-v1"
+                   and record["predecessor_root"] == str(predecessor)
+                   and record["successor_root"] == config.storage_root
+                   and record["successor_expected_head"] == config.expected_head
+                   and type(record["predecessor_expected_head"]) is str
+                   and re.fullmatch(r"[0-9a-f]{40}", record["predecessor_expected_head"])
+                   and record["predecessor_expected_head"] != config.expected_head
+                   and record["no_live_boundary_artifacts"] is True
+                   and record["reason"] == "frozen_source_changed_before_live")
+        p2.digest(record["predecessor_operator_sha256"])
+        p2.require(type(record["offline_files_present"]) is list
+                   and record["offline_files_present"] == sorted(set(record["offline_files_present"]))
+                   and "operator.json" in record["offline_files_present"]
+                   and set(record["offline_files_present"]) <= PRELIVE_FILES)
     return {"root": config.storage_root, "directory_mode": "0700", "file_mode": "0600",
             "secrets": "excluded", "retention": "permanent-no-automatic-cleanup"}
+
+
+def _prelive_snapshot(config):
+    """Refuse every non-offline root entry and every registry entry, including locks."""
+    storage_check(config)
+    root = Path(config.storage_root)
+    names = set(os.listdir(root))
+    p2.require("operator.json" in names and names <= PRELIVE_FILES | {"registry"}
+               and not os.listdir(root / "registry"))
+    p2.require(p3.load_json(config.path("operator.json")) == config.projection())
+    review = p3.load_json(config.path("client-review.json")) if "client-review.json" in names else None
+    if review is not None:
+        validate_review(review)
+    if "startup.json" in names:
+        p2.require(review is not None)
+        startup_record = p3.load_json(config.path("startup.json"))
+        p2.require(type(startup_record) is dict and set(startup_record) ==
+                   {"schema", "runtime_sha256", "assumptions", "environment", "model"}
+                   and startup_record["schema"] == "sheets-phase4-startup-v1"
+                   and type(startup_record["assumptions"]) is dict
+                   and set(startup_record["assumptions"]) == set(ASSUMPTIONS)
+                   and all(value is True for value in startup_record["assumptions"].values())
+                   and startup_record["environment"] == "PASS_NAMES_ONLY"
+                   and startup_record["model"] == "trusted-local-operator-no-os-sandbox")
+        p2.digest(startup_record["runtime_sha256"])
+    if "offline-pin.json" in names:
+        p2.require("startup.json" in names)
+        pin = p3.load_json(config.path("offline-pin.json"))
+        p2.require(type(pin) is dict and set(pin) == {"schema", "expected_head", "clean_tree_required",
+                   "python_executable", "sources", "operator", "client_review",
+                   "phase4_support_implementations", "native_operational_implementations",
+                   "phase3", "fixture", "schemas"}
+                   and pin["schema"] == "sheets-phase4-runtime-pin-v1"
+                   and pin["expected_head"] == config.expected_head
+                   and pin["clean_tree_required"] is True and pin["fixture"] is None
+                   and pin["operator"] == config.projection() and pin["client_review"] == review)
+        p2.require(startup_record["runtime_sha256"] == hash_public(pin))
+    # Metadata is used only to detect concurrent changes; no file contents or secret hashes are recorded.
+    signature = tuple((name, *(getattr((root / name).lstat(), field)
+        for field in ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")))
+        for name in sorted(names))
+    return sorted(names - {"registry"}), signature
+
+
+def _fsync_directory(path):
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def supersede_prelive(config, new_head, operator_confirmation):
+    """Create one fresh sibling; never edit or remove the predecessor package."""
+    p2.require(operator_confirmation == SUPERSESSION_CONFIRMATION)
+    config.__post_init__()
+    p2.require(type(new_head) is str and re.fullmatch(r"[0-9a-f]{40}", new_head)
+               and new_head != config.expected_head)
+    p3.environment_gate()
+    p3.repository_check(new_head)
+    before = _prelive_snapshot(config)
+    old_root = Path(config.storage_root)
+    new_root = old_root.with_name(old_root.name + "-at-" + new_head)
+    new_config = replace(config, storage_root=str(new_root), expected_head=new_head,
+                         read={**config.read, "registry_root": str(new_root / "registry")})
+    record = {"schema": "sheets-phase4-prelive-supersession-v1",
+              "predecessor_root": config.storage_root, "predecessor_expected_head": config.expected_head,
+              "predecessor_operator_sha256": hash_public(config.projection()),
+              "successor_root": str(new_root), "successor_expected_head": new_head,
+              "offline_files_present": before[0], "no_live_boundary_artifacts": True,
+              "reason": "frozen_source_changed_before_live"}
+    # Exclusive deterministic name is the process-level race winner. All failure residue stays visible.
+    os.mkdir(new_root, 0o700)
+    _fsync_directory(new_root.parent)
+    p2.require(new_root.stat().st_uid == os.getuid()
+               and stat.S_IMODE(new_root.stat().st_mode) == 0o700)
+    os.mkdir(new_root / "registry", 0o700)
+    p2.require((new_root / "registry").stat().st_uid == os.getuid()
+               and stat.S_IMODE((new_root / "registry").stat().st_mode) == 0o700)
+    _fsync_directory(new_root)
+    p3.write_json(new_root / "supersession.pending.json", record)
+    p3.write_json(new_config.path("operator.json"), new_config.projection())
+    p2.require(_prelive_snapshot(config) == before)
+    p3.repository_check(new_head)
+    _fsync_directory(new_root / "registry")
+    _fsync_directory(new_root)
+    _fsync_directory(new_root.parent)
+    # A hard-link activation cannot overwrite a destination. Until pending is removed,
+    # storage_check rejects the unknown name and the two-link file. No fsync can fail
+    # after the final unlink; a crash may restore pending (blocked) or leave a valid root.
+    os.link(new_root / "supersession.pending.json", new_root / "supersession.json")
+    _fsync_directory(new_root)
+    p2.require(_prelive_snapshot(config) == before)
+    os.unlink(new_root / "supersession.pending.json")
+    return {"schema": "sheets-phase4-prelive-supersession-result-v1", "network": "not-performed",
+            "predecessor": config.storage_root, "successor": str(new_root),
+            "expected_head": new_head, "client_review": "required-again", "live_go": "CLOSED"}
 
 
 def validate_review(review):
@@ -155,7 +278,8 @@ def runtime_projection(config, review, descriptor=None):
                              "json", "json.decoder", "json.encoder", "json.scanner", "_json", "os")},
             "native_operational_implementations": native_operational_implementations(),
             "phase3": p3.runtime_projection(config.runtime()), "fixture": descriptor,
-            "schemas": ["sheets-phase4-startup-v1", "sheets-phase4-create-result-v1",
+            "schemas": ["sheets-phase4-startup-v1", "sheets-phase4-prelive-supersession-v1",
+                        "sheets-phase4-create-result-v1",
                         "sheets-phase3-fixture-descriptor-v1", "sheets-phase3-acquisition-metadata-v1",
                         "sheets-live-authorization-v1", "sheets-phase3-issuance-receipt-v1",
                         "sheets-phase4-issuance-receipt-v1"]}
@@ -189,7 +313,7 @@ def offline_preflight(config, review, attestation, pin):
     check("startup", lambda: p2.require(attestation == startup(config, review, attestation["assumptions"])))
     def pristine():
         p2.require(not any(config.path(n).exists() for n in FILES if n not in
-                   ("operator.json", "client-review.json", "startup.json", "offline-pin.json")))
+                   PRELIVE_FILES))
         p2.require(not os.listdir(Path(config.storage_root) / "registry"))
     check("setup_already_started_or_uncertain", pristine)
     return report("before-real-setup", reasons)
