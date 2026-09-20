@@ -2297,3 +2297,315 @@ except Exception:
     assert all(process.returncode == 0 for process in processes)
     assert sorted(p.name for p in unused_acquisition_path(config).iterdir()) == [
         'operator.json', 'registry', 'unused-acquisition-supersession.json']
+
+
+def make_adopted_package(predecessor_config, review, client, monkeypatch, *, head=None):
+    if head is None:
+        head = predecessor_config.expected_head
+    res = control.supersede_unused_read_authorization(predecessor_config, head, control.UNUSED_READ_CONFIRMATION)
+    dest = Path(res['successor'])
+    fresh = inherited._typed(p3.load_json(dest / 'operator.json'), control.OperatorConfiguration)
+    p3.write_json(fresh.path('client-review.json'), review)
+    attestation = control.startup(fresh, review, dict.fromkeys(control.ASSUMPTIONS, True))
+    offline_pin = control.runtime_projection(fresh, review)
+    p3.write_json(fresh.path('startup.json'), attestation)
+    p3.write_json(fresh.path('offline-pin.json'), offline_pin)
+    now = time.time()
+    body = canonical_json_bytes(dict(access_token=f'ya29.synthetic-bearer-{dest.name[-8:]}', expires_in=3600,
+                                     scope=p1.SCOPE, token_type='Bearer'))
+    token, metadata = credentials.validate_token_response(body, client,
+        account_alias=fresh.account_alias, exchange_started_at=now + 1,
+        prepared_at=now + 2, clock_uncertainty_seconds=2)
+    p3.write_json(fresh.path('oauth-intent.json'), setup.oauth_intent(fresh, review))
+    p3.write_json(fresh.path('acquisition.json'), metadata.projection())
+    control.adopt_existing_fixture(fresh, review, metadata, 'EXPLICIT_ADOPT_VALIDATED_EXISTING_FIXTURE')
+    p3.write_json(fresh.path('conditions.json'), asdict(p3.LocalConditions(True, True, True, True, True)))
+    monkeypatch.setattr(time, 'time', lambda: now + 3)
+    inputs = operator.post_inputs(fresh, token, metadata)
+    pre_res = control.post_setup_preflight(**inputs)
+    assert pre_res['status'] == 'PASS', pre_res
+    auth_result = issue(inputs)
+    return {
+        'config': fresh, 'token': token, 'metadata': metadata, 'inputs': inputs,
+        'auth_result': auth_result, 'issued_at': now,
+        'expires_at': p3.load_json(fresh.path('authorization.json'))['expires_at']
+    }
+
+
+def test_repeated_same_head_expired_unused_chain(expired_unused_read, client, monkeypatch):
+    """Cover requirements:
+    1. first expired-unused transition still works;
+    2. adopted successor -> authorization #2 expired unused -> SAME-HEAD successor works;
+    3. repeat once more (authorization #3 lineage) to establish arbitrary chaining;
+    4. new successor expected_head remains unchanged when same-head transition used;
+    7. current authorization hash, not authorization #1, is recorded;
+    8. fixture hash stays identical across generations;
+    9. no CREATE artifacts appear in reuse successors;
+    18. deterministic successor roots differ for successive predecessor paths;
+    21. no credentials copied.
+    """
+    p0 = expired_unused_read['config']
+    review = expired_unused_read['review']
+    p0_auth_hash = control._expired_unused_read_snapshot(p0)['authorization_sha256']
+    fixture_hash = expired_unused_read['descriptor']['fixture_hash']
+
+    # 1. First expired-unused transition to S1
+    s1 = make_adopted_package(p0, review, client, monkeypatch, head=p0.expected_head)
+    s1_config = s1['config']
+    assert s1_config.expected_head == p0.expected_head
+    s1_root = Path(s1_config.storage_root)
+    s1_record = p3.load_json(s1_root / 'unused-read-authorization-supersession.json')
+    assert s1_record['predecessor_root'] == p0.storage_root
+    assert s1_record['predecessor_authorization_sha256'] == p0_auth_hash
+    assert s1_record['predecessor_fixture_sha256'] == fixture_hash
+    assert not any((s1_root / name).exists() for name in ('create-intent.json', 'create-result.json', 'provisioning.json'))
+    for secret in (BEARER, CLIENT_SECRET, 'synthetic-refresh'):
+        assert secret.encode() not in b''.join(p.read_bytes() for p in s1_root.rglob('*') if p.is_file())
+
+    # Advance clock to expire authorization #2 in S1
+    monkeypatch.setattr(time, 'time', lambda: s1['expires_at'] + 200)
+
+    # 2. Adopted successor -> authorization #2 expired unused -> SAME-HEAD successor S2 works
+    s2 = make_adopted_package(s1_config, review, client, monkeypatch, head=s1_config.expected_head)
+    s2_config = s2['config']
+    assert s2_config.expected_head == s1_config.expected_head
+    s2_root = Path(s2_config.storage_root)
+    s2_record = p3.load_json(s2_root / 'unused-read-authorization-supersession.json')
+    assert s2_record['predecessor_root'] == s1_config.storage_root
+    # 7. Current authorization hash (auth #2), not auth #1, is recorded in S2:
+    assert s2_record['predecessor_authorization_sha256'] == s1['auth_result']['authorization_sha256']
+    assert s2_record['predecessor_authorization_sha256'] != p0_auth_hash
+    # 8. Fixture hash stays identical:
+    assert s2_record['predecessor_fixture_sha256'] == fixture_hash
+    # 9. No CREATE artifacts in S2:
+    assert not any((s2_root / name).exists() for name in ('create-intent.json', 'create-result.json', 'provisioning.json'))
+    for secret in (BEARER, CLIENT_SECRET, 'synthetic-refresh'):
+        assert secret.encode() not in b''.join(p.read_bytes() for p in s2_root.rglob('*') if p.is_file())
+
+    # 18. Deterministic successor roots differ:
+    assert s1_root != Path(p0.storage_root)
+    assert s2_root != s1_root
+    assert s2_root.name.startswith(control.UNUSED_READ_SUCCESSOR_PREFIX)
+
+    # Advance clock to expire authorization #3 in S2
+    monkeypatch.setattr(time, 'time', lambda: s2['expires_at'] + 200)
+
+    # 3. Repeat once more (authorization #3 lineage) to establish arbitrary chaining (S3)
+    s3 = make_adopted_package(s2_config, review, client, monkeypatch, head=s2_config.expected_head)
+    s3_config = s3['config']
+    assert s3_config.expected_head == s2_config.expected_head
+    s3_root = Path(s3_config.storage_root)
+    s3_record = p3.load_json(s3_root / 'unused-read-authorization-supersession.json')
+    assert s3_record['predecessor_root'] == s2_config.storage_root
+    assert s3_record['predecessor_authorization_sha256'] == s2['auth_result']['authorization_sha256']
+    assert s3_record['predecessor_authorization_sha256'] != s1['auth_result']['authorization_sha256']
+    assert s3_record['predecessor_authorization_sha256'] != p0_auth_hash
+    assert s3_record['predecessor_fixture_sha256'] == fixture_hash
+    assert not any((s3_root / name).exists() for name in ('create-intent.json', 'create-result.json', 'provisioning.json'))
+    assert s3_root != s2_root
+
+    # Verify provenance chain
+    chain = control.reused_fixture_chain(s3_config)
+    assert len(chain) == 3
+    assert chain[0]['predecessor_root'] == s2_config.storage_root
+    assert chain[1]['predecessor_root'] == s1_config.storage_root
+    assert chain[2]['predecessor_root'] == p0.storage_root
+
+
+def test_same_head_requires_valid_repository_check(expired_unused_read, client, monkeypatch):
+    """Cover requirements:
+    5. repository_check is still required;
+    6. dirty/wrong repository rejects.
+    """
+    p0 = expired_unused_read['config']
+    review = expired_unused_read['review']
+    s1 = make_adopted_package(p0, review, client, monkeypatch, head=p0.expected_head)
+    s1_config = s1['config']
+    monkeypatch.setattr(time, 'time', lambda: s1['expires_at'] + 200)
+
+    # Repository check fails (e.g. dirty tree / wrong SHA)
+    def fail_repo(head):
+        raise p2.Refused()
+    monkeypatch.setattr(p3, 'repository_check', fail_repo)
+
+    with pytest.raises(p2.Refused):
+        control.supersede_unused_read_authorization(s1_config, s1_config.expected_head, control.UNUSED_READ_CONFIRMATION)
+
+
+def test_provision_blocked_across_all_reuse_generations(expired_unused_read, client, monkeypatch):
+    """Cover requirement:
+    10. provision remains blocked after second/third reuse generation.
+    """
+    p0 = expired_unused_read['config']
+    review = expired_unused_read['review']
+    s1 = make_adopted_package(p0, review, client, monkeypatch, head=p0.expected_head)
+    s1_config = s1['config']
+    monkeypatch.setattr(time, 'time', lambda: s1['expires_at'] + 200)
+    s2 = make_adopted_package(s1_config, review, client, monkeypatch, head=s1_config.expected_head)
+    s2_config = s2['config']
+    monkeypatch.setattr(time, 'time', lambda: s2['expires_at'] + 200)
+    s3 = make_adopted_package(s2_config, review, client, monkeypatch, head=s2_config.expected_head)
+    s3_config = s3['config']
+
+    parser = operator.session_parser()
+    for cfg, token, metadata in ((s1_config, s1['token'], s1['metadata']),
+                                 (s2_config, s2['token'], s2['metadata']),
+                                 (s3_config, s3['token'], s3['metadata'])):
+        with pytest.raises(credentials.CredentialRefused):
+            setup.provision(cfg, review, token, metadata, execute_provisioning=True,
+                            operator_confirmation=setup.CREATE_CONFIRMATION)
+        for line in ('provision --execute-provisioning --operator-confirmation ' + setup.CREATE_CONFIRMATION,
+                     'review-provisioning --operator-confirmation ' + p3.PROVISION_CONFIRMATION + ' --isolated --no-writers',
+                     'reserve-and-descriptor'):
+            with pytest.raises(p2.Refused):
+                operator.dispatch(parser.parse_args(line.split()), cfg, review, token, metadata)
+
+
+@pytest.mark.parametrize('attack', [
+    'read-intent', 'result', 'live', 'mismatched-receipt', 'tampered-adoption',
+    'registry-lock', 'registry-claim', 'registry-extra-reservation',
+    'missing-adoption', 'create-intent-present', 'provisioning-present',
+])
+def test_adopted_lineage_rejects_contradictory_predecessor(expired_unused_read, client, monkeypatch, attack):
+    """Cover requirements:
+    11. read-intent present rejects;
+    12. result present rejects;
+    13. authorization still live rejects;
+    14. mismatched current receipt rejects;
+    16. current fixture-adoption tampering rejects;
+    17. registry contradiction rejects.
+    """
+    p0 = expired_unused_read['config']
+    review = expired_unused_read['review']
+    s1 = make_adopted_package(p0, review, client, monkeypatch, head=p0.expected_head)
+    s1_config = s1['config']
+
+    if attack == 'live':
+        monkeypatch.setattr(time, 'time', lambda: s1['expires_at'] - 1)
+    else:
+        monkeypatch.setattr(time, 'time', lambda: s1['expires_at'] + 200)
+
+    if attack == 'read-intent':
+        p3.write_json(s1_config.path('read-intent.json'), {})
+    elif attack == 'result':
+        p3.write_json(s1_config.path('result.json'), {})
+    elif attack == 'mismatched-receipt':
+        val = p3.load_json(s1_config.path('phase4-receipt.json'))
+        val['authorization_sha256'] = '0' * 64
+        s1_config.path('phase4-receipt.json').write_bytes(canonical_json_bytes(val) + b'\n')
+    elif attack == 'tampered-adoption':
+        val = p3.load_json(s1_config.path('fixture-adoption.json'))
+        val['predecessor_authorization_sha256'] = '0' * 64
+        s1_config.path('fixture-adoption.json').write_bytes(canonical_json_bytes(val) + b'\n')
+    elif attack == 'registry-lock':
+        (Path(s1_config.runtime().registry_root) / 'registry.lock').write_text('tampered')
+    elif attack == 'registry-claim':
+        p3.write_json(Path(s1_config.runtime().registry_root) / f'claim-{s1_config.authorization_id}.json', {})
+    elif attack == 'registry-extra-reservation':
+        p3.write_json(Path(s1_config.runtime().registry_root) / 'reservation-EXTRA.json', {})
+    elif attack == 'missing-adoption':
+        s1_config.path('fixture-adoption.json').unlink()
+    elif attack == 'create-intent-present':
+        p3.write_json(s1_config.path('create-intent.json'), {})
+    elif attack == 'provisioning-present':
+        p3.write_json(s1_config.path('provisioning.json'), {})
+
+    with pytest.raises(Exception):
+        control.supersede_unused_read_authorization(s1_config, s1_config.expected_head, control.UNUSED_READ_CONFIRMATION)
+
+
+def test_historical_provenance_tampering_rejects(expired_unused_read, client, monkeypatch):
+    """Cover requirement:
+    15. historical provenance tampering rejects.
+    """
+    p0 = expired_unused_read['config']
+    review = expired_unused_read['review']
+    s1 = make_adopted_package(p0, review, client, monkeypatch, head=p0.expected_head)
+    s1_config = s1['config']
+    monkeypatch.setattr(time, 'time', lambda: s1['expires_at'] + 200)
+
+    # Tamper with P0's fixture.json after S1 was created
+    val = p3.load_json(p0.path('fixture.json'))
+    val['fixture_hash'] = '0' * 64
+    p0.path('fixture.json').write_bytes(canonical_json_bytes(val) + b'\n')
+
+    with pytest.raises(Exception):
+        control.supersede_unused_read_authorization(s1_config, s1_config.expected_head, control.UNUSED_READ_CONFIRMATION)
+
+
+def test_repeated_recovery_pc_name_max_enforced(expired_unused_read, client, monkeypatch):
+    """Cover requirement:
+    19. PC_NAME_MAX remains enforced.
+    """
+    p0 = expired_unused_read['config']
+    review = expired_unused_read['review']
+    s1 = make_adopted_package(p0, review, client, monkeypatch, head=p0.expected_head)
+    s1_config = s1['config']
+    monkeypatch.setattr(time, 'time', lambda: s1['expires_at'] + 200)
+
+    monkeypatch.setattr(control.os, 'pathconf', lambda parent, key: 10)
+    with pytest.raises(Exception):
+        control.supersede_unused_read_authorization(s1_config, s1_config.expected_head, control.UNUSED_READ_CONFIRMATION)
+
+
+def test_repeated_recovery_crash_and_concurrency_fail_closed(expired_unused_read, client, monkeypatch):
+    """Cover requirement:
+    20. crash/concurrency behavior remains fail-closed.
+    """
+    p0 = expired_unused_read['config']
+    review = expired_unused_read['review']
+    s1 = make_adopted_package(p0, review, client, monkeypatch, head=p0.expected_head)
+    s1_config = s1['config']
+    monkeypatch.setattr(time, 'time', lambda: s1['expires_at'] + 200)
+
+    # Crash residue
+    s2_dest = control._unused_read_successor_root(s1_config.storage_root)
+    real_fsync = control._fsync_directory
+    def fail_fsync(path):
+        if Path(path) == s2_dest / 'registry':
+            raise OSError('synthetic crash')
+        return real_fsync(path)
+    monkeypatch.setattr(control, '_fsync_directory', fail_fsync)
+    with pytest.raises(OSError):
+        control.supersede_unused_read_authorization(s1_config, s1_config.expected_head, control.UNUSED_READ_CONFIRMATION)
+    assert (s2_dest / 'unused-read-authorization-supersession.pending.json').exists()
+    candidate = inherited._typed(p3.load_json(s2_dest / 'operator.json'), control.OperatorConfiguration)
+    with pytest.raises(Exception):
+        control.storage_check(candidate)
+
+
+def test_later_read_uses_newest_authorization_only(expired_unused_read, client, monkeypatch):
+    """Cover requirements:
+    22. old authorization cannot be treated as current;
+    23. later successful read would use newest authorization only.
+    """
+    p0 = expired_unused_read['config']
+    review = expired_unused_read['review']
+    s1 = make_adopted_package(p0, review, client, monkeypatch, head=p0.expected_head)
+    s1_config = s1['config']
+    monkeypatch.setattr(time, 'time', lambda: s1['expires_at'] + 200)
+    s2 = make_adopted_package(s1_config, review, client, monkeypatch, head=s1_config.expected_head)
+    s2_config = s2['config']
+
+    # In S2, trying to read using P0's or S1's authorization fails:
+    with pytest.raises(credentials.CredentialRefused):
+        operator.execute_read(inputs=s2['inputs'], execute_live_read=True,
+            authorization=p3.parse_authorization(p3.load_json(p0.path('authorization.json'))),
+            receipt=p3.load_json(s2_config.path('phase3-receipt.json')),
+            operational_receipt=p3.load_json(s2_config.path('phase4-receipt.json')))
+
+    with pytest.raises(credentials.CredentialRefused):
+        operator.execute_read(inputs=s2['inputs'], execute_live_read=True,
+            authorization=p3.parse_authorization(p3.load_json(s1_config.path('authorization.json'))),
+            receipt=p3.load_json(s2_config.path('phase3-receipt.json')),
+            operational_receipt=p3.load_json(s2_config.path('phase4-receipt.json')))
+
+    # Reading with S2's newest authorization succeeds:
+    monkeypatch.setattr(inherited, 'execute_read', lambda **kw: {
+        'schema': 'sheets-phase3-first-read-result-v1', 'summary': {'outcome': 'ZERO'}, 'paper_observations': 0})
+    result = operator.execute_read(inputs=s2['inputs'], execute_live_read=True,
+        authorization=p3.parse_authorization(p3.load_json(s2_config.path('authorization.json'))),
+        receipt=p3.load_json(s2_config.path('phase3-receipt.json')),
+        operational_receipt=p3.load_json(s2_config.path('phase4-receipt.json')))
+    assert result['paper_observations'] == 0
+    assert s2_config.path('result.json').exists()

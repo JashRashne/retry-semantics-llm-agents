@@ -50,6 +50,10 @@ UNUSED_READ_REQUIRED = frozenset(("operator.json", "client-review.json", "startu
     "create-result.json", "provisioning.json", "fixture.json", "read-pin.json",
     "conditions.json", "issue-intent.json", "authorization.json", "phase3-receipt.json",
     "phase4-receipt.json"))
+UNUSED_READ_ADOPTED_REQUIRED = frozenset(("operator.json", "client-review.json", "startup.json",
+    "offline-pin.json", "oauth-intent.json", "acquisition.json", "fixture-adoption.json",
+    "fixture.json", "read-pin.json", "conditions.json", "issue-intent.json", "authorization.json",
+    "phase3-receipt.json", "phase4-receipt.json"))
 
 
 def hash_public(value):
@@ -300,7 +304,9 @@ def _expired_unused_read_snapshot(config, *, now=None):
     storage_check(config)
     root = Path(config.storage_root)
     names = set(os.listdir(root))
-    p2.require(names in (UNUSED_READ_REQUIRED | {"registry"} | extra
+    adopted = reused_fixture_origin(config) is not None
+    required = UNUSED_READ_ADOPTED_REQUIRED if adopted else UNUSED_READ_REQUIRED
+    p2.require(names in (required | {"registry"} | extra
         for extra in PREDECESSOR_PROVENANCE))
     p2.require(p3.load_json(config.path("operator.json")) == config.projection())
     review = validate_review(p3.load_json(config.path("client-review.json")))
@@ -329,19 +335,24 @@ def _expired_unused_read_snapshot(config, *, now=None):
     p2.require(metadata.public_config_sha256 == review["public_sha256"]
         and metadata.account_alias == config.account_alias
         and metadata.clock_uncertainty_seconds == config.runtime().clock_uncertainty_seconds)
-    intent = setup.create_intent(config, review)
-    p2.require(p3.load_json(config.path("create-intent.json")) == intent)
-    result = setup.validate_create_result(p3.load_json(config.path("create-result.json")), config, review)
-    record = operator._typed(p3.load_json(config.path("provisioning.json")), p3.ProvisioningRecord)
-    descriptor = p3.load_json(config.path("fixture.json"))
+    if adopted:
+        descriptor = adopted_fixture(config, review)
+        p2.require(not any(config.path(n).exists() for n in
+            ("create-intent.json", "create-result.json", "provisioning.json")))
+    else:
+        intent = setup.create_intent(config, review)
+        p2.require(p3.load_json(config.path("create-intent.json")) == intent)
+        result = setup.validate_create_result(p3.load_json(config.path("create-result.json")), config, review)
+        record = operator._typed(p3.load_json(config.path("provisioning.json")), p3.ProvisioningRecord)
+        descriptor = p3.load_json(config.path("fixture.json"))
+        p2.require(descriptor == p3.fixture_descriptor(record)
+            and record.spreadsheet_id == result["spreadsheet_id"]
+            and record.public_app_config_sha256 == review["public_sha256"]
+            and record.account_alias == config.account_alias
+            and record.reservation_id == config.reservation_id
+            and record.operator_alias == config.operator_alias
+            and record.confirmed_at >= metadata.prepared_at)
     fixture = p3.parse_fixture_descriptor(descriptor)
-    p2.require(descriptor == p3.fixture_descriptor(record)
-        and record.spreadsheet_id == result["spreadsheet_id"]
-        and record.public_app_config_sha256 == review["public_sha256"]
-        and record.account_alias == config.account_alias
-        and record.reservation_id == config.reservation_id
-        and record.operator_alias == config.operator_alias
-        and record.confirmed_at >= metadata.prepared_at)
     read_pin = p3.load_json(config.path("read-pin.json"))
     p2.require(read_pin == {**offline_pin, "fixture": descriptor})
     conditions = operator._typed(p3.load_json(config.path("conditions.json")), p3.LocalConditions)
@@ -473,6 +484,20 @@ def reused_fixture_origin(config):
                and old_config.expected_head == record["predecessor_expected_head"])
     p2.require(_prelive_snapshot(old_config)[0] == record["offline_files_present"])
     return reused_fixture_origin(old_config)
+
+
+def reused_fixture_chain(config):
+    """Return the ordered list of unused-read supersession records from immediate predecessor to root."""
+    chain = []
+    current = config
+    while True:
+        origin = reused_fixture_origin(current)
+        if origin is None:
+            break
+        chain.append(origin)
+        pred_root = Path(origin["predecessor_root"])
+        current = operator._typed(p3.load_json(pred_root / "operator.json"), OperatorConfiguration)
+    return chain
 
 
 def _fsync_directory(path):
@@ -641,8 +666,7 @@ def supersede_unused_read_authorization(config, new_head, operator_confirmation)
     """Preserve a validated fixture and a first issuance that expired before read dispatch."""
     p2.require(operator_confirmation == UNUSED_READ_CONFIRMATION)
     config.__post_init__()
-    p2.require(type(new_head) is str and re.fullmatch(r"[0-9a-f]{40}", new_head)
-               and new_head != config.expected_head)
+    p2.require(type(new_head) is str and re.fullmatch(r"[0-9a-f]{40}", new_head))
     p3.environment_gate()
     p3.repository_check(new_head)
     before = _expired_unused_read_snapshot(config)
