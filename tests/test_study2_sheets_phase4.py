@@ -1118,7 +1118,7 @@ def test_oauth_explicit_flag_not_sufficient_when_pin_wrong(offline, client, tmp_
     assert not offline['config'].path('oauth-intent.json').exists()
 
 
-@pytest.mark.parametrize('action', ['stop', 'blocked', 'read', 'exception'])
+@pytest.mark.parametrize('action', ['stop', 'blocked', 'read', 'read-current', 'exception'])
 def test_ephemeral_parent_worker_handoff_no_application_bearer_file(offline, prepared, monkeypatch, action, capsys):
     config = offline['config']
     monkeypatch.setattr(operator.sys.stdin, 'isatty', lambda: True)
@@ -1131,6 +1131,7 @@ def test_ephemeral_parent_worker_handoff_no_application_bearer_file(offline, pre
     monkeypatch.setattr(setup, 'acquire', acquire)
     if action == 'stop': line = 'stop'
     elif action in ('blocked', 'exception'): line = 'post-setup-preflight'
+    elif action == 'read-current': line = 'read-current --execute-live-read --token-input resident-memory'
     else:
         line = 'read --execute-live-read --token-input resident-memory'
         for key, artifact in [('fixture','fixture.json'), ('metadata','acquisition.json'), ('authorization','authorization.json'),
@@ -2609,3 +2610,265 @@ def test_later_read_uses_newest_authorization_only(expired_unused_read, client, 
         operational_receipt=p3.load_json(s2_config.path('phase4-receipt.json')))
     assert result['paper_observations'] == 0
     assert s2_config.path('result.json').exists()
+
+
+# ==============================================================================
+# Hostile tests for compact resident read command (read-current)
+# ==============================================================================
+
+def test_read_current_command_length_is_safely_below_1024_bytes():
+    cmd = "read-current --execute-live-read --token-input resident-memory"
+    assert len(cmd) == 62
+    assert len(cmd.encode("utf-8")) < 1024
+    # Comfortably below macOS MAX_CANON 1024-byte TTY limit
+    assert len(cmd) <= 80
+
+
+def test_read_current_succeeds_through_synthetic_read_path(positive, monkeypatch):
+    config = positive['config']
+    issue(positive)
+    monkeypatch.setattr(inherited, 'execute_read', lambda **kw: {
+        'schema': 'sheets-phase3-first-read-result-v1', 'summary': {'outcome': 'ZERO'}, 'paper_observations': 0})
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    result = operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+    assert result['paper_observations'] == 0
+    assert config.path('result.json').exists()
+    assert config.path('read-intent.json').exists()
+
+
+def test_read_current_and_verbose_modes_produce_equivalent_inputs_and_results(positive, monkeypatch):
+    config = positive['config']
+    issue(positive)
+    captured_calls = []
+
+    def mock_inherited_read(**kw):
+        captured_calls.append(kw)
+        return {'schema': 'sheets-phase3-first-read-result-v1', 'summary': {'outcome': 'ZERO'}, 'paper_observations': 0}
+
+    monkeypatch.setattr(inherited, 'execute_read', mock_inherited_read)
+    parser = operator.session_parser()
+
+    # 1. Dispatch using compact command:
+    args_compact = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    result_compact = operator.dispatch(args_compact, config, positive['review'], positive['token'], positive['metadata'])
+
+    # Clear result/read-intent for second comparison test
+    config.path('result.json').unlink()
+    config.path('read-intent.json').unlink()
+
+    # 2. Dispatch using verbose command:
+    verbose_cmd = ['read', '--execute-live-read', '--token-input', 'resident-memory',
+        '--fixture', str(config.path('fixture.json')),
+        '--metadata', str(config.path('acquisition.json')),
+        '--authorization', str(config.path('authorization.json')),
+        '--receipt', str(config.path('phase3-receipt.json')),
+        '--operational-receipt', str(config.path('phase4-receipt.json')),
+        '--pin', str(config.path('read-pin.json')),
+        '--configuration', str(config.path('operator.json'))]
+    args_verbose = parser.parse_args(verbose_cmd)
+    result_verbose = operator.dispatch(args_verbose, config, positive['review'], positive['token'], positive['metadata'])
+
+    assert result_compact == result_verbose
+    assert len(captured_calls) == 2
+    # Verify both calls received identical execution parameters
+    assert captured_calls[0] == captured_calls[1]
+
+
+def test_read_current_uses_exact_config_path_artifacts(positive, monkeypatch):
+    config = positive['config']
+    issue(positive)
+    accessed_paths = []
+    original_load_json = p3.load_json
+
+    def tracking_load_json(path, *args, **kwargs):
+        accessed_paths.append(path)
+        return original_load_json(path, *args, **kwargs)
+
+    monkeypatch.setattr(p3, 'load_json', tracking_load_json)
+    monkeypatch.setattr(inherited, 'execute_read', lambda **kw: {
+        'schema': 'sheets-phase3-first-read-result-v1', 'summary': {'outcome': 'ZERO'}, 'paper_observations': 0})
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+    for name in ('fixture.json', 'acquisition.json', 'authorization.json', 'phase3-receipt.json',
+                 'phase4-receipt.json', 'read-pin.json', 'operator.json'):
+        assert config.path(name) in accessed_paths
+
+
+def test_read_current_rejects_caller_supplied_alternate_paths(positive):
+    parser = operator.session_parser()
+    # Caller attempting to pass any path flags to read-current is refused by SafeParser
+    for flag in ('--fixture', '--metadata', '--authorization', '--receipt', '--operational-receipt',
+                 '--pin', '--configuration', '--path', '--cwd'):
+        with pytest.raises(credentials.CredentialRefused):
+            parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory', flag, '/tmp/evil.json'])
+
+
+@pytest.mark.parametrize('missing', [
+    'fixture.json', 'acquisition.json', 'authorization.json', 'phase3-receipt.json',
+    'phase4-receipt.json', 'read-pin.json', 'operator.json'])
+def test_read_current_missing_artifact_rejects(positive, missing):
+    config = positive['config']
+    issue(positive)
+    config.path(missing).unlink()
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    with pytest.raises((frozen.QualificationError, credentials.CredentialRefused, FileNotFoundError, Exception)):
+        operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+
+def test_read_current_mismatched_authorization_rejects(positive):
+    config = positive['config']
+    issue(positive)
+    auth = p3.load_json(config.path('authorization.json'))
+    auth['authorization_id'] = 'mismatched-auth-id'
+    config.path('authorization.json').unlink()
+    p3.write_json(config.path('authorization.json'), auth)
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    with pytest.raises(credentials.CredentialRefused):
+        operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+
+def test_read_current_stale_or_wrong_authorization_rejects(positive):
+    config = positive['config']
+    issue(positive)
+    auth = p3.load_json(config.path('authorization.json'))
+    # Stale/expired authorization
+    auth['authorized_at'] = 100.0
+    auth['expires_at'] = 220.0
+    config.path('authorization.json').unlink()
+    p3.write_json(config.path('authorization.json'), auth)
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    with pytest.raises(credentials.CredentialRefused):
+        operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+
+def test_read_current_wrong_receipt_rejects(positive):
+    config = positive['config']
+    issue(positive)
+    config.path('phase3-receipt.json').unlink()
+    p3.write_json(config.path('phase3-receipt.json'), {'schema': 'sheets-phase3-receipt-v1', 'tampered': True})
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    with pytest.raises(credentials.CredentialRefused):
+        operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+
+def test_read_current_wrong_operational_receipt_rejects(positive):
+    config = positive['config']
+    issue(positive)
+    config.path('phase4-receipt.json').unlink()
+    p3.write_json(config.path('phase4-receipt.json'), {'schema': 'sheets-phase4-issuance-receipt-v1', 'tampered': True})
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    with pytest.raises(credentials.CredentialRefused):
+        operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+
+def test_read_current_wrong_read_pin_rejects(positive):
+    config = positive['config']
+    issue(positive)
+    config.path('read-pin.json').unlink()
+    p3.write_json(config.path('read-pin.json'), {'runtime': 'tampered'})
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    with pytest.raises((frozen.QualificationError, credentials.CredentialRefused)):
+        operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+
+def test_read_current_wrong_operator_config_rejects(positive):
+    config = positive['config']
+    issue(positive)
+    config.path('operator.json').unlink()
+    p3.write_json(config.path('operator.json'), {**config.projection(), 'expected_head': 'c' * 40})
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    with pytest.raises((frozen.QualificationError, credentials.CredentialRefused)):
+        operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+
+@pytest.mark.parametrize('bad_token_input', [None, 'file', 'arbitrary', ''])
+def test_read_current_non_resident_token_input_rejects(bad_token_input):
+    parser = operator.session_parser()
+    cmd = ['read-current', '--execute-live-read']
+    if bad_token_input is not None:
+        cmd += ['--token-input', bad_token_input]
+    with pytest.raises(credentials.CredentialRefused):
+        parser.parse_args(cmd)
+
+
+def test_read_current_missing_execute_live_read_rejects(positive):
+    config = positive['config']
+    issue(positive)
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--token-input', 'resident-memory'])
+    with pytest.raises(credentials.CredentialRefused):
+        operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+
+def test_read_current_read_intent_written_before_dispatch(positive, monkeypatch):
+    config = positive['config']
+    issue(positive)
+    intent_checked = []
+
+    def verify_intent_before_read(**kw):
+        assert config.path('read-intent.json').exists()
+        assert not config.path('result.json').exists()
+        intent_checked.append(True)
+        return {'schema': 'sheets-phase3-first-read-result-v1', 'summary': {'outcome': 'ZERO'}, 'paper_observations': 0}
+
+    monkeypatch.setattr(inherited, 'execute_read', verify_intent_before_read)
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+    assert intent_checked == [True]
+    assert config.path('result.json').exists()
+
+
+def test_read_current_no_retry_behavior_changes(positive, monkeypatch):
+    config = positive['config']
+    issue(positive)
+    monkeypatch.setattr(inherited, 'execute_read', lambda **kw: {
+        'schema': 'sheets-phase3-first-read-result-v1', 'summary': {'outcome': 'ZERO'}, 'paper_observations': 0}
+    )
+    parser = operator.session_parser()
+    args = parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory'])
+    # First invocation succeeds
+    operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+    # Second invocation is strictly refused (one-shot, no retry)
+    with pytest.raises((credentials.CredentialRefused, FileExistsError)):
+        operator.dispatch(args, config, positive['review'], positive['token'], positive['metadata'])
+
+
+def test_read_current_in_reuse_lineage_cannot_create_or_provision(expired_unused_read, client, monkeypatch):
+    p0 = expired_unused_read['config']
+    review = expired_unused_read['review']
+    s1 = make_adopted_package(p0, review, client, monkeypatch)
+    s1_config = s1['config']
+
+    # In S1, provision / review-provisioning / reserve-and-descriptor are blocked:
+    parser = operator.session_parser()
+    with pytest.raises(frozen.QualificationError):
+        operator.dispatch(
+            parser.parse_args(['provision', '--execute-provisioning', '--operator-confirmation', 'EXPLICIT_ONE_ENGINEERING_FIXTURE_CREATE']),
+            s1_config, review, s1['token'], s1['metadata'])
+    with pytest.raises(frozen.QualificationError):
+        operator.dispatch(
+            parser.parse_args(['review-provisioning', '--operator-confirmation', p3.PROVISION_CONFIRMATION, '--isolated', '--no-writers']),
+            s1_config, review, s1['token'], s1['metadata'])
+    with pytest.raises(frozen.QualificationError):
+        operator.dispatch(parser.parse_args(['reserve-and-descriptor']),
+                          s1_config, review, s1['token'], s1['metadata'])
+
+    # Read-current in S1 succeeds:
+    monkeypatch.setattr(inherited, 'execute_read', lambda **kw: {
+        'schema': 'sheets-phase3-first-read-result-v1', 'summary': {'outcome': 'ZERO'}, 'paper_observations': 0})
+    result = operator.dispatch(
+        parser.parse_args(['read-current', '--execute-live-read', '--token-input', 'resident-memory']),
+        s1_config, review, s1['token'], s1['metadata'])
+    assert result['paper_observations'] == 0
+    assert s1_config.path('result.json').exists()

@@ -234,6 +234,9 @@ def session_parser():
     read.add_argument("--token-input", choices=("resident-memory",), required=True)
     for name in ("fixture", "metadata", "authorization", "receipt", "operational-receipt", "pin", "configuration"):
         read.add_argument("--" + name, type=Path, required=True)
+    read_current = subs.add_parser("read-current")
+    read_current.add_argument("--execute-live-read", action="store_true")
+    read_current.add_argument("--token-input", choices=("resident-memory",), required=True)
     subs.add_parser("stop")
     return parser
 
@@ -278,15 +281,20 @@ def dispatch(args, config, review, token, metadata):
     if args.action == "issue":
         return issue(inputs=inputs, **{n: getattr(args, n) for n in ("capability", "fixture_hash", "runtime_hash",
                      "source_hash", "startup_hash", "operator_confirmation", "engineering_only")})
-    p2.require(args.action == "read" and args.token_input == "resident-memory")
-    for argument, name in (("fixture", "fixture.json"), ("metadata", "acquisition.json"),
-        ("authorization", "authorization.json"), ("receipt", "phase3-receipt.json"),
-        ("operational_receipt", "phase4-receipt.json"), ("pin", "read-pin.json"), ("configuration", "operator.json")):
-        p2.require(getattr(args, argument) == config.path(name))
-    p2.require(p3.load_json(args.configuration) == config.projection())
+    p2.require(args.action in ("read", "read-current") and args.token_input == "resident-memory")
+    if args.action == "read":
+        for argument, name in (("fixture", "fixture.json"), ("metadata", "acquisition.json"),
+            ("authorization", "authorization.json"), ("receipt", "phase3-receipt.json"),
+            ("operational_receipt", "phase4-receipt.json"), ("pin", "read-pin.json"), ("configuration", "operator.json")):
+            p2.require(getattr(args, argument) == config.path(name))
+    for name in ("fixture.json", "acquisition.json", "authorization.json", "phase3-receipt.json",
+                 "phase4-receipt.json", "read-pin.json", "operator.json"):
+        p2.require(config.path(name).exists())
+    p2.require(p3.load_json(config.path("operator.json")) == config.projection())
     return execute_read(inputs=inputs, execute_live_read=args.execute_live_read,
-        authorization=p3.parse_authorization(p3.load_json(args.authorization)),
-        receipt=p3.load_json(args.receipt), operational_receipt=p3.load_json(args.operational_receipt))
+        authorization=p3.parse_authorization(p3.load_json(config.path("authorization.json"))),
+        receipt=p3.load_json(config.path("phase3-receipt.json")),
+        operational_receipt=p3.load_json(config.path("phase4-receipt.json")))
 
 
 @credentials.secret_safe
@@ -306,7 +314,7 @@ def resident_session(config, client_path, *, execute_oauth, operator_confirmatio
                 return 0
             result = dispatch(args, config, review, token, metadata)
             print(canonical_json_bytes(result).decode("ascii"), flush=True)
-            if result.get("status") == "BLOCKED" or args.action == "read":
+            if result.get("status") == "BLOCKED" or args.action in ("read", "read-current"):
                 return 2 if result.get("status") == "BLOCKED" else 0
     finally:
         token = metadata = None  # Best effort; CPython is not a secure heap.
