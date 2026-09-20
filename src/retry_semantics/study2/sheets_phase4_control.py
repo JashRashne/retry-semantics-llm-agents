@@ -18,6 +18,7 @@ from retry_semantics.study2 import sheets_phase3_operator as operator
 
 BASE = "9967146176e9e507768577e99fdaa40b5d821d6d"
 FILES = ("operator.json", "client-review.json", "startup.json", "offline-pin.json", "supersession.json",
+         "acquisition-attempt.json",
          "oauth-intent.json", "acquisition.json", "create-intent.json", "create-result.json",
          "provisioning.json", "fixture.json", "read-pin.json", "conditions.json",
          "issue-intent.json", "authorization.json", "phase3-receipt.json", "phase4-receipt.json",
@@ -27,8 +28,11 @@ ASSUMPTIONS = ("trusted_local_operator_machine", "no_concurrent_source_runtime_c
                "no_package_updates", "clock_within_allowance", "private_storage_reviewed",
                "no_terminal_recording_or_core_dumps", "hostile_audit_approved")
 PRELIVE_FILES = frozenset(("operator.json", "client-review.json", "startup.json",
-                          "offline-pin.json", "supersession.json"))
+                          "offline-pin.json", "supersession.json", "acquisition-attempt.json"))
 SUPERSESSION_CONFIRMATION = "EXPLICIT_OFFLINE_PRELIVE_SUPERSESSION"
+NEW_ACQUISITION_CONFIRMATION = "EXPLICIT_REVIEWED_NEW_ACQUISITION_ATTEMPT"
+SPENT_OAUTH_FILES = frozenset(("operator.json", "client-review.json", "startup.json",
+    "offline-pin.json", "oauth-intent.json"))
 
 
 def hash_public(value):
@@ -106,8 +110,38 @@ def storage_check(config):
                     os.close(file_fd)
         finally:
             os.close(fd)
-    successor = re.fullmatch(r".+-at-([0-9a-f]{40})", root.name)
+    attempt = re.fullmatch(r"(.+)-acquisition-at-([0-9a-f]{40})", root.name)
+    successor = None if attempt else re.fullmatch(r".+-at-([0-9a-f]{40})", root.name)
     record_path = root / "supersession.json"
+    attempt_path = root / "acquisition-attempt.json"
+    p2.require(not (record_path.exists() and attempt_path.exists()))
+    if attempt or attempt_path.exists():
+        p2.require(attempt is not None and attempt.group(2) == config.expected_head)
+        record = p3.load_json(attempt_path)
+        predecessor = root.with_name(attempt.group(1))
+        p2.require(type(record) is dict and set(record) == {"schema", "predecessor_root",
+                   "predecessor_expected_head", "predecessor_operator_sha256",
+                   "predecessor_oauth_intent_sha256", "new_attempt_root", "new_attempt_expected_head",
+                   "offline_files_present", "no_accepted_local_acquisition_artifact",
+                   "no_sheets_side_artifacts", "predecessor_permanently_spent", "review_confirmation"}
+                   and record["schema"] == "sheets-phase4-reviewed-acquisition-attempt-v1"
+                   and record["predecessor_root"] == str(predecessor)
+                   and record["new_attempt_root"] == config.storage_root
+                   and record["new_attempt_expected_head"] == config.expected_head
+                   and type(record["predecessor_expected_head"]) is str
+                   and re.fullmatch(r"[0-9a-f]{40}", record["predecessor_expected_head"])
+                   and record["predecessor_expected_head"] != config.expected_head
+                   and record["no_accepted_local_acquisition_artifact"] is True
+                   and record["no_sheets_side_artifacts"] is True
+                   and record["predecessor_permanently_spent"] is True
+                   and record["review_confirmation"] == NEW_ACQUISITION_CONFIRMATION)
+        p2.digest(record["predecessor_operator_sha256"])
+        p2.digest(record["predecessor_oauth_intent_sha256"])
+        p2.require(type(record["offline_files_present"]) is list
+                   and record["offline_files_present"] in (
+                       sorted(SPENT_OAUTH_FILES),
+                       sorted(SPENT_OAUTH_FILES | {"supersession.json"}),
+                       sorted(SPENT_OAUTH_FILES | {"acquisition-attempt.json"})))
     if successor or record_path.exists():
         p2.require(successor is not None and successor.group(1) == config.expected_head)
         record = p3.load_json(record_path)
@@ -133,13 +167,18 @@ def storage_check(config):
             "secrets": "excluded", "retention": "permanent-no-automatic-cleanup"}
 
 
-def _prelive_snapshot(config):
+def _prelive_snapshot(config, *, spent_oauth=False):
     """Refuse every non-offline root entry and every registry entry, including locks."""
     storage_check(config)
     root = Path(config.storage_root)
     names = set(os.listdir(root))
-    p2.require("operator.json" in names and names <= PRELIVE_FILES | {"registry"}
-               and not os.listdir(root / "registry"))
+    if spent_oauth:
+        p2.require(names in (SPENT_OAUTH_FILES | {"registry"},
+            SPENT_OAUTH_FILES | {"registry", "supersession.json"},
+            SPENT_OAUTH_FILES | {"registry", "acquisition-attempt.json"}))
+    else:
+        p2.require("operator.json" in names and names <= PRELIVE_FILES | {"registry"})
+    p2.require(not os.listdir(root / "registry"))
     p2.require(p3.load_json(config.path("operator.json")) == config.projection())
     review = p3.load_json(config.path("client-review.json")) if "client-review.json" in names else None
     if review is not None:
@@ -168,6 +207,9 @@ def _prelive_snapshot(config):
                    and pin["clean_tree_required"] is True and pin["fixture"] is None
                    and pin["operator"] == config.projection() and pin["client_review"] == review)
         p2.require(startup_record["runtime_sha256"] == hash_public(pin))
+    if spent_oauth:
+        from retry_semantics.study2 import sheets_phase4_setup as setup
+        p2.require(p3.load_json(config.path("oauth-intent.json")) == setup.oauth_intent(config, review))
     # Metadata is used only to detect concurrent changes; no file contents or secret hashes are recorded.
     signature = tuple((name, *(getattr((root / name).lstat(), field)
         for field in ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")))
@@ -230,6 +272,53 @@ def supersede_prelive(config, new_head, operator_confirmation):
             "expected_head": new_head, "client_review": "required-again", "live_go": "CLOSED"}
 
 
+def new_acquisition_attempt(config, new_head, operator_confirmation):
+    """Authorize a fresh package after local evidence of a spent, unacquired OAuth attempt."""
+    p2.require(operator_confirmation == NEW_ACQUISITION_CONFIRMATION)
+    config.__post_init__()
+    p2.require(type(new_head) is str and re.fullmatch(r"[0-9a-f]{40}", new_head)
+               and new_head != config.expected_head)
+    p3.environment_gate()
+    p3.repository_check(new_head)
+    before = _prelive_snapshot(config, spent_oauth=True)
+    old_root = Path(config.storage_root)
+    new_root = old_root.with_name(old_root.name + "-acquisition-at-" + new_head)
+    new_config = replace(config, storage_root=str(new_root), expected_head=new_head,
+                         read={**config.read, "registry_root": str(new_root / "registry")})
+    record = {"schema": "sheets-phase4-reviewed-acquisition-attempt-v1",
+              "predecessor_root": config.storage_root, "predecessor_expected_head": config.expected_head,
+              "predecessor_operator_sha256": hash_public(config.projection()),
+              "predecessor_oauth_intent_sha256": hash_public(p3.load_json(config.path("oauth-intent.json"))),
+              "new_attempt_root": str(new_root), "new_attempt_expected_head": new_head,
+              "offline_files_present": before[0], "no_accepted_local_acquisition_artifact": True,
+              "no_sheets_side_artifacts": True, "predecessor_permanently_spent": True,
+              "review_confirmation": NEW_ACQUISITION_CONFIRMATION}
+    # The existing supersession activation pattern leaves every failed destination unusable.
+    os.mkdir(new_root, 0o700)
+    _fsync_directory(new_root.parent)
+    p2.require(new_root.stat().st_uid == os.getuid()
+               and stat.S_IMODE(new_root.stat().st_mode) == 0o700)
+    os.mkdir(new_root / "registry", 0o700)
+    p2.require((new_root / "registry").stat().st_uid == os.getuid()
+               and stat.S_IMODE((new_root / "registry").stat().st_mode) == 0o700)
+    _fsync_directory(new_root)
+    p3.write_json(new_root / "acquisition-attempt.pending.json", record)
+    p3.write_json(new_config.path("operator.json"), new_config.projection())
+    p2.require(_prelive_snapshot(config, spent_oauth=True) == before)
+    p3.repository_check(new_head)
+    _fsync_directory(new_root / "registry")
+    _fsync_directory(new_root)
+    _fsync_directory(new_root.parent)
+    os.link(new_root / "acquisition-attempt.pending.json", new_root / "acquisition-attempt.json")
+    _fsync_directory(new_root)
+    p2.require(_prelive_snapshot(config, spent_oauth=True) == before)
+    os.unlink(new_root / "acquisition-attempt.pending.json")
+    return {"schema": "sheets-phase4-reviewed-acquisition-attempt-result-v1",
+            "network": "not-performed", "predecessor": config.storage_root,
+            "new_attempt": str(new_root), "expected_head": new_head,
+            "client_review": "required-again", "live_go": "CLOSED"}
+
+
 def validate_review(review):
     p2.require(type(review) is dict and set(review) == {"schema", "public", "public_sha256"}
                and review["schema"] == "sheets-phase4-client-review-v1")
@@ -279,6 +368,7 @@ def runtime_projection(config, review, descriptor=None):
             "native_operational_implementations": native_operational_implementations(),
             "phase3": p3.runtime_projection(config.runtime()), "fixture": descriptor,
             "schemas": ["sheets-phase4-startup-v1", "sheets-phase4-prelive-supersession-v1",
+                        "sheets-phase4-reviewed-acquisition-attempt-v1",
                         "sheets-phase4-create-result-v1",
                         "sheets-phase3-fixture-descriptor-v1", "sheets-phase3-acquisition-metadata-v1",
                         "sheets-live-authorization-v1", "sheets-phase3-issuance-receipt-v1",

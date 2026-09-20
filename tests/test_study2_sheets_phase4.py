@@ -1222,3 +1222,209 @@ except Exception as error:
     assert sorted(output.strip() for output, _ in outputs) == ['BLOCK', 'WIN'], outputs
     assert all(process.returncode == 0 for process in processes)
     assert sorted(p.name for p in successor_path(config).iterdir()) == ['operator.json', 'registry', 'supersession.json']
+
+
+def acquisition_attempt_path(config):
+    root = Path(config.storage_root)
+    return root.with_name(root.name + '-acquisition-at-' + NEXT_HEAD)
+
+
+@pytest.fixture
+def spent_oauth(offline):
+    config = offline['config']
+    p3.write_json(config.path('oauth-intent.json'), setup.oauth_intent(config, offline['review']))
+    return offline
+
+
+def test_reviewed_new_acquisition_preserves_predecessor_and_starts_fresh(spent_oauth, monkeypatch):
+    allow_successor_head(monkeypatch)
+    config = spent_oauth['config']
+    old_root = Path(config.storage_root)
+    before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in old_root.iterdir() if p.is_file()}
+    assert not list((old_root / 'registry').iterdir())
+    with pytest.raises(frozen.QualificationError):
+        control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    assert not successor_path(config).exists()
+    result = control.new_acquisition_attempt(config, NEXT_HEAD, control.NEW_ACQUISITION_CONFIRMATION)
+    destination = acquisition_attempt_path(config)
+    assert result['new_attempt'] == str(destination) and result['network'] == 'not-performed'
+    assert {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in old_root.iterdir() if p.is_file()} == before
+    assert sorted(p.name for p in destination.iterdir()) == ['acquisition-attempt.json', 'operator.json', 'registry']
+    assert not list((destination / 'registry').iterdir())
+    fresh = inherited._typed(p3.load_json(destination / 'operator.json'), control.OperatorConfiguration)
+    assert fresh.expected_head == NEXT_HEAD and fresh.runtime().registry_root == str(destination / 'registry')
+    assert control.storage_check(fresh)['secrets'] == 'excluded'
+    provenance = p3.load_json(destination / 'acquisition-attempt.json')
+    assert provenance['predecessor_oauth_intent_sha256'] == control.hash_public(
+        setup.oauth_intent(config, spent_oauth['review']))
+    assert provenance['offline_files_present'] == sorted([*before])
+    assert provenance['no_accepted_local_acquisition_artifact'] is True
+    assert provenance['no_sheets_side_artifacts'] is True
+    assert operator.main(['phase4-preflight', '--configuration', str(destination / 'operator.json')]) == 2
+    p3.write_json(fresh.path('client-review.json'), spent_oauth['review'])
+    attestation = control.startup(fresh, spent_oauth['review'], dict.fromkeys(control.ASSUMPTIONS, True))
+    pin = control.runtime_projection(fresh, spent_oauth['review'])
+    p3.write_json(fresh.path('startup.json'), attestation)
+    p3.write_json(fresh.path('offline-pin.json'), pin)
+    assert control.offline_preflight(fresh, spent_oauth['review'], attestation, pin)['status'] == 'PASS'
+    assert json.loads((frozen.SHEETS_DOCS / 'SHEETS_PHASE4_OPERATOR_CONFIGURATION_DRAFT.json').read_text())['expected_head'] is None
+
+
+def test_new_acquisition_from_valid_prelive_successor(offline, monkeypatch):
+    allow_successor_head(monkeypatch)
+    config = offline['config']
+    control.supersede_prelive(config, NEXT_HEAD, control.SUPERSESSION_CONFIRMATION)
+    predecessor = inherited._typed(p3.load_json(successor_path(config) / 'operator.json'),
+                                   control.OperatorConfiguration)
+    review = offline['review']
+    p3.write_json(predecessor.path('client-review.json'), review)
+    attestation = control.startup(predecessor, review, dict.fromkeys(control.ASSUMPTIONS, True))
+    p3.write_json(predecessor.path('startup.json'), attestation)
+    p3.write_json(predecessor.path('offline-pin.json'), control.runtime_projection(predecessor, review))
+    p3.write_json(predecessor.path('oauth-intent.json'), setup.oauth_intent(predecessor, review))
+    monkeypatch.setattr(p3, 'repository_check', lambda head: p2.require(head == 'c' * 40))
+    result = control.new_acquisition_attempt(predecessor, 'c' * 40,
+                                             control.NEW_ACQUISITION_CONFIRMATION)
+    fresh = inherited._typed(p3.load_json(Path(result['new_attempt']) / 'operator.json'),
+                           control.OperatorConfiguration)
+    assert control.storage_check(fresh)['secrets'] == 'excluded'
+    assert p3.load_json(fresh.path('acquisition-attempt.json'))['offline_files_present'] == sorted([
+        'operator.json', 'client-review.json', 'startup.json', 'offline-pin.json',
+        'supersession.json', 'oauth-intent.json'])
+
+
+@pytest.mark.parametrize('missing', ['client-review.json', 'startup.json', 'offline-pin.json'])
+def test_new_acquisition_requires_complete_offline_package(spent_oauth, monkeypatch, missing):
+    allow_successor_head(monkeypatch)
+    config = spent_oauth['config']
+    config.path(missing).unlink()
+    with pytest.raises(Exception):
+        control.new_acquisition_attempt(config, NEXT_HEAD, control.NEW_ACQUISITION_CONFIRMATION)
+    assert not acquisition_attempt_path(config).exists()
+
+
+@pytest.mark.parametrize('artifact', [name for name in control.FILES if name not in
+    control.SPENT_OAUTH_FILES | {'supersession.json', 'acquisition-attempt.json'}])
+def test_every_other_artifact_blocks_new_acquisition(spent_oauth, monkeypatch, artifact):
+    allow_successor_head(monkeypatch)
+    config = spent_oauth['config']
+    p3.write_json(config.path(artifact), {})
+    with pytest.raises(Exception):
+        control.new_acquisition_attempt(config, NEXT_HEAD, control.NEW_ACQUISITION_CONFIRMATION)
+    assert not acquisition_attempt_path(config).exists()
+
+
+@pytest.mark.parametrize('attack', ['missing-intent', 'malformed-intent', 'unknown-root', 'registry',
+                                    'wrong-confirmation', 'same-head'])
+def test_new_acquisition_ineligible_states_fail_before_creation(spent_oauth, monkeypatch, attack):
+    allow_successor_head(monkeypatch)
+    config = spent_oauth['config']
+    if attack == 'missing-intent': config.path('oauth-intent.json').unlink()
+    if attack == 'malformed-intent': config.path('oauth-intent.json').write_bytes(b'{}\n')
+    if attack == 'unknown-root': p3.write_json(Path(config.storage_root) / 'paper-observation.json', {})
+    if attack == 'registry': p3.write_json(Path(config.runtime().registry_root) / 'registry.lock', {})
+    confirmation = 'wrong' if attack == 'wrong-confirmation' else control.NEW_ACQUISITION_CONFIRMATION
+    head = HEAD if attack == 'same-head' else NEXT_HEAD
+    with pytest.raises(Exception): control.new_acquisition_attempt(config, head, confirmation)
+    assert not acquisition_attempt_path(config).exists()
+
+
+@pytest.mark.parametrize('attack', ['existing', 'symlink'])
+def test_new_acquisition_destination_collision(spent_oauth, monkeypatch, tmp_path, attack):
+    allow_successor_head(monkeypatch)
+    config = spent_oauth['config']
+    destination = acquisition_attempt_path(config)
+    if attack == 'existing':
+        destination.mkdir(mode=0o700)
+        (destination / 'marker').write_text('preserve')
+    else:
+        destination.symlink_to(tmp_path)
+    with pytest.raises(FileExistsError):
+        control.new_acquisition_attempt(config, NEXT_HEAD, control.NEW_ACQUISITION_CONFIRMATION)
+    if attack == 'existing': assert (destination / 'marker').read_text() == 'preserve'
+    else: assert destination.is_symlink()
+
+
+@pytest.mark.parametrize('stage', [1, 6])
+def test_new_acquisition_fsync_failure_leaves_blocked_residue(spent_oauth, monkeypatch, stage):
+    allow_successor_head(monkeypatch)
+    config = spent_oauth['config']
+    original = control._fsync_directory
+    calls = []
+    def failing(path):
+        calls.append(path)
+        if len(calls) == stage: raise OSError('synthetic fsync failure')
+        return original(path)
+    monkeypatch.setattr(control, '_fsync_directory', failing)
+    with pytest.raises(OSError):
+        control.new_acquisition_attempt(config, NEXT_HEAD, control.NEW_ACQUISITION_CONFIRMATION)
+    destination = acquisition_attempt_path(config)
+    assert destination.exists()
+    fresh = replace(config, storage_root=str(destination), expected_head=NEXT_HEAD,
+                    read={**config.read, 'registry_root': str(destination / 'registry')})
+    with pytest.raises(Exception): control.storage_check(fresh)
+
+
+def test_new_acquisition_late_predecessor_change_blocks_activation(spent_oauth, monkeypatch):
+    allow_successor_head(monkeypatch)
+    config = spent_oauth['config']
+    destination = acquisition_attempt_path(config)
+    original = control._fsync_directory
+    injected = []
+    def mutate(path):
+        original(path)
+        if path == destination and (destination / 'acquisition-attempt.json').exists() and not injected:
+            p3.write_json(config.path('acquisition.json'), {})
+            injected.append(True)
+    monkeypatch.setattr(control, '_fsync_directory', mutate)
+    with pytest.raises(frozen.QualificationError):
+        control.new_acquisition_attempt(config, NEXT_HEAD, control.NEW_ACQUISITION_CONFIRMATION)
+    assert injected and (destination / 'acquisition-attempt.pending.json').exists()
+    assert (destination / 'acquisition-attempt.json').stat().st_nlink == 2
+    fresh = replace(config, storage_root=str(destination), expected_head=NEXT_HEAD,
+                    read={**config.read, 'registry_root': str(destination / 'registry')})
+    with pytest.raises(frozen.QualificationError): control.storage_check(fresh)
+
+
+def test_new_acquisition_cli_is_offline(spent_oauth, monkeypatch, capsys):
+    allow_successor_head(monkeypatch)
+    config = spent_oauth['config']
+    assert operator.main(['new-acquisition-attempt', '--configuration', str(config.path('operator.json')),
+        '--new-expected-head', NEXT_HEAD, '--operator-confirmation',
+        control.NEW_ACQUISITION_CONFIRMATION]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result['new_attempt'] == str(acquisition_attempt_path(config))
+    assert result['network'] == 'not-performed' and result['live_go'] == 'CLOSED'
+
+
+def test_two_processes_cannot_create_two_new_acquisition_packages(spent_oauth):
+    config = spent_oauth['config']
+    child = '''
+import http.client, socket, ssl, sys, urllib.request, webbrowser
+from pathlib import Path
+from retry_semantics.study2 import sheets_phase2_control as p2
+from retry_semantics.study2 import sheets_phase3_control as p3
+from retry_semantics.study2 import sheets_phase3_operator as op
+from retry_semantics.study2 import sheets_phase4_control as p4
+def denied(*a, **kw): raise AssertionError("network/browser forbidden")
+for name in ("socket", "create_connection", "getaddrinfo", "gethostbyname"):
+    setattr(socket, name, denied)
+http.client.HTTPSConnection.connect = denied
+ssl.SSLContext.wrap_socket = denied
+urllib.request.urlopen = denied
+webbrowser.open = denied
+p3.repository_check = lambda head: p2.require(head == "b" * 40)
+config = op._typed(p3.load_json(Path(sys.argv[1])), p4.OperatorConfiguration)
+try:
+    p4.new_acquisition_attempt(config, "b" * 40, p4.NEW_ACQUISITION_CONFIRMATION)
+    print("WIN")
+except Exception:
+    print("BLOCK")
+'''
+    processes = [subprocess.Popen([sys.executable, '-c', child, str(config.path('operator.json'))],
+                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env={}) for _ in range(2)]
+    outputs = [process.communicate(timeout=30) for process in processes]
+    assert sorted(output.strip() for output, _ in outputs) == ['BLOCK', 'WIN'], outputs
+    assert all(process.returncode == 0 for process in processes)
+    assert sorted(p.name for p in acquisition_attempt_path(config).iterdir()) == [
+        'acquisition-attempt.json', 'operator.json', 'registry']

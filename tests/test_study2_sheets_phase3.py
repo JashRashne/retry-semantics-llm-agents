@@ -296,7 +296,7 @@ def test_fake_token_exchange_one_post_no_retry_or_refresh(config, monkeypatch):
         def close(self): calls.append("close")
     monkeypatch.setattr(credentials.http.client, "HTTPSConnection", Connection)
     uri = "http://127.0.0.1:12345/"
-    callback = uri + "?code=TEST_ONLY_code&state=" + session._state
+    callback = uri + "?code=TEST_ONLY_code&state=" + session._state + "&iss=https%3A%2F%2Faccounts.google.com"
     token, metadata = session._exchange(callback, uri, account_alias="engineering_account",
         clock_uncertainty_seconds=1, timeout_seconds=10)
     assert type(token) is frozen.PreparedToken and metadata.public_config_sha256 == config.public_hash
@@ -306,7 +306,8 @@ def test_fake_token_exchange_one_post_no_retry_or_refresh(config, monkeypatch):
     assert session._verifier == session._state == ""
 
 
-@pytest.mark.parametrize("query", ["code=x&state=wrong", "error=access_denied", "code=x&state=y&scope=drive",
+@pytest.mark.parametrize("query", ["code=x&state=wrong&iss=https%3A%2F%2Faccounts.google.com",
+                                    "error=access_denied", "code=x&state=y&scope=drive",
                                     "code=x&code=y&state=z", "code=x", "code=&state=y"])
 def test_callback_refusal_spends_session_no_connect(config, query):
     session = credentials.DesktopPreparer(config)
@@ -314,6 +315,43 @@ def test_callback_refusal_spends_session_no_connect(config, query):
     with pytest.raises(credentials.CredentialRefused):
         session._exchange(uri + "?" + query, uri, account_alias="engineering_account", clock_uncertainty_seconds=1, timeout_seconds=10)
     assert session._used
+
+
+@pytest.mark.parametrize("suffix", [
+    "",  # Missing issuer fails closed under the observed Google callback contract.
+    "&iss=http%3A%2F%2Faccounts.google.com",
+    "&iss=https%3A%2F%2Faccounts.google.com%2F",
+    "&iss=accounts.google.com",
+    "&iss=https%3A%2F%2FAccounts.google.com",
+    "&iss=https%3A%2F%2Faccounts.google.com%3Fx%3D1",
+    "&iss=https%3A%2F%2Faccounts.google.com%23x",
+    "&iss=https%3A%2F%2Faccounts.google.com&scope=drive",
+    "&iss=https%3A%2F%2Faccounts.google.com&iss=https%3A%2F%2Faccounts.google.com",
+])
+def test_callback_issuer_refusal_before_network(config, monkeypatch, suffix):
+    session = credentials.DesktopPreparer(config)
+    monkeypatch.setattr(credentials.ssl, "create_default_context",
+                        lambda **kw: pytest.fail("TLS context after invalid callback"))
+    uri = "http://127.0.0.1:12345/"
+    with pytest.raises(credentials.CredentialRefused):
+        session._exchange(uri + "?code=TEST_ONLY_code&state=" + session._state + suffix, uri,
+                          account_alias="engineering_account", clock_uncertainty_seconds=1,
+                          timeout_seconds=10)
+    assert session._used and session._state == session._verifier == ""
+
+
+@pytest.mark.parametrize("issuer", ["https%3A%2F%2Faccounts.google.com",
+                                      "https%3A%2F%2Faccounts.google.com%2F"])
+def test_error_callback_with_issuer_refused_without_exchange(config, monkeypatch, issuer):
+    session = credentials.DesktopPreparer(config)
+    monkeypatch.setattr(credentials.ssl, "create_default_context",
+                        lambda **kw: pytest.fail("TLS context after error callback"))
+    uri = "http://127.0.0.1:12345/"
+    with pytest.raises(credentials.CredentialRefused):
+        session._exchange(uri + "?error=access_denied&state=" + session._state + "&iss=" + issuer,
+                          uri, account_alias="engineering_account", clock_uncertainty_seconds=1,
+                          timeout_seconds=10)
+    assert session._used and session._state == session._verifier == ""
 
 
 def test_trust_inventory_local_policy_and_allowlist():
@@ -538,7 +576,7 @@ def test_exclusive_artifact_pair_no_overwrite(tmp_path):
 def test_oauth_exchange_failure_one_attempt_secret_safe(config, monkeypatch, fault):
     session = credentials.DesktopPreparer(config)
     uri = "http://127.0.0.1:12345/"
-    callback = uri + "?code=TEST_ONLY_code&state=" + session._state
+    callback = uri + "?code=TEST_ONLY_code&state=" + session._state + "&iss=https%3A%2F%2Faccounts.google.com"
     calls = []
     class Response:
         status = 401 if fault == "status" else 200
@@ -595,7 +633,8 @@ def test_fake_loopback_manual_consent_acquisition_no_browser(config, monkeypatch
         def server_close(self): callback_paths.append("closed")
     def present(url):
         args = parse_qs(urlsplit(url).query)
-        callback_paths.append("/?code=TEST_ONLY_code&state=" + args["state"][0])
+        callback_paths.append("/?code=TEST_ONLY_code&state=" + args["state"][0]
+                              + "&iss=https%3A%2F%2Faccounts.google.com")
     def exchange_once(callback, redirect, **kw):
         assert callback == redirect[:-1] + callback_paths[0]
         return token, metadata

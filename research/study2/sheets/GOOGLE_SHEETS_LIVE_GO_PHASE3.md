@@ -8,6 +8,10 @@ State-Mutating LLM Agent Tool Calls Under Ambiguous Outcomes*. Academic byline:
 closed. Study 2 paper observations remain **0**. The roadmap remains GitHub,
 Google Sheets, **Stripe TEST MODE**.
 
+Freeze-pass statements below describe the original Phase 3 offline audit, before
+any real OAuth attempt. A later separately authorized attempt is recorded under
+the callback contract and does not change the original freeze-pass results.
+
 The independent ChatGPT hostile audit completed with verdict:
 **SAFE TO FREEZE PHASE 3 OFFLINE PREREQUISITES**.
 This 2026-09-19 freeze-only pass records that verdict and freezes only the audited
@@ -29,7 +33,7 @@ Public official documentation was retrieved through the research web tool; this
 is distinct from operational OAuth/API access. All local qualification traps
 network creation, DNS, real HTTP connect and TLS wrapping.
 
-## Scope and current endpoint
+## Scope and endpoint at the original Phase 3 freeze
 
 Phase 3 freezes an offline prerequisite operator boundary for a future **single real,
 read-only engineering GET**. It remains **BLOCKED for real issuance/execution**:
@@ -148,16 +152,32 @@ scope inclusion. It does not open a browser. A later explicit `acquire` call req
 exchange timeout values. A manual UI callback presents the URL; it must not log
 or persist URL/state. A random-port IPv4 loopback listener receives exactly one
 bounded callback. Exact loopback origin/path, one code, constant-time state match,
-no fragment and no extra/duplicate query parameters are required. This is not
+no fragment and no extra/duplicate query parameters are required. A later real
+Google authorization redirect exposed an RFC 9207 `iss` field: a successful callback
+must have exactly one each of `code`, `state` and `iss`, with `iss` exactly
+`https://accounts.google.com`. Missing, altered or duplicate issuer values and
+unknown fields fail closed; the expected issuer is fixed in code, not taken from
+downloaded client metadata or network discovery. An error callback with exactly
+`error`, `state` and the same valid `iss` is still refused without exchange. This is not
 deprecated copy/paste OOB authentication. The token POST includes authorization_code,
 the same redirect and verifier. No DPoP, refresh, retry or second exchange exists.
 [Google desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app).
+
+After the original Phase 3 freeze, one separately authorized real Google OAuth
+attempt reached the loopback callback with `code`, `state` and
+`iss=https://accounts.google.com`. The then-frozen parser rejected `iss` as an
+unexpected field before any token POST. The package retained its spent OAuth intent;
+no successful acquisition artifact was accepted locally. No fixture, genuine
+`LIVE_READ_GO`, Sheets GET, Sheets mutation or paper observation followed. Paper
+observations remain **0**. This local failure does not establish what Google may
+have issued remotely; the spent package is not retried or reset. A reviewed new
+attempt requires a fresh package and separate authorization.
 
 The successful response must be bounded strict JSON with acceptable bounded access
 token, finite positive numeric `expires_in` (no bool), exact granted scope set
 `drive.file`, and exact `Bearer`. Missing scope is refused despite OAuth's possible
 scope-omission conventions. Only the explicitly qualified Content-Length JSON
-exchange shape is supported; real endpoint shape remains unobserved. Unknown fields,
+exchange shape is supported; the real token response shape remains unobserved. Unknown fields,
 unsupported encoding/framing, redirects and errors fail closed. Refresh material,
 if returned, is discarded locally; there is no persistence or refresh method.
 Expiry is **exchange-start + expires_in**, accounting conservatively for exchange
@@ -179,7 +199,8 @@ single hard total acquisition watchdog**. It occurs before any read authorizatio
 consumption; no automatic retry or refresh occurs. A stall is an operator/setup
 availability issue, not an extra-read or replay path. A total acquisition watchdog
 may be revisited before production-like operation if desired. Readiness uses the
-conservative expiry and prepared time. No OAuth was attempted.
+conservative expiry and prepared time. At the original Phase 3 offline freeze,
+no OAuth had yet been attempted.
 
 ## Concrete configuration and readiness
 
@@ -431,8 +452,9 @@ runner. Counts matched the audited expected counts; no tests or code were change
 | `git diff --check` | PASS, exit 0, no output |
 | Audited implementation/test/runner/template/inventory identity | Byte-identical |
 
-Real OAuth flows **0**; genuine access-token acquisitions **0**; real fixture
-creations **0**; genuine LIVE_READ_GO authorizations **0**; Sheets live reads **0**;
+At the original Phase 3 offline freeze, real OAuth flows were **0**; genuine
+access-token acquisitions **0**; real fixture creations **0**; genuine
+LIVE_READ_GO authorizations **0**; Sheets live reads **0**;
 Sheets live mutations **0**; Sheets paper observations **0**. No external Google/
 OAuth DNS/TCP/TLS/API action or browser opening occurred during this freeze pass.
 No commit or push occurred; HEAD remains `42460a7`.
@@ -518,13 +540,14 @@ accepted for offline freeze and may be revisited before production-like operatio
 if desired. Desktop installed-app authorization code, PKCE S256, `127.0.0.1` loopback,
 exact `drive.file`, the successful response contract and refresh-material discard
 are unchanged. ADC/service accounts/IAM impersonation remain excluded; DPoP was not
-selected. No real acquisition was performed.
+selected. At the original Phase 3 offline freeze, no real acquisition had been performed.
 
 ## Independent ChatGPT hostile-audit targets
 
 1. Does the stdlib one-shot acquisition contract, exact Google download/callback/
    response shape and manual loopback handling qualify without an external total
-   acquisition watchdog? No real endpoint shape was observed.
+   acquisition watchdog? At the original Phase 3 offline freeze, no real endpoint
+   shape had yet been observed; the later attempt established only the callback shape.
 2. Is the compatibility-only use of frozen CredentialProvenance acceptable while
    never persisting its incorrect hardcoded library evidence projection?
 3. Can reviewed stable CA files/clean startup suffice for the frozen child, or must
@@ -540,12 +563,13 @@ selected. No real acquisition was performed.
    basis and retained registry semantics; no real timing, power-loss or issuer
    authenticity claim follows from offline PASS.
 
-## Non-goals
+## Non-goals of the original Phase 3 offline freeze
 
-No real OAuth/browser action, credentials, fixture provisioning, LIVE_READ_GO,
-GET, TLS handshake, mutation, batchUpdate/AppendCells transport, clean placement,
-ambiguity injection, H0/H1 validation, replay/regeneration implementation, Study 2
-paper observation/protocol, Stripe work, dependency change, commit or push. Only
-Phase 3 offline prerequisites are frozen; operational LIVE-GO remains closed.
+The original Phase 3 offline freeze performed no real OAuth/browser action or
+credential acquisition, fixture provisioning, LIVE_READ_GO, GET, TLS handshake,
+mutation, batchUpdate/AppendCells transport, clean placement, ambiguity injection,
+H0/H1 validation, replay/regeneration implementation, Study 2 paper observation/
+protocol, Stripe work, dependency change, commit or push. Only
+Phase 3 offline prerequisites were frozen; operational LIVE-GO remains closed.
 
-**PHASE 3 OFFLINE FREEZE READY — LIVE-GO CLOSED — ZERO SHEETS PAPER OBSERVATIONS — READY TO COMMIT**
+**PHASE 3 OFFLINE FREEZE RECORDED — LIVE-GO CLOSED — ZERO SHEETS PAPER OBSERVATIONS**

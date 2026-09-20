@@ -300,6 +300,10 @@ def main(argv=None):
     supersede.add_argument("--configuration", type=Path, required=True)
     supersede.add_argument("--new-expected-head", required=True)
     supersede.add_argument("--operator-confirmation", required=True)
+    new_attempt = subs.add_parser("new-acquisition-attempt")
+    new_attempt.add_argument("--configuration", type=Path, required=True)
+    new_attempt.add_argument("--new-expected-head", required=True)
+    new_attempt.add_argument("--operator-confirmation", required=True)
     for name in ("startup", "phase4-preflight", "session", "inspect", "recover"):
         sub = subs.add_parser(name)
         sub.add_argument("--configuration", type=Path, required=True)
@@ -321,6 +325,11 @@ def main(argv=None):
             config = inherited._typed(p3.load_json(args.configuration), control.OperatorConfiguration)
             p2.require(args.configuration == config.path("operator.json"))
             result = control.supersede_prelive(config, args.new_expected_head, args.operator_confirmation)
+        elif args.command == "new-acquisition-attempt":
+            config = inherited._typed(p3.load_json(args.configuration), control.OperatorConfiguration)
+            p2.require(args.configuration == config.path("operator.json"))
+            result = control.new_acquisition_attempt(config, args.new_expected_head,
+                                                     args.operator_confirmation)
         else:
             config = inherited._typed(p3.load_json(args.configuration), control.OperatorConfiguration)
             p2.require(args.configuration == config.path("operator.json"))
