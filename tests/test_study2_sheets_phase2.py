@@ -17,6 +17,7 @@ from retry_semantics.study2 import sheets_live_go_phase1 as phase1
 from retry_semantics.study2 import sheets_live_preparation as frozen
 from retry_semantics.study2 import sheets_phase2_control as control
 from retry_semantics.study2 import sheets_phase2_read as read
+from test_study2_sheets_http_framing import chunked
 
 FAKE_TOKEN = "obviously-nonsecret-phase2-bearer"
 FAKE_DER = b"TEST_ONLY_nonsecret_peer_certificate_DER"
@@ -463,6 +464,44 @@ def test_response_framing_fail_closed(monkeypatch, registry, fixture, configurat
     wire = Wire(b"{}", headers=headers)
     result = run(monkeypatch, registry, fixture, configuration, token, provenance, authorization, wire)
     assert result.outcome is read.Outcome.MALFORMED and result.status == 200 and len(wire.chunks) == 1
+
+
+@pytest.mark.parametrize('fault,expected', [
+    ('length', read.Outcome.ZERO), ('chunked', read.Outcome.ZERO),
+    ('conflict', read.Outcome.MALFORMED), ('unsupported-transfer', read.Outcome.MALFORMED),
+    ('bad-chunk', read.Outcome.MALFORMED), ('incomplete', read.Outcome.MALFORMED),
+    ('oversize', read.Outcome.MALFORMED), ('wrong-type', read.Outcome.MALFORMED),
+    ('bad-json', read.Outcome.MALFORMED), ('wrong-status', read.Outcome.HTTP_ERROR),
+    ('gzip', read.Outcome.MALFORMED), ('neither', read.Outcome.MALFORMED),
+])
+def test_read_raw_http_framing_evidence(monkeypatch, registry, fixture, configuration,
+                                       token, provenance, authorization, fault, expected):
+    body = canonical_json_bytes(payload(fixture))
+    if fault == 'bad-json': body = b'x' * len(body)
+    headers = f'Content-Length: {len(body)}\r\nContent-Type: application/json; charset=utf-8\r\n'
+    raw_body = body
+    if fault in ('chunked', 'conflict', 'bad-chunk'):
+        headers = 'Transfer-Encoding: chunked\r\nContent-Type: Application/JSON ; CHARSET="UTF-8"\r\n'
+        raw_body = chunked(body) if fault != 'bad-chunk' else b'z\r\ninvalid\r\n'
+    if fault == 'conflict': headers += f'Content-Length: {len(body)}\r\n'
+    if fault == 'unsupported-transfer': headers = 'Transfer-Encoding: gzip, chunked\r\nContent-Type: application/json\r\n'
+    if fault == 'incomplete': headers = headers.replace(str(len(body)), str(len(body) + 1))
+    if fault == 'oversize': headers = headers.replace(str(len(body)), '100001')
+    if fault == 'wrong-type': headers = headers.replace('application/json', 'text/plain')
+    if fault == 'gzip': headers += 'Content-Encoding: gzip\r\n'
+    if fault == 'neither': headers = 'Content-Type: application/json\r\n'
+    wire = Wire(raw_body, headers=headers, status=404 if fault == 'wrong-status' else 200)
+    result = run(monkeypatch, registry, fixture, configuration, token, provenance, authorization, wire)
+    assert result.outcome is expected
+    assert result.status == (404 if fault == 'wrong-status' else 200)
+    records = read.AttemptEvidence(registry, fixture, authorization.authorization_id,
+        read.runtime_hash(configuration), read.source_hash(), reserve=False).records()
+    stages = [record['stage'] for record in records[1:]]
+    assert read.Stage.STATUS.value in stages
+    assert (read.Stage.PARSED.value in stages) == (fault in ('length', 'chunked', 'bad-json'))
+    if expected is not read.Outcome.ZERO:
+        assert all(record['summary']['outcome'] != read.Outcome.ZERO.value for record in records[1:])
+    assert len(wire.chunks) == 1
 
 
 def test_oversize_not_zero(fixture, configuration):

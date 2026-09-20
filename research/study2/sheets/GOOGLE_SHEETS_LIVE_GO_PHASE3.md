@@ -351,8 +351,10 @@ execution flag, then calls the **frozen ReadAdapter.inspect exactly once**. It h
 no connector injection API, credential acquisition, refresh, retry, issuance or
 fallback. Phase 2 reserves terminal evidence and durably consumes permission before
 worker activation. Its exact GET/envelope, same-socket TLS observation, total
-deadline and strict parser remain unchanged. Response framing is **single qualified
-Content-Length UTF-8 JSON only**; no speculative chunked support was added.
+deadline and strict parser remain unchanged. At this Phase 3 baseline, response
+framing was **single qualified Content-Length UTF-8 JSON only**. The later
+separate Sheets framing patch offline-qualified bounded chunked decoding for READ;
+that change does not establish live Google compatibility.
 
 Baseline suitability requires exact fixture structure, zero marker matches **and
 zero nonempty entered rows** over the entire bounded dedicated grid, no tables/

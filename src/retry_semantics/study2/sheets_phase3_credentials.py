@@ -341,18 +341,13 @@ def _validate_token_response(body, config, *, account_alias, exchange_started_at
 
 
 def _response_body(response, diagnostic=None):
-    """Bounded HTTP/1.1 framing; http.client owns chunk decoding."""
-    headers = response.getheaders()
-    selected = {}
-    for name, value in headers:
-        key = name.lower()
-        if key in ("content-length", "transfer-encoding", "content-type", "content-encoding"):
-            if key in selected:
-                raise AcquisitionFailure("framing_invalid")
-            selected[key] = value
-    length = selected.get("content-length")
-    transfer = selected.get("transfer-encoding")
-    if diagnostic is not None:
+    """Preserve the frozen OAuth diagnostic stages around shared framing."""
+    from retry_semantics.study2.sheets_http_framing import ResponseFramingError, read_json_body
+
+    def classify(selected):
+        if diagnostic is None:
+            return
+        length, transfer = selected.get("content-length"), selected.get("transfer-encoding")
         diagnostic.framing_class = ("conflicting" if length is not None and transfer is not None
             else "chunked" if transfer is not None and transfer.strip().lower() == "chunked"
             else "unsupported_transfer" if transfer is not None
@@ -365,38 +360,11 @@ def _response_body(response, diagnostic=None):
             else "json_utf8" if re.fullmatch(
                 r'[ \t]*application/json[ \t]*;[ \t]*charset[ \t]*=[ \t]*(?:utf-8|"utf-8")[ \t]*', kind, re.I)
             else "other")
-    if length is not None and transfer is not None:
-        raise AcquisitionFailure("framing_invalid")
-    if transfer is not None:
-        if transfer.strip().lower() != "chunked" or response.chunked is not True:
-            raise AcquisitionFailure("framing_invalid")
-        expected = None
-    elif length is not None:
-        if not re.fullmatch(r"[1-9][0-9]{0,4}", length) or response.chunked:
-            raise AcquisitionFailure("framing_invalid")
-        expected = int(length)
-        if expected > 65536:
-            raise AcquisitionFailure("body_size_invalid")
-    else:
-        raise AcquisitionFailure("framing_invalid")
-    if selected.get("content-encoding", "identity").strip().lower() != "identity":
-        raise AcquisitionFailure("content_encoding_invalid")
-    kind = selected.get("content-type", "")
-    if not (re.fullmatch(r"[ \t]*application/json[ \t]*", kind, re.I) or re.fullmatch(
-            r'[ \t]*application/json[ \t]*;[ \t]*charset[ \t]*=[ \t]*(?:utf-8|"utf-8")[ \t]*', kind, re.I)):
-        raise AcquisitionFailure("content_type_invalid")
-    if diagnostic is not None:
-        diagnostic.advance("token_http_validated")
     try:
-        body = response.read((expected if expected is not None else 65536) + 1)
-    except (http.client.IncompleteRead, OSError, http.client.HTTPException):
-        raise AcquisitionFailure("body_incomplete") from None
-    if len(body) > 65536:
-        raise AcquisitionFailure("body_size_invalid")
-    if expected is not None and len(body) != expected:
-        raise AcquisitionFailure("body_incomplete")
-    if not response.isclosed():
-        raise AcquisitionFailure("body_incomplete")
+        body = read_json_body(response, 65536, min_body_bytes=1, on_headers=classify,
+            before_read=(lambda: diagnostic.advance("token_http_validated")) if diagnostic else None)
+    except ResponseFramingError as error:
+        raise AcquisitionFailure(error.reason) from None
     if diagnostic is not None:
         diagnostic.advance("token_body_complete")
     return body

@@ -231,16 +231,20 @@ negotiation remain **REQUIRES LIVE VALIDATION**, with zero actual TLS observatio
 ## Response parsing and current-state interpretation
 
 200 is the sole qualified successful status. Response body size and per-cell
-character bounds are explicit runtime configuration. Fail closed on absent,
-noncanonical, duplicate or oversized Content-Length, transfer encoding, compression
-and unqualified content type. Currently only single Content-Length framing with
-application/json (optionally charset=utf-8) and identity encoding is qualified.
-Chunked/close-delimited/other Google framing is unresolved and refused rather than
-guessed. Stdlib status/header line/count limits apply; arbitrary headers, error
-bodies and provider content are never persisted.
+character bounds are explicit runtime configuration. Before the separate Sheets
+framing patch, READ accepted only a single Content-Length and rejected valid
+chunked responses. The shared offline-qualified transport accepts one canonical
+bounded Content-Length or sole valid HTTP/1.1 chunked Transfer-Encoding decoded
+by `http.client`. It rejects conflicting/duplicate framing, unsupported transfer
+coding, close-delimited bodies and compression. Content-Type is
+`application/json` with optional UTF-8 charset, with case/OWS handling.
+Stdlib status/header line/count limits apply; arbitrary headers, error bodies
+and provider content are never persisted. Actual Google framing remains to be
+validated under a separately authorized live read.
 
-Read at most the configured framed body, require exact declared byte count and
-completed/closed response, then strict UTF-8 JSON with no BOM, duplicate keys,
+Read at most the configured decoded body plus one byte. For Content-Length,
+require the exact declared byte count; for chunked, require completed standard
+library decoding. Require a closed response, then strict UTF-8 JSON with no BOM, duplicate keys,
 NaN/Infinity (including numeric overflow), lone Unicode surrogates, concatenated or truncated JSON. Structural fences reject boolean
 integer identities/extents, wrong list/dict types, missing data/properties, unexpected
 fields, extra sheets/grids, nonempty merges/tables, wrong identity/title/extent,
@@ -538,7 +542,7 @@ a failed-closed framing shape must reopen qualification, never cause hidden retr
 Special hostile review: spawn token-only anonymous IPC and activation/lifeline
 ownership; OS watchdog versus hard realtime/power-loss claims; canonical registry
 root and trusted same-UID filesystem assumptions; partial evidence poisoning;
-strict Content-Length-only framing and explicit origin-zero grid; operator-backed
+bounded Content-Length/chunked framing and explicit origin-zero grid; operator-backed
 same-app assertion provenance. These are deliberately explicit limits, not Google
 facts established offline. No fresh official-document lookup/network research was
 needed: the exact read API shape is inherited from frozen repository evidence.

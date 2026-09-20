@@ -25,6 +25,7 @@ from urllib.parse import urlencode
 from retry_semantics.serialization import canonical_json_bytes, sha256_hex
 from retry_semantics.study2 import sheets_live_go_phase1 as phase1
 from retry_semantics.study2 import sheets_live_preparation as frozen
+from retry_semantics.study2.sheets_http_framing import ResponseFramingError, read_json_body
 from retry_semantics.study2.sheets_phase2_control import (
     LocalRegistry, QualificationFixture, Refused, _private_fd, authorization_hash, digest, label,
     require, strict_json, validate_fixture, validate_read_authorization,
@@ -73,7 +74,7 @@ class ReadConfiguration:
                 "max_cell_characters": self.max_cell_characters,
                 "registry_root": self.registry_root,
                 "deadline_engine": "spawned-process-monotonic-watchdog-v1",
-                "response_framing": "single-content-length-utf8-json-v1"}
+                "response_framing": "bounded-content-length-or-chunked-utf8-json-v1"}
 
 
 class DeadlineExpired(Refused):
@@ -119,7 +120,7 @@ def source_hash() -> str:
     directory = Path(__file__).parent
     projection = {name: sha256_hex((directory / name).read_bytes())
         for name in ("sheets_phase2_control.py", "sheets_phase2_read.py",
-                     "sheets_live_go_phase1.py")}
+                     "sheets_live_go_phase1.py", "sheets_http_framing.py")}
     projection["phase2_fixture_specification"] = sha256_hex((frozen.SHEETS_DOCS /
         "fixtures/qualification_fixture_phase2_template.json").read_bytes())
     return sha256_hex(canonical_json_bytes(projection))
@@ -561,28 +562,12 @@ def _precheck(fixture, configuration, token, provenance, authorization, *, now, 
 
 
 def _response_body(response, socket, deadline, configuration):
-    # Deliberately fail closed on unqualified chunked/close-delimited/compressed
-    # Google response shapes. No attempt to guess provider framing semantics.
-    headers = response.getheaders()
-    framing = {}
-    for name, value in headers:
-        name = name.lower()
-        if name in ("content-length", "transfer-encoding", "content-encoding", "content-type"):
-            require(name not in framing)
-            framing[name] = value
-    require("transfer-encoding" not in framing
-            and framing.get("content-encoding", "identity") == "identity"
-            and framing.get("content-type", "").lower() in (
-                "application/json", "application/json; charset=utf-8")
-            and re.fullmatch(r"0|[1-9][0-9]{0,9}", framing.get("content-length", "")))
-    length = int(framing["content-length"])
-    require(0 < length <= configuration.max_response_bytes
-            and not response.chunked and response.length == length)
-    socket.settimeout(deadline.remaining())
-    body = response.read(length + 1)
-    deadline.remaining()
-    require(len(body) == length and response.length == 0 and response.isclosed())
-    return body
+    try:
+        return read_json_body(response, configuration.max_response_bytes, min_body_bytes=1,
+            before_read=lambda: socket.settimeout(deadline.remaining()),
+            after_read=deadline.remaining, catch_transport_errors=False)
+    except ResponseFramingError:
+        raise Refused() from None
 
 
 def _read_once(registry, fixture, configuration, token, provenance, authorization,

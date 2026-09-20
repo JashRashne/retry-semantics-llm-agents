@@ -33,6 +33,7 @@ from retry_semantics.study2 import sheets_phase4_setup as setup
 from retry_semantics.study2 import sheets_phase4_operator as operator
 from test_study2_sheets_phase2 import FakeTLS, Wire, payload
 from test_study2_sheets_phase3 import client_file
+from test_study2_sheets_http_framing import chunked, parsed
 
 _qualification_spec = importlib.util.spec_from_file_location('sheets_phase4_qualification',
     frozen.ROOT / 'scripts/qualify_sheets_phase4_offline.py')
@@ -171,6 +172,68 @@ def fake_create(monkeypatch, config, fault=None):
 def create(config, reviewed, prepared, **changes):
     return setup.provision(config, reviewed, *prepared, **{**dict(execute_provisioning=True,
         operator_confirmation=setup.CREATE_CONFIRMATION), **changes})
+
+
+@pytest.mark.parametrize('fault,accepted', [
+    ('length', True), ('chunked', True), ('bad-chunk', False), ('conflict', False),
+    ('unsupported-transfer', False), ('incomplete', False), ('bad-json', False),
+    ('wrong-status', False), ('connect', False), ('post-dispatch-loss', False),
+    ('invalid-identity', False), ('duplicate-length', False), ('gzip', False),
+    ('wrong-type', False), ('neither', False), ('oversize', False),
+])
+def test_create_raw_http_framing_and_uncertainty(offline, prepared, monkeypatch, fault, accepted):
+    config, review = offline['config'], offline['review']
+    persist_acquisition(config, review, prepared)
+    body = canonical_json_bytes({'spreadsheetId': 'A' * 44, **setup.create_request(config)})
+    if fault == 'bad-json':
+        body = b'x' * len(body)
+    if fault == 'invalid-identity':
+        body = canonical_json_bytes({'spreadsheetId': 'TEST_ONLY_wrong', **setup.create_request(config)})
+    headers = [('Content-Length', str(len(body))), ('Content-Type', 'application/json; charset=utf-8')]
+    wire_body = body
+    if fault in ('chunked', 'bad-chunk', 'conflict'):
+        headers = [('Transfer-Encoding', 'chunked'), ('Content-Type', ' Application/JSON ; CHARSET=UTF-8 ')]
+        wire_body = chunked(body) if fault != 'bad-chunk' else b'z\r\ninvalid\r\n'
+    if fault == 'conflict': headers.append(('Content-Length', str(len(body))))
+    if fault == 'unsupported-transfer': headers[0] = ('Transfer-Encoding', 'gzip, chunked')
+    if fault == 'incomplete': headers[0] = ('Content-Length', str(len(body) + 1))
+    if fault == 'duplicate-length': headers.append(('content-length', str(len(body))))
+    if fault == 'gzip': headers.append(('Content-Encoding', 'gzip'))
+    if fault == 'wrong-type': headers[1] = ('Content-Type', 'text/plain')
+    if fault == 'neither': headers.pop(0)
+    if fault == 'oversize': headers[0] = ('Content-Length', '65537')
+    calls = []
+
+    class Connection:
+        def __init__(self, *args, **kwargs):
+            calls.append('construct')
+        def connect(self):
+            calls.append('connect')
+            if fault == 'connect': raise ConnectionError('synthetic')
+        def request(self, method, path, data, request_headers):
+            assert p3.load_json(config.path('create-intent.json')) == setup.create_intent(config, review)
+            assert method == 'POST' and data == canonical_json_bytes(setup.create_request(config))
+            assert request_headers['Accept-Encoding'] == 'identity'
+            calls.append('request')
+        def getresponse(self):
+            calls.append('response')
+            if fault == 'post-dispatch-loss': raise ConnectionResetError('synthetic')
+            return parsed(wire_body, headers, status=500 if fault == 'wrong-status' else 200)
+        def close(self): calls.append('close')
+
+    monkeypatch.setattr(setup.http.client, 'HTTPSConnection', Connection)
+    result = create(config, review, prepared)
+    assert result == p3.load_json(config.path('create-result.json'))
+    assert result['outcome'] == ('CREATE_RESPONSE_VALIDATED' if accepted else
+                                 'CREATE_UNCERTAIN_RECONCILIATION_REQUIRED')
+    assert result['http_status'] == (None if fault in ('connect', 'post-dispatch-loss') else
+                                     500 if fault == 'wrong-status' else 200)
+    assert result['spreadsheet_id'] == ('A' * 44 if accepted else None)
+    assert config.path('create-intent.json').exists()
+    assert not config.path('provisioning.json').exists()
+    with pytest.raises(credentials.CredentialRefused):
+        create(config, review, prepared)
+    assert calls.count('request') == (0 if fault == 'connect' else 1)
 
 
 @pytest.fixture

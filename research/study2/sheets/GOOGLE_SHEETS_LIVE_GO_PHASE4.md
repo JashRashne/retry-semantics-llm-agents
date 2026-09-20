@@ -4,7 +4,7 @@
 
 Paper: *Replay or Regenerate? Retry Semantics for State-Mutating LLM Agent Tool Calls Under Ambiguous Outcomes*. Academic byline: **J. Rashne**.
 
-This pre-live setup design was frozen at `2ad300227cc786829ed3efa598c66d838493f39a`, corrected for real Google Desktop OAuth metadata at `6525ddbe3e2eadb2dc55d301914e75ed41f8dfe6`, and its operational-state documentation was frozen at `055c2ce30f350899f6babbd84770d6532ef1d6d5`. The independent Phase 3 clean-room re-audit and Phase 4 hostile audit passed for those historical builds. OAuth attempt #1 reached `code`, `state`, `iss` and was rejected by the then-frozen parser. Attempt #2 reached exactly `code`, `state`, `iss`, `scope` and was rejected by the then-frozen parser. Attempt #3 used a fresh reviewed package bound to `c2454bd43e32e670b87735843db1c4b21404b294`; its callback contained exactly `state`, `iss`, `code`, `scope` with the expected issuer and drive.file scope. Acquisition nevertheless returned BLOCKED before accepted local acquisition persistence. The old build did not record the exact failing stage. All three intents are permanently spent, all three acquisitions absent locally, and their registries empty. No spreadsheet create, fixture, genuine LIVE_READ_GO, Sheets GET, Sheets mutation or paper observation occurred. Paper observations remain **0**. A fourth attempt requires a fresh package, independent hostile audit and freeze, and separate authorization. Study 1 is immutable. Offline engineering tests are not paper data.
+This pre-live setup design was frozen at `2ad300227cc786829ed3efa598c66d838493f39a`, corrected for real Google Desktop OAuth metadata at `6525ddbe3e2eadb2dc55d301914e75ed41f8dfe6`, and its operational-state documentation was frozen at `055c2ce30f350899f6babbd84770d6532ef1d6d5`. The independent Phase 3 clean-room re-audit and Phase 4 hostile audit passed for those historical builds. OAuth attempt #1 reached `code`, `state`, `iss` and was rejected by the then-frozen parser. Attempt #2 reached exactly `code`, `state`, `iss`, `scope` and was rejected by the then-frozen parser. Attempt #3 used a fresh reviewed package bound to `c2454bd43e32e670b87735843db1c4b21404b294`; its callback contained exactly `state`, `iss`, `code`, `scope` with the expected issuer and drive.file scope. Acquisition nevertheless returned BLOCKED before accepted local acquisition persistence. The old build did not record the exact failing stage. All three intents are permanently spent, all three acquisitions absent locally, and their registries empty. No spreadsheet create, fixture, genuine LIVE_READ_GO, Sheets GET, Sheets mutation or paper observation occurred. Paper observations remain **0**. OAuth attempt #4 subsequently succeeded from a fresh reviewed package bound to frozen commit `594c95f`; the resident session was intentionally stopped before provisioning. Study 1 is immutable. Offline engineering tests are not paper data.
 
 The missing acquisition artifacts establish only local durable state, not whether
 Google issued anything remotely. A handshake-only probe from the project Python
@@ -30,7 +30,7 @@ The narrow setup command sends one `POST https://sheets.googleapis.com/v4/spread
 {"properties":{"title":"RetrySemanticsEngineering-sheets_phase4_first_fixture"},"sheets":[{"properties":{"sheetId":1,"title":"RetrySemanticsEngineering","sheetType":"GRID","gridProperties":{"rowCount":100,"columnCount":3}}}]}
 ```
 
-The file title includes the retained reservation label to aid manual incident reconciliation; it is **not** an idempotency key. Sheet ID 1 avoids omitted-default-zero ambiguity. Exactly one worksheet, 100 rows, three columns; no values, formulas, tables, merges, ACL changes or app-property mutation. The positive response must have exactly the selected structure, matching title/extent/type/ID and a valid actual spreadsheet ID. HTTP 200, single bounded Content-Length UTF-8 JSON is required. Unsupported real framing fails closed. No provider SDK, redirect following, auth middleware, mutation retry or automatic cleanup.
+The file title includes the retained reservation label to aid manual incident reconciliation; it is **not** an idempotency key. Sheet ID 1 avoids omitted-default-zero ambiguity. Exactly one worksheet, 100 rows, three columns; no values, formulas, tables, merges, ACL changes or app-property mutation. The positive response must have exactly the selected structure, matching title/extent/type/ID and a valid actual spreadsheet ID. HTTP 200 with one bounded Content-Length or valid HTTP/1.1 chunked framing is required. Unsupported framing fails closed. No provider SDK, redirect following, auth middleware, mutation retry or automatic cleanup.
 
 OAuth happens first because create needs a token. The same acquired token, client/app and operator-attested dedicated account then perform setup and the subsequent GET. There is no hidden refresh, account lookup, discovery, listing, probe or additional Sheets request. The later GET is locally restricted despite the mutation-capable scope. The resident session separates the setup POST and GET by distinct human commands and capabilities. Frozen Phase 1's earlier separate-credential/process provisioning proposal is operationally refined here: one resident transient bearer is deliberately reused, with separate setup authorization and a distinct one-use read assertion. The hostile audit passed with this shared trusted-process choice and its documented limitations.
 
@@ -77,16 +77,24 @@ The stages distinguish listener, callback, token connection, status, HTTP body,
 JSON, semantics, and local persistence for future attempts. The old attempt #3
 has no such artifact, so its exact failure stage remains unknown.
 
-The current create-response path in `sheets_phase4_setup.provision` still requires
-HTTP 200, exactly one bounded Content-Length, non-chunked JSON, and a narrow
-Content-Type. The later GET path in `sheets_phase2_read._response_body` likewise
-rejects Transfer-Encoding and requires a matching Content-Length. The token
-framing helper is not reused for these paths: create has mutation uncertainty,
-and GET has its own same-socket deadline and evidence contract. Before any real
-spreadsheet creation, both response paths need offline raw HTTP framing
-qualification and a separately reviewed freeze; a standard chunked create
-response could otherwise be misclassified as uncertain. No Sheets call was made
-to learn its actual response framing.
+The OAuth token transport was qualified and frozen at `594c95f`. Before this
+separate CREATE/READ patch, both Sheets response paths accepted Content-Length
+only and rejected a valid chunked response. CREATE and READ now share the
+bounded JSON framing primitive used by OAuth. It accepts one canonical bounded
+Content-Length without Transfer-Encoding, or sole valid HTTP/1.1 chunked
+Transfer-Encoding without Content-Length; `http.client` decodes chunks. It
+requires a complete bounded body, absent/identity Content-Encoding, and
+`application/json` with optional UTF-8 charset (case and HTTP OWS handled).
+Duplicate or conflicting framing, other transfer codings, close-delimited
+bodies, compression, unrelated media types and malformed/incomplete bodies
+fail closed. The CREATE intent is durably exclusive before dispatch; any
+post-dispatch outcome that cannot be locally validated remains
+`CREATE_UNCERTAIN_RECONCILIATION_REQUIRED` and never licenses another create.
+READ retains its one-use `LIVE_READ_GO` binding, deadline and evidence rules.
+These are synthetic raw HTTP qualifications, not proof of Google's live response
+shape. There has been no real spreadsheet operation or paper observation;
+paper observations remain **0**. OAuth attempt #4 subsequently completed a reviewed live OAuth acquisition successfully under frozen commit `594c95f`; the resident session was intentionally stopped before provisioning. Any later live Sheets action requires separate hostile
+audit, freeze and authorization.
 
 ## Concrete operational budgets
 
@@ -177,7 +185,7 @@ Creation uses exclusive `mkdir`, private exclusive writes, directory fsyncs, a p
 
 ## Remaining controlled live operator sequence
 
-OAuth attempts #1, #2 and #3 were separately authorized and reached their callbacks. The then-frozen parsers rejected `iss` and `scope` on #1 and #2, respectively. Attempt #3's callback matched its accepted shape, but the old build did not localize the subsequent failure. All three packages and their `oauth-intent.json` records remain permanently spent; none accepted a local acquisition artifact. Provisioning and every later live step remain unexecuted: no fixture, genuine `LIVE_READ_GO`, Sheets GET or Sheets mutation exists, and paper observations remain **0**. Attempt #4 requires the reviewed `new-acquisition-attempt` transition, a newly audited frozen checkout, a fresh offline package and separate authorization. The commands below describe controlled remaining work and grant no execution authority. Do not issue `LIVE_READ_GO` until actual post-setup PASS.
+OAuth attempts #1, #2 and #3 were separately authorized and reached their callbacks. The then-frozen parsers rejected `iss` and `scope` on #1 and #2, respectively. Attempt #3's callback matched its accepted shape, but the old build did not localize the subsequent failure. All three packages and their `oauth-intent.json` records remain permanently spent; none accepted a local acquisition artifact. OAuth attempt #4 was then performed from a fresh reviewed package bound to frozen commit `594c95f` and successfully produced an accepted local `acquisition.json`; `acquisition-failure.json` was absent. The resident session reached `phase4>` and was intentionally terminated with `stop` before provisioning. No fixture create, genuine `LIVE_READ_GO`, Sheets GET or Sheets mutation has occurred, and paper observations remain **0**. The commands below describe controlled remaining work and grant no execution authority. Do not issue `LIVE_READ_GO` until actual post-setup PASS.
 
 1. Obtain the audited full Phase 4 commit from the freeze review. Checkout it under that later permission, verify clean tree. Run regression before the live session. No dependency download/update during session.
 2. Establish independently clock <=2s, dedicated reviewed app/project/account, API enabled/consent configured, no existing unrelated data/default-domain sharing/automation/writers, local trusted disk and capture controls. Cloud/API configuration is a separately authorized human setup prerequisite, not a hidden API call in this tool.

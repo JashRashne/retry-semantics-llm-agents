@@ -4,7 +4,6 @@ from __future__ import annotations
 import http.client
 import os
 from pathlib import Path
-import re
 import ssl
 import time
 from urllib.parse import urlencode
@@ -16,6 +15,7 @@ from retry_semantics.study2 import sheets_phase2_control as p2
 from retry_semantics.study2 import sheets_phase3_control as p3
 from retry_semantics.study2 import sheets_phase3_credentials as credentials
 from retry_semantics.study2 import sheets_phase4_control as control
+from retry_semantics.study2.sheets_http_framing import read_json_body
 
 CREATE_CONFIRMATION = "EXPLICIT_ONE_ENGINEERING_FIXTURE_CREATE"
 CREATE_FIELDS = "spreadsheetId,properties(title),sheets(properties(sheetId,title,sheetType,gridProperties(rowCount,columnCount)))"
@@ -209,22 +209,8 @@ def provision(config, review, token, metadata, *, execute_provisioning, operator
         response = connection.getresponse()
         p2.require(type(response.status) is int and 100 <= response.status <= 599)
         result["http_status"] = response.status
-        p2.require(response.status == 200 and not response.chunked)
-        headers = response.getheaders()
-        framing = {}
-        for name, value in headers:
-            name = name.lower()
-            if name in ("content-length", "content-type", "content-encoding", "transfer-encoding"):
-                p2.require(name not in framing)
-                framing[name] = value
-        p2.require(set(framing) <= {"content-length", "content-type", "content-encoding"}
-            and framing.get("content-encoding", "identity") == "identity"
-            and framing.get("content-type", "").lower() in ("application/json", "application/json; charset=utf-8")
-            and re.fullmatch(r"[1-9][0-9]{0,5}", framing.get("content-length", "")))
-        length = int(framing["content-length"])
-        p2.require(length <= 65536)
-        body = response.read(length + 1)
-        p2.require(len(body) == length and response.isclosed())
+        p2.require(response.status == 200)
+        body = read_json_body(response, 65536, min_body_bytes=1)
         identity = validated_identity(body, config, review)
         result.update(outcome="CREATE_RESPONSE_VALIDATED", spreadsheet_id=identity, sheet_id=1, rows=100, columns=3)
     except Exception:
