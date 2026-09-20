@@ -94,14 +94,30 @@ def acquire(config, review, attestation, pin, client_path, *, execute_oauth,
     p2.require(control.offline_preflight(config, review, attestation, pin)["status"] == "PASS")
     client = load_client_config(client_path, reviewed_public_hash=review["public_sha256"])
     p3.write_json(config.path("oauth-intent.json"), oauth_intent(config, review))
-    token, metadata = credentials.DesktopPreparer(client).acquire(
-        operator_confirmation=operator_confirmation, present_url=present_url,
-        account_alias=config.account_alias, clock_uncertainty_seconds=config.runtime().clock_uncertainty_seconds,
-        consent_seconds=config.consent_seconds, exchange_timeout_seconds=config.exchange_seconds)
-    p2.require(token.expires_at - time.time() > config.minimum_handoff_seconds
-               + token.clock_uncertainty_seconds)
-    p3.write_json(config.path("acquisition.json"), metadata.projection())
-    return token, metadata
+    diagnostic = credentials.AcquisitionDiagnostic()
+    try:
+        token, metadata = credentials.DesktopPreparer(client).acquire(
+            operator_confirmation=operator_confirmation, present_url=present_url,
+            account_alias=config.account_alias, clock_uncertainty_seconds=config.runtime().clock_uncertainty_seconds,
+            consent_seconds=config.consent_seconds, exchange_timeout_seconds=config.exchange_seconds,
+            diagnostic=diagnostic)
+        if not token.expires_at - time.time() > config.minimum_handoff_seconds + token.clock_uncertainty_seconds:
+            diagnostic.fail("handoff_lifetime_invalid")
+        diagnostic.advance("acquisition_persistence_started")
+        try:
+            p3.write_json(config.path("acquisition.json"), metadata.projection())
+        except Exception:
+            diagnostic.reason = "persistence_failure"
+            raise
+        diagnostic.advance("acquisition_persisted")
+        return token, metadata
+    except Exception:
+        # Best effort only. A failed diagnostic write never alters or refunds the intent.
+        try:
+            p3.write_json(config.path("acquisition-failure.json"), diagnostic.projection())
+        except Exception:
+            pass
+        raise
 
 
 def create_request(config):

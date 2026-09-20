@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio  # preload socket subclasses before trapping constructors
 import http.client
+import ipaddress
 import os
 from pathlib import Path
 import socket
@@ -32,8 +33,44 @@ def main():
     def denied(*args, **kwargs):
         forbidden_attempts.append(True)
         raise AssertionError("offline qualification: external network forbidden")
-    for name in ("socket", "create_connection", "getaddrinfo", "gethostbyname",
-                 "gethostbyname_ex", "getnameinfo"):
+    original_socket = socket.socket
+    original_create_connection = socket.create_connection
+    original_getaddrinfo = socket.getaddrinfo
+    def loopback(address):
+        try:
+            host, port = address[:2]
+            return type(port) is int and ipaddress.ip_address(host).is_loopback and ':' not in host
+        except (TypeError, ValueError, IndexError):
+            return False
+    class LoopbackOnlySocket(original_socket):
+        def bind(self, address):
+            if not loopback(address):
+                return denied()
+            return super().bind(address)
+        def connect(self, address):
+            if not loopback(address):
+                return denied()
+            return super().connect(address)
+        def connect_ex(self, address):
+            if not loopback(address):
+                return denied()
+            return super().connect_ex(address)
+        def sendto(self, data, *args):
+            if not args or not loopback(args[-1]):
+                return denied()
+            return super().sendto(data, *args)
+    def local_create_connection(address, *args, **kwargs):
+        if not loopback(address):
+            return denied()
+        return original_create_connection(address, *args, **kwargs)
+    def local_getaddrinfo(host, port, *args, **kwargs):
+        if not loopback((host, port)):
+            return denied()
+        return original_getaddrinfo(host, port, *args, **kwargs)
+    socket.socket = LoopbackOnlySocket
+    socket.create_connection = local_create_connection
+    socket.getaddrinfo = local_getaddrinfo
+    for name in ("gethostbyname", "gethostbyname_ex", "getnameinfo"):
         setattr(socket, name, denied)
     http.client.HTTPSConnection.connect = denied
     http.client.HTTPConnection.connect = denied
@@ -49,7 +86,7 @@ def main():
     if forbidden_attempts:
         print("BLOCKED: forbidden external network API invoked")
         return 3
-    print("Network trap: zero parent forbidden calls; fake spawned workers install independent traps.")
+    print("Network trap: zero external forbidden calls; numeric IPv4 loopback tests allowed; fake spawned workers install independent traps.")
     return result
 
 

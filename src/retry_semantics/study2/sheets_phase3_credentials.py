@@ -18,6 +18,7 @@ from pathlib import Path
 import platform
 import re
 import secrets
+import socket
 import ssl
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -36,6 +37,156 @@ ACQUISITION_CONFIRMATION = "EXPLICIT_OPERATOR_OAUTH_ACQUISITION"
 class CredentialRefused(ValueError):
     def __init__(self):
         super().__init__()
+
+
+class AcquisitionFailure(Exception):
+    """Internal fixed reason only; never carry provider text or an exception."""
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__()
+
+
+STAGES = ("oauth_intent_persisted", "listener_ready", "authorization_url_presented",
+          "callback_received", "callback_parsed", "callback_validated",
+          "token_request_constructed", "token_connection_started", "token_response_started",
+          "token_http_validated", "token_body_complete", "token_json_parsed",
+          "token_semantics_validated", "acquisition_persistence_started", "acquisition_persisted")
+REASONS = frozenset(("callback_timeout", "callback_count_invalid", "callback_transport_failure",
+    "malformed_query", "state_mismatch", "issuer_mismatch", "scope_mismatch",
+    "missing_required_field", "duplicate_security_field", "provider_refusal",
+    "dns_failure", "tcp_failure", "tls_failure", "connection_other",
+    "non_success_status", "framing_invalid", "content_encoding_invalid",
+    "content_type_invalid", "body_size_invalid", "body_incomplete",
+    "malformed_json", "required_field_missing", "semantic_scope_mismatch",
+    "token_type_invalid", "expires_in_invalid", "token_validation_failed",
+    "persistence_failure", "handoff_lifetime_invalid", "local_failure"))
+
+
+def acquisition_failure_consistent(value):
+    """Validate only the closed, mutually consistent failure projection."""
+    if (type(value) is not dict or set(value) != {"schema", "status", "recovery",
+            "last_stage", "reason", "http_status_class", "framing_class",
+            "content_encoding_class", "content_type_class", "callback_count"}
+        or value["schema"] != "sheets-phase4-acquisition-failure-v1"
+        or value["status"] != "BLOCKED" or value["recovery"] != "stop-review-no-retry"
+        or type(value["last_stage"]) is not str or value["last_stage"] not in STAGES
+        or type(value["reason"]) is not str or value["reason"] not in REASONS
+        or value["http_status_class"] not in (None, "200", "other_2xx", "4xx", "5xx", "other")
+        or value["framing_class"] not in (None, "content_length", "chunked", "unsupported_transfer",
+                                               "neither", "conflicting")
+        or value["content_encoding_class"] not in (None, "absent", "identity", "other")
+        or value["content_type_class"] not in (None, "json", "json_utf8", "other")
+        or value["callback_count"] not in ("zero", "one", "invalid")):
+        return False
+
+    stage = value["last_stage"]
+    reason = value["reason"]
+    status = value["http_status_class"]
+    framing = value["framing_class"]
+    encoding = value["content_encoding_class"]
+    content_type = value["content_type_class"]
+    count = value["callback_count"]
+    at = STAGES.index(stage)
+    callback_at = STAGES.index("callback_received")
+    response_at = STAGES.index("token_response_started")
+    http_at = STAGES.index("token_http_validated")
+    no_http = all(field is None for field in (status, framing, encoding, content_type))
+    valid_http = (status == "200" and framing in ("content_length", "chunked")
+                  and encoding in ("absent", "identity")
+                  and content_type in ("json", "json_utf8"))
+
+    if stage == "acquisition_persisted":
+        return False  # This schema is only for an unaccepted acquisition.
+    if (at < callback_at and count == "one") or (at >= callback_at and count != "one"):
+        return False
+    if count == "invalid" and stage != "authorization_url_presented":
+        return False
+    if at < response_at and not no_http:
+        return False
+    if at >= http_at and not valid_http:
+        return False
+    if at == response_at:
+        # Classifications are assigned together after header enumeration.
+        if (framing is None) != (encoding is None) or (framing is None) != (content_type is None):
+            return False
+        if status != "200" and not all(field is None for field in (framing, encoding, content_type)):
+            return False
+
+    if reason == "local_failure":
+        return True  # Coarse, but still subject to stage-derived impossibilities.
+    if reason == "callback_timeout":
+        return stage == "authorization_url_presented" and count == "zero" and no_http
+    if reason in ("callback_count_invalid", "callback_transport_failure"):
+        return stage == "authorization_url_presented" and count == "invalid" and no_http
+    if reason in ("malformed_query", "state_mismatch", "issuer_mismatch", "scope_mismatch",
+                  "missing_required_field", "duplicate_security_field", "provider_refusal"):
+        allowed = ("callback_received", "callback_parsed") if reason == "malformed_query" else ("callback_parsed",)
+        return stage in allowed and count == "one" and no_http
+    if reason in ("dns_failure", "tcp_failure", "tls_failure", "connection_other"):
+        return stage == "token_connection_started" and count == "one" and no_http
+    if reason == "non_success_status":
+        return (stage == "token_response_started" and count == "one"
+                and status in ("other_2xx", "4xx", "5xx", "other")
+                and framing is encoding is content_type is None)
+    if reason == "framing_invalid":
+        return stage == "token_response_started" and count == "one" and status == "200"
+    if reason == "content_encoding_invalid":
+        return (stage == "token_response_started" and count == "one" and status == "200"
+                and framing in ("content_length", "chunked") and encoding == "other")
+    if reason == "content_type_invalid":
+        return (stage == "token_response_started" and count == "one" and status == "200"
+                and framing in ("content_length", "chunked")
+                and encoding in ("absent", "identity") and content_type == "other")
+    if reason == "body_size_invalid":
+        return (count == "one" and status == "200"
+                and ((stage == "token_response_started" and framing == "content_length")
+                     or (stage == "token_http_validated" and valid_http)))
+    if reason == "body_incomplete":
+        return stage == "token_http_validated" and count == "one" and valid_http
+    if reason == "malformed_json":
+        return stage == "token_body_complete" and count == "one" and valid_http
+    if reason in ("required_field_missing", "semantic_scope_mismatch", "token_type_invalid",
+                  "expires_in_invalid", "token_validation_failed"):
+        return stage == "token_json_parsed" and count == "one" and valid_http
+    if reason == "handoff_lifetime_invalid":
+        return stage == "token_semantics_validated" and count == "one" and valid_http
+    if reason == "persistence_failure":
+        return stage == "acquisition_persistence_started" and count == "one" and valid_http
+    return False
+
+
+class AcquisitionDiagnostic:
+    """Positive, closed-enum audit projection. Contains no request/provider values."""
+    def __init__(self):
+        self.stage = "oauth_intent_persisted"
+        self.reason = "local_failure"
+        self.status_class = None
+        self.framing_class = None
+        self.encoding_class = None
+        self.content_type_class = None
+        self.callback_count = "zero"
+
+    def advance(self, stage):
+        if stage not in STAGES or STAGES.index(stage) < STAGES.index(self.stage):
+            raise AcquisitionFailure("local_failure")
+        self.stage = stage
+
+    def fail(self, reason):
+        if reason not in REASONS:
+            raise AcquisitionFailure("local_failure")
+        self.reason = reason
+        raise AcquisitionFailure(reason)
+
+    def projection(self):
+        value = {"schema": "sheets-phase4-acquisition-failure-v1", "status": "BLOCKED",
+            "recovery": "stop-review-no-retry", "last_stage": self.stage,
+            "reason": self.reason, "http_status_class": self.status_class,
+            "framing_class": self.framing_class, "content_encoding_class": self.encoding_class,
+            "content_type_class": self.content_type_class,
+            "callback_count": self.callback_count}
+        if not acquisition_failure_consistent(value):
+            raise CredentialRefused()
+        return value
 
 
 def secret_safe(function):
@@ -147,21 +298,108 @@ class AcquisitionMetadata:
 def validate_token_response(body: bytes, config: ClientConfig, *, account_alias: str,
                             exchange_started_at: float, prepared_at: float,
                             clock_uncertainty_seconds: float):
+    return _validate_token_response(body, config, account_alias=account_alias,
+        exchange_started_at=exchange_started_at, prepared_at=prepared_at,
+        clock_uncertainty_seconds=clock_uncertainty_seconds)
+
+
+def _validate_token_response(body, config, *, account_alias, exchange_started_at,
+                             prepared_at, clock_uncertainty_seconds, diagnostic=None):
     require(type(config) is ClientConfig and type(body) is bytes and len(body) <= 65536)
-    value = strict_json(body)
-    require(type(value) is dict and {"access_token", "expires_in", "scope", "token_type"} <= set(value)
-            and set(value) <= {"access_token", "expires_in", "scope", "token_type", "refresh_token"})
-    require(type(value["scope"]) is str and value["scope"].split() == [p1.SCOPE]
-            and value["token_type"] == "Bearer")
-    require(type(value["access_token"]) is str and 0 < len(value["access_token"]) <= 8192)
-    frozen._number(value["expires_in"], positive=True)
+    try:
+        value = strict_json(body)
+    except Exception:
+        raise AcquisitionFailure("malformed_json") from None
+    if type(value) is not dict:
+        raise AcquisitionFailure("malformed_json")
+    if diagnostic is not None:
+        diagnostic.advance("token_json_parsed")
+    if not {"access_token", "expires_in", "scope", "token_type"} <= set(value):
+        raise AcquisitionFailure("required_field_missing")
+    if type(value["scope"]) is not str or value["scope"].split() != [p1.SCOPE]:
+        raise AcquisitionFailure("semantic_scope_mismatch")
+    if type(value["token_type"]) is not str or value["token_type"].lower() != "bearer":
+        raise AcquisitionFailure("token_type_invalid")
+    if type(value["access_token"]) is not str or not 0 < len(value["access_token"]) <= 8192:
+        raise AcquisitionFailure("token_validation_failed")
+    try:
+        frozen._number(value["expires_in"], positive=True)
+    except Exception:
+        raise AcquisitionFailure("expires_in_invalid") from None
     metadata = AcquisitionMetadata(config.public_hash, account_alias, exchange_started_at,
         prepared_at, exchange_started_at + value["expires_in"], clock_uncertainty_seconds)
-    token = frozen.prepare_token(value["access_token"], expires_at=metadata.expires_at,
-        clock_uncertainty_seconds=clock_uncertainty_seconds)
+    try:
+        token = frozen.prepare_token(value["access_token"], expires_at=metadata.expires_at,
+            clock_uncertainty_seconds=clock_uncertainty_seconds)
+    except Exception:
+        raise AcquisitionFailure("token_validation_failed") from None
+    if diagnostic is not None:
+        diagnostic.advance("token_semantics_validated")
     # Refresh material is discarded with the local response; no refresh object
     # exists, and no OAuth body/value/hash crosses the export boundary.
     return token, metadata
+
+
+def _response_body(response, diagnostic=None):
+    """Bounded HTTP/1.1 framing; http.client owns chunk decoding."""
+    headers = response.getheaders()
+    selected = {}
+    for name, value in headers:
+        key = name.lower()
+        if key in ("content-length", "transfer-encoding", "content-type", "content-encoding"):
+            if key in selected:
+                raise AcquisitionFailure("framing_invalid")
+            selected[key] = value
+    length = selected.get("content-length")
+    transfer = selected.get("transfer-encoding")
+    if diagnostic is not None:
+        diagnostic.framing_class = ("conflicting" if length is not None and transfer is not None
+            else "chunked" if transfer is not None and transfer.strip().lower() == "chunked"
+            else "unsupported_transfer" if transfer is not None
+            else "content_length" if length is not None else "neither")
+        encoding = selected.get("content-encoding")
+        diagnostic.encoding_class = ("absent" if encoding is None else "identity"
+            if encoding.strip().lower() == "identity" else "other")
+        kind = selected.get("content-type", "")
+        diagnostic.content_type_class = ("json" if re.fullmatch(r"[ \t]*application/json[ \t]*", kind, re.I)
+            else "json_utf8" if re.fullmatch(
+                r'[ \t]*application/json[ \t]*;[ \t]*charset[ \t]*=[ \t]*(?:utf-8|"utf-8")[ \t]*', kind, re.I)
+            else "other")
+    if length is not None and transfer is not None:
+        raise AcquisitionFailure("framing_invalid")
+    if transfer is not None:
+        if transfer.strip().lower() != "chunked" or response.chunked is not True:
+            raise AcquisitionFailure("framing_invalid")
+        expected = None
+    elif length is not None:
+        if not re.fullmatch(r"[1-9][0-9]{0,4}", length) or response.chunked:
+            raise AcquisitionFailure("framing_invalid")
+        expected = int(length)
+        if expected > 65536:
+            raise AcquisitionFailure("body_size_invalid")
+    else:
+        raise AcquisitionFailure("framing_invalid")
+    if selected.get("content-encoding", "identity").strip().lower() != "identity":
+        raise AcquisitionFailure("content_encoding_invalid")
+    kind = selected.get("content-type", "")
+    if not (re.fullmatch(r"[ \t]*application/json[ \t]*", kind, re.I) or re.fullmatch(
+            r'[ \t]*application/json[ \t]*;[ \t]*charset[ \t]*=[ \t]*(?:utf-8|"utf-8")[ \t]*', kind, re.I)):
+        raise AcquisitionFailure("content_type_invalid")
+    if diagnostic is not None:
+        diagnostic.advance("token_http_validated")
+    try:
+        body = response.read((expected if expected is not None else 65536) + 1)
+    except (http.client.IncompleteRead, OSError, http.client.HTTPException):
+        raise AcquisitionFailure("body_incomplete") from None
+    if len(body) > 65536:
+        raise AcquisitionFailure("body_size_invalid")
+    if expected is not None and len(body) != expected:
+        raise AcquisitionFailure("body_incomplete")
+    if not response.isclosed():
+        raise AcquisitionFailure("body_incomplete")
+    if diagnostic is not None:
+        diagnostic.advance("token_body_complete")
+    return body
 
 
 class DesktopPreparer:
@@ -197,32 +435,56 @@ class DesktopPreparer:
 
     @secret_safe
     def _exchange(self, callback_url: str, redirect_uri: str, *, account_alias: str,
-                  clock_uncertainty_seconds: float, timeout_seconds: float):
+                  clock_uncertainty_seconds: float, timeout_seconds: float, diagnostic=None):
         try:
             return self._exchange_once(callback_url, redirect_uri, account_alias=account_alias,
-                clock_uncertainty_seconds=clock_uncertainty_seconds, timeout_seconds=timeout_seconds)
+                clock_uncertainty_seconds=clock_uncertainty_seconds, timeout_seconds=timeout_seconds,
+                diagnostic=diagnostic)
+        except AcquisitionFailure as failure:
+            if diagnostic is not None:
+                diagnostic.reason = failure.reason
+            raise
         finally:
             if self._used:
                 self._verifier = self._state = ""
 
     def _exchange_once(self, callback_url, redirect_uri, *, account_alias,
-                       clock_uncertainty_seconds, timeout_seconds):
+                       clock_uncertainty_seconds, timeout_seconds, diagnostic=None):
         require(not self._used)
         self._used = True  # Every callback/exchange failure terminates this session.
         self._check_redirect(redirect_uri)
         require(type(callback_url) is str and len(callback_url) <= 8192)
         parts = urlsplit(callback_url)
         require(not parts.fragment and parts.scheme + "://" + parts.netloc + parts.path == redirect_uri)
-        args = parse_qs(parts.query, strict_parsing=True, keep_blank_values=True)
-        require(set(args) in ({"code", "state", "iss", "scope"}, {"error", "state", "iss"})
-                and all(len(v) == 1 for v in args.values()))
-        require(args["iss"][0] == CALLBACK_ISSUER
-                and hmac.compare_digest(args["state"][0], self._state))
+        if re.search(r"%(?![0-9A-Fa-f]{2})", parts.query):
+            raise AcquisitionFailure("malformed_query")
+        try:
+            args = parse_qs(parts.query, strict_parsing=True, keep_blank_values=True)
+        except ValueError:
+            raise AcquisitionFailure("malformed_query") from None
+        if diagnostic is not None:
+            diagnostic.advance("callback_parsed")
+        required = {"state", "iss"}
+        if not required <= set(args) or ("code" not in args and "error" not in args):
+            raise AcquisitionFailure("missing_required_field")
+        if any(len(args[key]) != 1 for key in ("state", "iss", "code", "scope", "error") if key in args):
+            raise AcquisitionFailure("duplicate_security_field")
+        if "code" in args and "error" in args:
+            raise AcquisitionFailure("malformed_query")
+        if args["iss"][0] != CALLBACK_ISSUER:
+            raise AcquisitionFailure("issuer_mismatch")
+        if not hmac.compare_digest(args["state"][0], self._state):
+            raise AcquisitionFailure("state_mismatch")
         if "error" in args:
             require(0 < len(args["error"][0]) <= 4096)
-            raise CredentialRefused()
-        require(args["scope"][0] == p1.SCOPE)
+            raise AcquisitionFailure("provider_refusal")
+        if "scope" not in args:
+            raise AcquisitionFailure("missing_required_field")
+        if args["scope"][0] != p1.SCOPE:
+            raise AcquisitionFailure("scope_mismatch")
         require(0 < len(args["code"][0]) <= 4096)
+        if diagnostic is not None:
+            diagnostic.advance("callback_validated")
         from retry_semantics.study2.sheets_phase3_control import environment_gate
         environment_gate()
         frozen._number(timeout_seconds, positive=True)
@@ -234,29 +496,43 @@ class DesktopPreparer:
             "client_secret": self._config.client_secret, "code": args["code"][0],
             "code_verifier": self._verifier, "grant_type": "authorization_code",
             "redirect_uri": redirect_uri}).encode("ascii")
+        if diagnostic is not None:
+            diagnostic.advance("token_request_constructed")
         connection = http.client.HTTPSConnection("oauth2.googleapis.com", 443,
             timeout=timeout_seconds, context=context)
         connection.auto_open = connection.debuglevel = 0
         started = time.time()
         try:
-            connection.connect()
-            connection.request("POST", "/token", payload, {"Content-Type":
-                "application/x-www-form-urlencoded", "Accept": "application/json",
-                "Accept-Encoding": "identity", "Connection": "close"})
-            response = connection.getresponse()
-            require(response.status == 200 and not response.chunked)
-            headers = response.getheaders()
-            lengths = [v for k, v in headers if k.lower() == "content-length"]
-            types = [v for k, v in headers if k.lower() == "content-type"]
-            require(len(lengths) == 1 and re.fullmatch(r"[1-9][0-9]{0,4}", lengths[0])
-                    and int(lengths[0]) <= 65536 and len(types) == 1
-                    and types[0].lower() in ("application/json", "application/json; charset=utf-8")
-                    and not any(k.lower() in ("transfer-encoding", "content-encoding") for k, _ in headers))
-            body = response.read(int(lengths[0]) + 1)
-            require(len(body) == int(lengths[0]) and response.isclosed())
-            return validate_token_response(body, self._config, account_alias=account_alias,
+            if diagnostic is not None:
+                diagnostic.advance("token_connection_started")
+            try:
+                connection.connect()
+            except socket.gaierror:
+                raise AcquisitionFailure("dns_failure") from None
+            except (ssl.SSLError, ssl.CertificateError):
+                raise AcquisitionFailure("tls_failure") from None
+            except (ConnectionRefusedError, TimeoutError):
+                raise AcquisitionFailure("tcp_failure") from None
+            except OSError:
+                raise AcquisitionFailure("connection_other") from None
+            try:
+                connection.request("POST", "/token", payload, {"Content-Type":
+                    "application/x-www-form-urlencoded", "Accept": "application/json",
+                    "Accept-Encoding": "identity", "Connection": "close"})
+                response = connection.getresponse()
+            except (OSError, http.client.HTTPException):
+                raise AcquisitionFailure("connection_other") from None
+            if diagnostic is not None:
+                diagnostic.advance("token_response_started")
+                diagnostic.status_class = ("200" if response.status == 200 else
+                    "other_2xx" if 200 <= response.status < 300 else
+                    "4xx" if 400 <= response.status < 500 else "5xx" if 500 <= response.status < 600 else "other")
+            if response.status != 200:
+                raise AcquisitionFailure("non_success_status")
+            body = _response_body(response, diagnostic)
+            return _validate_token_response(body, self._config, account_alias=account_alias,
                 exchange_started_at=started, prepared_at=time.time(),
-                clock_uncertainty_seconds=clock_uncertainty_seconds)
+                clock_uncertainty_seconds=clock_uncertainty_seconds, diagnostic=diagnostic)
         finally:
             connection.close()
             self._verifier = self._state = ""
@@ -264,7 +540,7 @@ class DesktopPreparer:
     @secret_safe
     def acquire(self, *, operator_confirmation: str, present_url, account_alias: str,
                 clock_uncertainty_seconds: float, consent_seconds: float,
-                exchange_timeout_seconds: float):
+                exchange_timeout_seconds: float, diagnostic=None):
         """Separately authorized later action; present_url is a manual UI callback.
 
         Caller must never log/store URLs or callback content. No automatic browser.
@@ -279,32 +555,62 @@ class DesktopPreparer:
         frozen._number(clock_uncertainty_seconds)
         label(account_alias)
         received = []
+        invalid = []
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
+            def send_error(self, *args, **kwargs):
+                invalid.append(True)
+                # A fixed empty response; never interpolate a request line.
+                self.send_response(400)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
             def do_GET(self):
-                if len(self.path) <= 8192:
+                if len(self.path) <= 8192 and self.path.startswith("/?"):
                     received.append(self.path)
-                self.send_response(200)
+                else:
+                    invalid.append(True)
+                self.send_response(200 if not invalid else 400)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
         class LoopbackServer(http.server.HTTPServer):
+            address_family = socket.AF_INET
             def get_request(self):
                 sock, address = super().get_request()
-                sock.settimeout(consent_seconds)
+                sock.settimeout(min(0.25, max(0.001, deadline - time.monotonic())))
                 return sock, address
             def handle_error(self, request, client_address):
-                pass  # Stdlib's default prints a secret-bearing traceback.
+                invalid.append("transport")  # Never print a secret-bearing traceback.
         server = LoopbackServer(("127.0.0.1", 0), Handler)
-        server.timeout = consent_seconds
+        deadline = time.monotonic() + consent_seconds
         try:
+            if diagnostic is not None:
+                diagnostic.advance("listener_ready")
             redirect = f"http://127.0.0.1:{server.server_port}/"
             present_url(self.authorization_url(redirect))
-            server.handle_request()
-            require(len(received) == 1)
+            if diagnostic is not None:
+                diagnostic.advance("authorization_url_presented")
+            while not received and not invalid:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    if diagnostic is not None:
+                        diagnostic.fail("callback_timeout")
+                    raise AcquisitionFailure("callback_timeout")
+                server.timeout = min(0.25, remaining)
+                server.handle_request()
+            late = time.monotonic() > deadline
+            if diagnostic is not None:
+                diagnostic.callback_count = "invalid" if invalid or late else "one" if received else "zero"
+            if invalid or len(received) != 1 or late:
+                if diagnostic is not None:
+                    diagnostic.fail("callback_transport_failure" if "transport" in invalid
+                                    else "callback_count_invalid")
+                raise AcquisitionFailure("callback_count_invalid")
+            if diagnostic is not None:
+                diagnostic.advance("callback_received")
             return self._exchange(redirect[:-1] + received[0], redirect,
                 account_alias=account_alias, clock_uncertainty_seconds=clock_uncertainty_seconds,
-                timeout_seconds=exchange_timeout_seconds)
+                timeout_seconds=exchange_timeout_seconds, diagnostic=diagnostic)
         finally:
             self._used = True
             self._verifier = self._state = ""

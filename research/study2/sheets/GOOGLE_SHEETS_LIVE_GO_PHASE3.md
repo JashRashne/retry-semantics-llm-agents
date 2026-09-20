@@ -151,14 +151,15 @@ scope inclusion. It does not open a browser. A later explicit `acquire` call req
 `EXPLICIT_OPERATOR_OAUTH_ACQUISITION`, clean environment and explicit consent/
 exchange timeout values. A manual UI callback presents the URL; it must not log
 or persist URL/state. A random-port IPv4 loopback listener receives exactly one
-bounded callback. Exact loopback origin/path, one code, constant-time state match,
-no fragment and no extra/duplicate query parameters are required. Real Google
-authorization redirects exposed RFC 9207 `iss` and a `scope` field: a successful
-callback must have exactly one each of `code`, `state`, `iss` and `scope`, with `iss`
+bounded callback. It requires the exact loopback origin/path, one code, a
+constant-time state match, and no fragment. Real Google authorization redirects exposed RFC 9207
+`iss` and a `scope` field: a successful callback requires exactly one each of
+`code`, `state`, `iss` and `scope`, with `iss`
 exactly `https://accounts.google.com` and decoded `scope` exactly
 `https://www.googleapis.com/auth/drive.file`. Missing, altered or duplicate issuer
-or scope values and unknown fields fail closed; neither expected value is taken from
-downloaded client metadata or network discovery. An error callback with exactly
+or scope values fail closed; unknown non-security-critical parameters are ignored
+without persistence. Neither expected value is taken from
+downloaded client metadata or network discovery. An error callback requiring
 `error`, `state` and the same valid `iss` is still refused without exchange. This is not
 deprecated copy/paste OOB authentication. The token POST includes authorization_code,
 the same redirect and verifier. No DPoP, refresh, retry or second exchange exists.
@@ -175,14 +176,21 @@ intents; neither accepted a local acquisition artifact. No fixture, genuine
 `LIVE_READ_GO`, Sheets GET, Sheets mutation or paper observation followed. Paper
 observations remain **0**. These local failures establish no further claim about
 what Google may have issued remotely. Neither spent package is retried or reset; a
-reviewed attempt #3 requires another fresh package and separate authorization.
+reviewed attempt #3 used a fresh package at `c2454bd43e32e670b87735843db1c4b21404b294`.
+Its callback had exactly `state`, `iss`, `code`, and `scope`, matching the then-accepted
+shape, but acquisition still ended BLOCKED before accepted local acquisition
+persistence. The old build did not record the failing stage. The attempt #3 package
+is permanently spent; another attempt requires a new reviewed package and separate
+authorization.
 
 The successful response must be bounded strict JSON with acceptable bounded access
 token, finite positive numeric `expires_in` (no bool), exact granted scope set
-`drive.file`, and exact `Bearer`. Missing scope is refused despite OAuth's possible
-scope-omission conventions. Only the explicitly qualified Content-Length JSON
-exchange shape is supported; the real token response shape remains unobserved. Unknown fields,
-unsupported encoding/framing, redirects and errors fail closed. Refresh material,
+`drive.file`, and case-insensitive Bearer token type. Missing scope is refused despite
+OAuth's possible scope-omission conventions. A single bounded Content-Length or
+strictly valid chunked HTTP/1.1 JSON response is accepted through the standard
+library decoder; close-delimited, conflicting, unsupported or malformed framing
+fails closed. JSON Content-Type accepts optional UTF-8 charset with HTTP case/OWS.
+Unknown token JSON members are ignored without persistence. Refresh material,
 if returned, is discarded locally; there is no persistence or refresh method.
 Expiry is **exchange-start + expires_in**, accounting conservatively for exchange
 latency. The token response body, verifier, code, state, refresh token and client

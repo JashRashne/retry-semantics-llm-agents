@@ -19,7 +19,7 @@ from retry_semantics.study2 import sheets_phase3_operator as operator
 BASE = "9967146176e9e507768577e99fdaa40b5d821d6d"
 FILES = ("operator.json", "client-review.json", "startup.json", "offline-pin.json", "supersession.json",
          "acquisition-attempt.json",
-         "oauth-intent.json", "acquisition.json", "create-intent.json", "create-result.json",
+         "oauth-intent.json", "acquisition-failure.json", "acquisition.json", "create-intent.json", "create-result.json",
          "provisioning.json", "fixture.json", "read-pin.json", "conditions.json",
          "issue-intent.json", "authorization.json", "phase3-receipt.json", "phase4-receipt.json",
          "read-intent.json", "result.json")
@@ -37,6 +37,11 @@ SPENT_OAUTH_FILES = frozenset(("operator.json", "client-review.json", "startup.j
 
 def hash_public(value):
     return sha256_hex(canonical_json_bytes(value))
+
+
+def validate_acquisition_failure(value):
+    p2.require(credentials.acquisition_failure_consistent(value))
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,9 +144,9 @@ def storage_check(config):
         p2.digest(record["predecessor_oauth_intent_sha256"])
         p2.require(type(record["offline_files_present"]) is list
                    and record["offline_files_present"] in (
-                       sorted(SPENT_OAUTH_FILES),
-                       sorted(SPENT_OAUTH_FILES | {"supersession.json"}),
-                       sorted(SPENT_OAUTH_FILES | {"acquisition-attempt.json"})))
+                       sorted(SPENT_OAUTH_FILES | extra | failure)
+                       for extra in (set(), {"supersession.json"}, {"acquisition-attempt.json"})
+                       for failure in (set(), {"acquisition-failure.json"})))
     if successor or record_path.exists():
         p2.require(successor is not None and successor.group(1) == config.expected_head)
         record = p3.load_json(record_path)
@@ -173,9 +178,9 @@ def _prelive_snapshot(config, *, spent_oauth=False):
     root = Path(config.storage_root)
     names = set(os.listdir(root))
     if spent_oauth:
-        p2.require(names in (SPENT_OAUTH_FILES | {"registry"},
-            SPENT_OAUTH_FILES | {"registry", "supersession.json"},
-            SPENT_OAUTH_FILES | {"registry", "acquisition-attempt.json"}))
+        p2.require(names in (SPENT_OAUTH_FILES | {"registry"} | extra | failure
+            for extra in (set(), {"supersession.json"}, {"acquisition-attempt.json"})
+            for failure in (set(), {"acquisition-failure.json"})))
     else:
         p2.require("operator.json" in names and names <= PRELIVE_FILES | {"registry"})
     p2.require(not os.listdir(root / "registry"))
@@ -210,6 +215,8 @@ def _prelive_snapshot(config, *, spent_oauth=False):
     if spent_oauth:
         from retry_semantics.study2 import sheets_phase4_setup as setup
         p2.require(p3.load_json(config.path("oauth-intent.json")) == setup.oauth_intent(config, review))
+        if "acquisition-failure.json" in names:
+            validate_acquisition_failure(p3.load_json(config.path("acquisition-failure.json")))
     # Metadata is used only to detect concurrent changes; no file contents or secret hashes are recorded.
     signature = tuple((name, *(getattr((root / name).lstat(), field)
         for field in ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")))
@@ -369,6 +376,7 @@ def runtime_projection(config, review, descriptor=None):
             "phase3": p3.runtime_projection(config.runtime()), "fixture": descriptor,
             "schemas": ["sheets-phase4-startup-v1", "sheets-phase4-prelive-supersession-v1",
                         "sheets-phase4-reviewed-acquisition-attempt-v1",
+                        "sheets-phase4-acquisition-failure-v1",
                         "sheets-phase4-create-result-v1",
                         "sheets-phase3-fixture-descriptor-v1", "sheets-phase3-acquisition-metadata-v1",
                         "sheets-live-authorization-v1", "sheets-phase3-issuance-receipt-v1",

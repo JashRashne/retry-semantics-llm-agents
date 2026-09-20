@@ -234,11 +234,11 @@ def test_valid_export_conservative_expiry_no_refresh_object(config):
 @pytest.mark.parametrize("change", [
     {"scope": ""}, {"scope": "https://www.googleapis.com/auth/drive"},
     {"scope": p1.SCOPE + " other"}, {"scope": p1.SCOPE + " " + p1.SCOPE},
-    {"scope": [p1.SCOPE]}, {"token_type": "bearer"}, {"token_type": "DPoP"},
+    {"scope": [p1.SCOPE]}, {"token_type": "DPoP"},
     {"expires_in": 0}, {"expires_in": -1}, {"expires_in": True}, {"expires_in": "3600"},
     {"expires_in": float("inf")}, {"expires_in": float("nan")},
     {"access_token": ""}, {"access_token": "a\r\nb"}, {"access_token": object()},
-    {"access_token": "a" * 8193}, {"unexpected": SECRET},
+    {"access_token": "a" * 8193},
 ])
 def test_bad_token_contract_no_secret_errors(config, change):
     try:
@@ -331,7 +331,6 @@ def test_callback_refusal_spends_session_no_connect(config, query):
     (CALLBACK_SCOPE + "%3Fx%3D1", ""),
     (CALLBACK_SCOPE + "%23fragment", ""),
     ("&scope=https%3A%252F%252Fwww.googleapis.com%2Fauth%2Fdrive.file", ""),
-    (CALLBACK_SCOPE, "&unexpected=1"),
     (CALLBACK_SCOPE, "&code=second"),
     (CALLBACK_SCOPE, "&state=second"),
 ])
@@ -358,7 +357,6 @@ def test_callback_scope_and_extra_fields_refused_before_token_endpoint(
     "&iss=https%3A%2F%2FAccounts.google.com",
     "&iss=https%3A%2F%2Faccounts.google.com%3Fx%3D1",
     "&iss=https%3A%2F%2Faccounts.google.com%23x",
-    "&iss=https%3A%2F%2Faccounts.google.com&extra=1",
     "&iss=https%3A%2F%2Faccounts.google.com&iss=https%3A%2F%2Faccounts.google.com",
 ])
 def test_callback_issuer_refusal_before_network(config, monkeypatch, suffix):

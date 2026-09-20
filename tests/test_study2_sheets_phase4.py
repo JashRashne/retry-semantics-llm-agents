@@ -106,6 +106,15 @@ def prepared(client):
         exchange_started_at=now - 2, prepared_at=now - 1, clock_uncertainty_seconds=2)
 
 
+def mark_synthetic_token_validated(diagnostic):
+    diagnostic.callback_count = 'one'
+    diagnostic.status_class = '200'
+    diagnostic.framing_class = 'content_length'
+    diagnostic.encoding_class = 'absent'
+    diagnostic.content_type_class = 'json'
+    diagnostic.advance('token_semantics_validated')
+
+
 def persist_acquisition(config, reviewed, prepared):
     p3.write_json(config.path('oauth-intent.json'), setup.oauth_intent(config, reviewed))
     p3.write_json(config.path('acquisition.json'), prepared[1].projection())
@@ -410,6 +419,11 @@ def test_budget_sum_and_strict_coherence_and_hash(offline):
     assert control.offline_preflight(**{**offline, 'config': changed})['status'] == 'BLOCKED'
 
 
+def test_acquisition_failure_schema_is_runtime_pinned(offline):
+    schemas = control.runtime_projection(offline['config'], offline['review'])['schemas']
+    assert schemas.count('sheets-phase4-acquisition-failure-v1') == 1
+
+
 @pytest.mark.parametrize('name', ['_socket', 'fcntl'])
 def test_new_native_pin_detects_replaced_file_and_contents(offline, monkeypatch, tmp_path, name):
     before = control.runtime_projection(offline['config'], offline['review'])
@@ -508,6 +522,7 @@ def test_oauth_one_acquisition_no_retry_no_read_authorization(offline, client, t
         assert kwargs['operator_confirmation'] == credentials.ACQUISITION_CONFIRMATION
         assert kwargs['consent_seconds'] == 300 and kwargs['exchange_timeout_seconds'] == 30
         if fault == 'acquisition': raise OSError(BEARER)
+        mark_synthetic_token_validated(kwargs['diagnostic'])
         return prepared
     monkeypatch.setattr(credentials.DesktopPreparer, 'acquire', acquire)
     write = p3.write_json
@@ -528,6 +543,140 @@ def test_oauth_one_acquisition_no_retry_no_read_authorization(offline, client, t
     assert not config.path('create-intent.json').exists()
     data = b''.join(p.read_bytes() for p in Path(config.storage_root).iterdir() if p.is_file())
     assert BEARER.encode() not in data and sha256_hex(BEARER.encode()).encode() not in data
+    if fault is not None:
+        failure = p3.load_json(config.path('acquisition-failure.json'))
+        assert control.validate_acquisition_failure(failure) == failure
+        assert failure['recovery'] == 'stop-review-no-retry'
+        assert failure['reason'] == ('persistence_failure' if fault == 'metadata-persistence' else 'local_failure')
+        assert failure['last_stage'] == ('acquisition_persistence_started' if fault == 'metadata-persistence'
+                                         else 'oauth_intent_persisted')
+        assert config.path('oauth-intent.json').exists() and not config.path('acquisition.json').exists()
+    else:
+        assert not config.path('acquisition-failure.json').exists()
+
+
+def test_diagnostic_write_failure_preserves_spent_intent(offline, client, tmp_path, monkeypatch):
+    config = offline['config']
+    path = tmp_path / 'client.json'
+    p3.write_json(path, client_file(client))
+    monkeypatch.setattr(credentials.DesktopPreparer, 'acquire',
+                        lambda *a, **kw: (_ for _ in ()).throw(OSError(BEARER)))
+    write = p3.write_json
+    def fault(path, value):
+        if path.name == 'acquisition-failure.json':
+            raise OSError(BEARER)
+        return write(path, value)
+    monkeypatch.setattr(p3, 'write_json', fault)
+    with pytest.raises(credentials.CredentialRefused):
+        setup.acquire(**offline, client_path=path, execute_oauth=True,
+            operator_confirmation=credentials.ACQUISITION_CONFIRMATION,
+            present_url=lambda _: pytest.fail('browser'))
+    assert config.path('oauth-intent.json').exists()
+    assert not config.path('acquisition-failure.json').exists()
+    assert not config.path('acquisition.json').exists()
+
+
+def test_handoff_lifetime_failure_is_consistent(offline, client, prepared, tmp_path, monkeypatch):
+    config = offline['config']
+    path = tmp_path / 'client.json'
+    p3.write_json(path, client_file(client))
+    def acquire(self, **kwargs):
+        mark_synthetic_token_validated(kwargs['diagnostic'])
+        return replace(prepared[0], expires_at=time.time() + 100), prepared[1]
+    monkeypatch.setattr(credentials.DesktopPreparer, 'acquire', acquire)
+    with pytest.raises(credentials.CredentialRefused):
+        setup.acquire(**offline, client_path=path, execute_oauth=True,
+            operator_confirmation=credentials.ACQUISITION_CONFIRMATION,
+            present_url=lambda _: pytest.fail('browser'))
+    failure = p3.load_json(config.path('acquisition-failure.json'))
+    assert control.validate_acquisition_failure(failure) == failure
+    assert failure['reason'] == 'handoff_lifetime_invalid'
+    assert failure['last_stage'] == 'token_semantics_validated'
+    assert not config.path('acquisition.json').exists()
+
+
+def test_spent_predecessor_allows_only_valid_failure_diagnostic(spent_oauth, monkeypatch):
+    config = spent_oauth['config']
+    failure = credentials.AcquisitionDiagnostic().projection()
+    p3.write_json(config.path('acquisition-failure.json'), failure)
+    monkeypatch.setattr(p3, 'repository_check', lambda head: None)
+    result = control.new_acquisition_attempt(config, NEXT_HEAD, control.NEW_ACQUISITION_CONFIRMATION)
+    assert result['live_go'] == 'CLOSED'
+    record = p3.load_json(acquisition_attempt_path(config) / 'acquisition-attempt.json')
+    assert 'acquisition-failure.json' in record['offline_files_present']
+    assert not (acquisition_attempt_path(config) / 'acquisition-failure.json').exists()
+
+
+def test_malformed_failure_diagnostic_blocks_new_attempt(spent_oauth, monkeypatch):
+    config = spent_oauth['config']
+    failure = {**credentials.AcquisitionDiagnostic().projection(), 'reason': 'provider-secret'}
+    p3.write_json(config.path('acquisition-failure.json'), failure)
+    monkeypatch.setattr(p3, 'repository_check', lambda head: None)
+    with pytest.raises(Exception):
+        control.new_acquisition_attempt(config, NEXT_HEAD, control.NEW_ACQUISITION_CONFIRMATION)
+    assert not acquisition_attempt_path(config).exists()
+
+
+_HTTP_FAILURE = {'callback_count': 'one', 'http_status_class': '200',
+    'framing_class': 'content_length', 'content_encoding_class': 'absent',
+    'content_type_class': 'json'}
+
+
+@pytest.mark.parametrize('changes', [
+    {'reason': 'semantic_scope_mismatch', **_HTTP_FAILURE},
+    {'last_stage': 'authorization_url_presented', 'reason': 'callback_timeout', 'callback_count': 'one'},
+    {'last_stage': 'callback_received', 'reason': 'callback_timeout', 'callback_count': 'one'},
+    {'last_stage': 'authorization_url_presented', 'reason': 'callback_timeout',
+     'http_status_class': '200'},
+    {'last_stage': 'authorization_url_presented', 'reason': 'callback_count_invalid'},
+    {'last_stage': 'callback_received', 'reason': 'callback_transport_failure', 'callback_count': 'one'},
+    {'last_stage': 'callback_parsed', 'reason': 'state_mismatch'},
+    {'last_stage': 'token_response_started', 'reason': 'malformed_query', 'callback_count': 'one'},
+    {'http_status_class': '200'},
+    {'callback_count': 'one'},
+    {'last_stage': 'token_response_started', 'reason': 'non_success_status',
+     'callback_count': 'one', 'http_status_class': '200'},
+    {'last_stage': 'token_response_started', 'reason': 'non_success_status',
+     'callback_count': 'one', 'http_status_class': '2xx'},
+    {'last_stage': 'token_response_started', 'reason': 'framing_invalid',
+     **{**_HTTP_FAILURE, 'http_status_class': '2xx'}},
+    {'last_stage': 'token_response_started', 'reason': 'framing_invalid',
+     **{**_HTTP_FAILURE, 'http_status_class': 'other_2xx'}},
+    {'last_stage': 'token_response_started', 'reason': 'non_success_status',
+     **{**_HTTP_FAILURE, 'http_status_class': 'other_2xx'}},
+    {'last_stage': 'token_response_started', 'reason': 'non_success_status',
+     **{**_HTTP_FAILURE, 'http_status_class': '4xx'}},
+    {'last_stage': 'token_response_started', 'reason': 'framing_invalid',
+     **{**_HTTP_FAILURE, 'http_status_class': '4xx'}},
+    {'last_stage': 'token_response_started', 'reason': 'content_encoding_invalid',
+     **{**_HTTP_FAILURE, 'content_encoding_class': 'identity'}},
+    {'last_stage': 'token_response_started', 'reason': 'content_encoding_invalid',
+     **{**_HTTP_FAILURE, 'framing_class': 'unsupported_transfer', 'content_encoding_class': 'other'}},
+    {'last_stage': 'token_response_started', 'reason': 'content_type_invalid', **_HTTP_FAILURE},
+    {'last_stage': 'token_response_started', 'reason': 'body_size_invalid',
+     **{**_HTTP_FAILURE, 'framing_class': 'chunked'}},
+    {'last_stage': 'token_response_started', 'reason': 'body_incomplete', **_HTTP_FAILURE},
+    {'last_stage': 'token_json_parsed', 'reason': 'malformed_json', **_HTTP_FAILURE},
+    {'last_stage': 'token_json_parsed', 'reason': 'required_field_missing',
+     **{**_HTTP_FAILURE, 'framing_class': 'unsupported_transfer'}},
+    {'last_stage': 'token_body_complete', 'reason': 'semantic_scope_mismatch', **_HTTP_FAILURE},
+    {'last_stage': 'token_json_parsed', 'reason': 'handoff_lifetime_invalid', **_HTTP_FAILURE},
+    {'last_stage': 'token_semantics_validated', 'reason': 'persistence_failure', **_HTTP_FAILURE},
+    {'last_stage': 'acquisition_persisted', 'reason': 'local_failure', **_HTTP_FAILURE},
+    {'reason': ['provider-secret']},
+])
+def test_impossible_failure_cross_fields_rejected(changes):
+    value = {**credentials.AcquisitionDiagnostic().projection(), **changes}
+    assert credentials.acquisition_failure_consistent(value) is False
+    with pytest.raises(p2.Refused):
+        control.validate_acquisition_failure(value)
+
+
+def test_producer_rejects_inconsistent_projection():
+    diagnostic = credentials.AcquisitionDiagnostic()
+    diagnostic.reason = 'semantic_scope_mismatch'
+    with pytest.raises(credentials.CredentialRefused):
+        diagnostic.projection()
 
 
 @pytest.mark.parametrize('attack', ['review', 'descriptor', 'record', 'reservation', 'token-life', 'token-type',
