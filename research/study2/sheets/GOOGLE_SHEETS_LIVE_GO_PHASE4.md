@@ -1,57 +1,88 @@
 # Google Sheets LIVE-GO Closure — Phase 4
 
-**PHASE 4 ENGINEERING DESIGN — LIVE-GO CLOSED — ZERO SHEETS PAPER OBSERVATIONS**
+**PHASE 4 ENGINEERING QUALIFICATION COMPLETE — FIRST GET SUCCESSFUL — ZERO SHEETS PAPER OBSERVATIONS**
 
 Paper: *Replay or Regenerate? Retry Semantics for State-Mutating LLM Agent Tool Calls Under Ambiguous Outcomes*. Academic byline: **J. Rashne**.
 
-## Current operational state — accepted acquisition stopped before fixture adoption
+## Current operational state — engineering qualification complete; first GET succeeded
 
-The latest real Phase 4 package is the retained
-`sheets-phase4-unused-read-successor-7959853ec8f38f367c8609f85522b2fb94762f4c31f2652de8e3cf9c3cf43b7c`
-under the private RetrySemantics storage parent. It remains historical evidence
-and is not a test fixture. Across the retained packages there have been **eight
-OAuth attempts and five accepted acquisitions** (#4, #5, #6, #7, and #8). OAuth attempt
-**#5 succeeded** and produced accepted nonsecret acquisition metadata; its one
-`spreadsheets.create` returned a
-validated HTTP **200** response for a 100-row, 3-column engineering grid with
-sheet ID **1**. The reviewed provisioning record, fixture descriptor and one
-local reservation were completed. Post-setup preflight passed. Fixture hash:
-`262c5f5be30875c077c54bb66f21dae3f7859a58c6af8464c34517d0086b9ec2`;
-provisioning hash:
-`958372a4e213f9c22ffad374efbdcc06cc8359cdd36f2f418e0189d457bce1cf`.
+The live engineering qualification for Google Sheets Phase 4 has succeeded.
+The final real operational Phase 4 package is the retained successor:
+`/Users/jashrashne/Library/Application Support/RetrySemantics/sheets-phase4-unused-acquisition-successor-df5e884b07bb3c9b2fed18049767bd01eb08782cee5e1646900b93962a04a238`
+under the private `RetrySemantics` storage parent. It remains permanent historical evidence
+and is not a test fixture. Across all retained packages there have been **nine OAuth
+attempts and six accepted acquisitions** (#4, #5, #6, #7, #8, and #9). Total real
+`spreadsheets.create` calls remain **1**, real Sheets mutations remain **1**, real Sheets GET
+dispatches are **1**, and successful real Sheets GETs are **1**. Paper observations remain **0**;
+the Study 2 paper experiment has not started, and no Replay or Regeneration retry semantics
+have been tested on Sheets.
 
-`LIVE_READ_GO` assertion #1 was issued with authorization hash
-`602cd05f8f98e8403cc0f97f1d62845682e35bdb278e2d32573765b720a4b77e`.
-Its validity ended before the operator executed the `read` command. A reviewed
-expired-unused-read successor was then created, performed fresh client review,
-startup, and OAuth attempt #6, adopted the same validated fixture, passed
-post-setup preflight, and issued `LIVE_READ_GO` authorization #2.
-Authorization #2 also expired **unused** due to operator timing.
-A subsequent reviewed successor bound to newly frozen commit
-`739b30e4d5b34997defa9beb0eabcb0d40084677` performed fresh client review,
-startup, and OAuth attempt #7, adopted the same validated fixture, passed
-post-setup preflight, and issued `LIVE_READ_GO` authorization #3. When the operator
-attempted to paste the explicit verbose `read` command (~1410 bytes), macOS canonical
-TTY input truncated the line at the 1024-byte buffer limit (`MAX_CANON`, exactly at
-`.../phase4-recei`). The partial command was never executed, and the resident session
-was stopped (Ctrl+C). The resulting unused-read successor then completed fresh
-client review, startup and OAuth attempt **#8**. Its accepted nonsecret
-`acquisition.json` was durably written. The resident Phase 4 session was
-explicitly stopped before `adopt-existing-fixture`. Consequently the current
-package has no `fixture-adoption.json`, `fixture.json`, authorization, issue
-intent, read intent or result. Its registry is empty, and it has no CREATE-side
-artifact. Authorization #4 was **not issued**. The one historical validated
-fixture remains represented only through the package's validated
-`unused-read-authorization-supersession.json` lineage.
+The single real spreadsheet fixture was created in OAuth attempt **#5**, returning a
+validated HTTP **200** response for a 100-row, 3-column engineering grid with sheet ID **1**.
+The reviewed provisioning record, fixture descriptor and one local reservation were completed.
+Fixture hash: `262c5f5be30875c077c54bb66f21dae3f7859a58c6af8464c34517d0086b9ec2`;
+provisioning hash: `958372a4e213f9c22ffad374efbdcc06cc8359cdd36f2f418e0189d457bce1cf`.
+The fixture was never created again.
 
-Across all packages, total real `spreadsheets.create` calls remain **1**, Sheets
-GET dispatches remain **0**, and paper observations remain **0**. The Phase 4
-wrapper writes read intent before inherited read execution, so no package crossed
-the read-dispatch boundary. This is not an ambiguous GET or provider read failure.
-No claim is made that the stopped resident bearer was remotely revoked or that
-Google saw a GET.
+The historical lineage of authorizations and attempts leading to the successful GET is:
+1. **Attempt #5 / Authorization #1**: `LIVE_READ_GO` assertion #1 was issued with authorization hash
+   `602cd05f8f98e8403cc0f97f1d62845682e35bdb278e2d32573765b720a4b77e`. Validity ended before the
+   operator executed the `read` command; it expired **unused** with no read dispatch.
+2. **Attempt #6 / Authorization #2**: A reviewed expired-unused-read successor performed fresh client
+   review, startup, and OAuth attempt #6, adopted the same validated fixture, passed post-setup preflight,
+   and issued `LIVE_READ_GO` authorization #2. It also expired **unused** with no read dispatch due to operator timing.
+3. **Attempt #7 / Authorization #3**: A subsequent reviewed successor bound to frozen commit
+   `739b30e4d5b34997defa9beb0eabcb0d40084677` performed fresh client review, startup, and OAuth attempt #7,
+   adopted the same validated fixture, passed post-setup preflight, and issued `LIVE_READ_GO` authorization #3.
+   When the operator attempted to paste the explicit verbose `read` command (~1410 bytes), macOS canonical
+   TTY input truncated the line at the 1024-byte buffer limit (`MAX_CANON`, exactly at `.../phase4-recei`).
+   The partial command was never executed, and the resident session was stopped (Ctrl+C). It expired **unused** with no read dispatch.
+4. **Attempt #8**: The resulting unused-read successor completed fresh client review, startup and OAuth attempt **#8**.
+   Its accepted nonsecret `acquisition.json` was durably written. The resident Phase 4 session was
+   explicitly stopped before `adopt-existing-fixture`. Consequently that package has no `fixture-adoption.json`,
+   `fixture.json`, authorization, issue intent, read intent or result. Authorization #4 was **not issued** in that package.
+5. **Attempt #9 / Authorization #4 / First GET**: Recovered via the reviewed reused-fixture branch of
+   `supersede-unused-acquisition` (v2), creating the fresh successor package
+   `sheets-phase4-unused-acquisition-successor-df5e884b07bb3c9b2fed18049767bd01eb08782cee5e1646900b93962a04a238`.
+   At clean frozen checkout `0fda488c702ebbe53bb2e3a546c575b502fc73ef`, fresh client review, startup, and
+   offline pin passed. OAuth attempt **#9** was accepted. The SAME historical validated fixture
+   (`262c5f5be30875c077c54bb66f21dae3f7859a58c6af8464c34517d0086b9ec2`) was adopted without repeating CREATE.
+   Post-setup preflight passed. `LIVE_READ_GO` authorization #4 was issued with authorization hash:
+   `5c16ad01b5fe82182b4332827ab5a46e3e047a90c110399ff9ad58f30e9cb945`.
+   The compact resident command `read-current --execute-live-read --token-input resident-memory` was executed
+   exactly once.
 
-The narrow offline recovery is the reused-fixture branch of
+The successful first read result was:
+- **schema**: `sheets-phase3-first-read-result-v1`
+- **HTTP status**: `200`
+- **baseline**: `suitable-current-empty-grid`
+- **byte_count**: `356`
+- **nonempty_rows**: `0`
+- **matching_rows**: `[]`
+- **outcome**: `zero_matches_currently_not_observed`
+- **engineering_only**: `true`
+- **paper_observations**: `0`
+- **next_action**: `stop-no-retry`
+
+A post-read inspection of the successor package proved:
+- **PRESENT**: `acquisition.json`, `authorization.json`, `client-review.json`, `conditions.json`,
+  `fixture-adoption.json`, `fixture.json`, `issue-intent.json`, `oauth-intent.json`, `offline-pin.json`,
+  `operator.json`, `phase3-receipt.json`, `phase4-receipt.json`, `read-intent.json`, `read-pin.json`,
+  `result.json`, `startup.json`, `unused-acquisition-supersession.json`.
+- **ABSENT**: `create-intent.json`, `create-result.json`, `provisioning.json`, `provisioning-review.json`
+  (proving no duplicate creation or provisioning occurred).
+- **Registry contains**: `attempt-successor-7959853ec8f38f367c8609f85522b2fb.jsonl`,
+  `claim-successor-7959853ec8f38f367c8609f85522b2fb.json`, `registry.lock`,
+  `reservation-sheets_phase4_first_fixture.json`.
+
+Hostile audit independently checked that:
+- Read, result, and receipts bind to the exact same authorization (#4);
+- Fixture, read-pin, issue, and adoption bind to the exact same historical fixture;
+- OAuth #9 was fresh relative to the recovery boundary;
+- No persisted access token, refresh token, client secret, PKCE verifier, authorization code, ID token, or Bearer credential was found;
+- HEAD/origin were frozen at `0fda488c702ebbe53bb2e3a546c575b502fc73ef` during the live operation.
+
+The narrow offline recovery that enabled this outcome was the reused-fixture branch of
 `supersede-unused-acquisition`. It accepts only a complete valid offline package
 with one accepted acquisition, an empty registry, validated reused-fixture
 lineage, and no adoption, fixture, CREATE, issuance, authorization, read, result,
@@ -62,7 +93,7 @@ provisioning or read; contradictory durable evidence always refuses.
 
 The transition permits the **same frozen HEAD** when `repository_check(new_head)`
 proves that checkout remains clean and exact. It also permits a different valid
-audited HEAD. It creates the existing deterministic one-shot
+audited HEAD. It creates the deterministic one-shot
 `sheets-phase4-unused-acquisition-successor-<full SHA-256>` sibling and preserves
 the same exclusive `mkdir`, `PC_NAME_MAX`, private-file, fsync, pending hard-link
 activation, predecessor recheck, collision, crash-residue and one-successor
@@ -71,7 +102,7 @@ rules. It does not edit the predecessor or repair residue.
 The activated v2 provenance binds both package paths and heads, the predecessor
 operator, OAuth intent and accepted acquisition hashes, exact predecessor file
 inventory, the validated unused-read origin and full fixture lineage hashes, and
-the exact historical fixture hash. It records that the current package had no
+the exact historical fixture hash. It records that the predecessor package had no
 CREATE/read-side artifact and that fresh client review, startup/offline pin,
 OAuth and fixture adoption are required. The successor starts with only its new
 `operator.json`, empty `registry/`, and
@@ -82,22 +113,22 @@ transition, preventing predecessor metadata from satisfying the fresh-OAuth gate
 
 The successor retains the validated fixture-reuse restriction. Its provision,
 provisioning-review and reserve/create paths refuse. After fresh review, startup,
-pin and separately approved OAuth, only
+pin and separately approved OAuth #9,
 `adopt-existing-fixture --operator-confirmation EXPLICIT_ADOPT_VALIDATED_EXISTING_FIXTURE`
-can install the exact historical descriptor and reserve it locally. Fresh
-post-setup preflight and a newly issued authorization are then required before
+installed the exact historical descriptor and reserved it locally. Fresh
+post-setup preflight and newly issued authorization #4 then permitted
 one explicit compact `read-current --execute-live-read --token-input resident-memory`.
-No transition, existing authorization or test grants that live permission, and
-authorization #4 remains unissued in the recorded real state.
+That command was executed once, successfully completing the live engineering qualification.
+The engineering GET is stop-no-retry; no further engineering-qualification requests, retries, or authorizations against this retained qualification package or fixture are authorized. Any future Study 2 paper experiment requires a separate hostile-audited, frozen paper protocol and separate explicit authorization; this engineering qualification record grants NO authority for future paper calls.
 
-The local recovery command shape, after independent audit and freeze, is:
+The local recovery command shape used for this transition was:
 
 ```sh
 .venv/bin/python -m retry_semantics.study2.sheets_phase4_operator supersede-unused-acquisition --configuration "$ACCEPTED_UNUSED_REUSE_P4/operator.json" --new-expected-head AUDITED_FROZEN_FULL_SHA --operator-confirmation EXPLICIT_REUSED_FIXTURE_UNUSED_ACQUISITION_SESSION_STOPPED_BEFORE_ADOPTION
 ```
 
-The returned successor—not the predecessor—is the input for all fresh work.
-The command itself performs no browser, OAuth, provider, CREATE or GET action.
+The returned successor was the input for all fresh work.
+The command itself performed no browser, OAuth, provider, CREATE or GET action.
 
 ## Earlier design and operational snapshots
 
@@ -129,7 +160,7 @@ The narrow setup command sends one `POST https://sheets.googleapis.com/v4/spread
 
 The file title includes the retained reservation label to aid manual incident reconciliation; it is **not** an idempotency key. Sheet ID 1 avoids omitted-default-zero ambiguity. Exactly one worksheet, 100 rows, three columns; no values, formulas, tables, merges, ACL changes or app-property mutation. The positive response must have exactly the selected structure, matching title/extent/type/ID and a valid actual spreadsheet ID. HTTP 200 with one bounded Content-Length or valid HTTP/1.1 chunked framing is required. Unsupported framing fails closed. No provider SDK, redirect following, auth middleware, mutation retry or automatic cleanup.
 
-The original first-read plan acquired OAuth before CREATE because creation needs a token. It intended to use that resident token for setup and a subsequent GET, with distinct human commands and capabilities. In the real attempt #5, the CREATE completed but the first read authorization expired before the GET command was executed. Attempt #6 adopted that fixture but its authorization #2 also expired unused without read dispatch. Attempt #7 adopted that fixture and issued authorization #3, but the verbose read command exceeded the 1024-byte macOS canonical TTY input line limit (~1410 bytes, truncated at `.../phase4-recei`) and was not executed before interruption. OAuth #8 was accepted in the next reviewed successor, but its resident session stopped before fixture adoption; authorization #4 was not issued. A recovered successor therefore requires another fresh OAuth and explicit adoption before a new one-shot authorization #4. The compact resident read command `read-current --execute-live-read --token-input resident-memory` resolves the earlier CLI limitation by binding directly to the package's canonical artifacts without caller-supplied paths. The read path still has no hidden refresh, account lookup, discovery, listing, probe, or additional Sheets request; its GET is locally restricted despite the mutation-capable scope. The historical hostile audit passed the resident-process design with its documented limitations.
+The original first-read plan acquired OAuth before CREATE because creation needs a token. It intended to use that resident token for setup and a subsequent GET, with distinct human commands and capabilities. In the real attempt #5, the CREATE completed but the first read authorization expired before the GET command was executed. Attempt #6 adopted that fixture but its authorization #2 also expired unused without read dispatch. Attempt #7 adopted that fixture and issued authorization #3, but the verbose read command exceeded the 1024-byte macOS canonical TTY input line limit (~1410 bytes, truncated at `.../phase4-recei`) and was not executed before interruption. OAuth #8 was accepted in the next reviewed successor, but its resident session stopped before fixture adoption; authorization #4 was not issued in that package. The recovered successor package `sheets-phase4-unused-acquisition-successor-df5e884b...` then performed fresh OAuth #9, adopted the historical fixture, issued authorization #4, and executed the compact resident read command `read-current --execute-live-read --token-input resident-memory` exactly once (resolving the earlier CLI limitation by binding directly to the package's canonical artifacts without caller-supplied paths). The read returned HTTP 200 with an empty grid, successfully completing live engineering qualification. The read path has no hidden refresh, account lookup, discovery, listing, probe, or additional Sheets request; its GET is locally restricted despite the mutation-capable scope. The historical hostile audit passed the resident-process design with its documented limitations.
 
 ## Explicit real-input schemas
 
@@ -149,11 +180,11 @@ Installed client input: explicit absolute private path, downloaded JSON, outer o
 
 `session --execute-oauth --operator-confirmation EXPLICIT_OPERATOR_OAUTH_ACQUISITION` first validates offline readiness, client review, clean identity and startup. An exclusive `oauth-intent.json` prevents another acquisition in this operational package after failure/restart. Phase 3 constructs one PKCE S256 session, prints one exact authorization URL to the interactive terminal, accepts one loopback callback, verifies state and exchanges one code. Exact drive.file, Bearer and positive finite expiry are required. Expiry is exchange start plus expires_in. Refresh material is discarded; no refresh implementation exists. No browser-launch API is used. A separately authorized operator manually opens the printed URL. Callback/URL/verifier/state/code/response are never evidence.
 
-The first three observed callbacks exposed the authorization response issuer parameter specified by RFC 9207 and, from attempt #2 onward, the returned scope. A success callback requires one each of `code`, `state`, `iss`, `scope`; issuer must equal `https://accounts.google.com` and decoded scope must equal `https://www.googleapis.com/auth/drive.file`. Missing, altered or duplicate security fields fail closed. Unknown non-security-critical query members are ignored and never persisted on success and error callbacks. The exact state check remains. An error callback requires one each of `error`, `state`, `iss` and is always refused before token exchange; its unknown non-security-critical members do not change that refusal. Downloaded client metadata selects neither expected value, and validation makes no discovery request. At this earlier snapshot, token-response compatibility had not yet been demonstrated by an accepted acquisition; attempts #4, #5, #6, #7, and #8 later succeeded.
+The first three observed callbacks exposed the authorization response issuer parameter specified by RFC 9207 and, from attempt #2 onward, the returned scope. A success callback requires one each of `code`, `state`, `iss`, `scope`; issuer must equal `https://accounts.google.com` and decoded scope must equal `https://www.googleapis.com/auth/drive.file`. Missing, altered or duplicate security fields fail closed. Unknown non-security-critical query members are ignored and never persisted on success and error callbacks. The exact state check remains. An error callback requires one each of `error`, `state`, `iss` and is always refused before token exchange; its unknown non-security-critical members do not change that refusal. Downloaded client metadata selects neither expected value, and validation makes no discovery request. At this earlier snapshot, token-response compatibility had not yet been demonstrated by an accepted acquisition; attempts #4, #5, #6, #7, #8, and #9 later succeeded.
 
 The short-lived bearer remains ephemeral application memory: resident parent memory, then the inherited anonymous multiprocessing spawn IPC/kernel buffers, then the one read-worker's memory, Authorization header and socket/TLS path. Subsequent typed session commands select `resident-memory`; no application token file, argv, environment variable, evidence JSON, authorization JSON, acquisition metadata, log, token hash, shell substitution, named FIFO or durable broker is intentionally produced. Acquisition failure, uncertain create, blocked preflight, malformed command, EOF or any exception ends the session; read always ends it. No session resume or token recovery. Disable terminal recording/remote transcript capture before acquisition; URLs contain transient state. Core limit is set to zero before OAuth and inherited by the worker. No bearer output or accidental repr is permitted. Python heap, IPC/kernel buffers, swap, OS crash reporting and hostile debugger/admin access are not secure erasure; the trusted operator must exclude these capture mechanisms. This is transient application handoff, not a claim that the OS cannot page memory.
 
-The token parser requires validated `access_token`, positive finite numeric `expires_in`, exact drive.file `scope`, and case-insensitive Bearer `token_type`. It ignores `refresh_token`, `refresh_token_expires_in`, `id_token`, and unknown JSON members without copying them into evidence. A bounded single Content-Length response or a strictly valid chunked response decoded by `http.client` is accepted. Transfer-Encoding plus Content-Length, other transfer codings, close-delimited framing, compressed content, malformed or incomplete bodies, and unrelated media types fail closed. Content-Type accepts `application/json` with an optional explicit UTF-8 charset under HTTP case/OWS rules. Accepted acquisitions in attempts #4, #5, #6, #7, and #8 establish compatibility for those observed responses; they do not establish compatibility with every future provider response shape. Any later incompatibility requires separate review; the exclusive intent remains spent.
+The token parser requires validated `access_token`, positive finite numeric `expires_in`, exact drive.file `scope`, and case-insensitive Bearer `token_type`. It ignores `refresh_token`, `refresh_token_expires_in`, `id_token`, and unknown JSON members without copying them into evidence. A bounded single Content-Length response or a strictly valid chunked response decoded by `http.client` is accepted. Transfer-Encoding plus Content-Length, other transfer codings, close-delimited framing, compressed content, malformed or incomplete bodies, and unrelated media types fail closed. Content-Type accepts `application/json` with an optional explicit UTF-8 charset under HTTP case/OWS rules. Accepted acquisitions in attempts #4, #5, #6, #7, #8, and #9 establish compatibility for those observed responses; they do not establish compatibility with every future provider response shape. Any later incompatibility requires separate review; the exclusive intent remains spent.
 
 `acquisition-failure.json` is a best-effort private, exclusive, durable artifact
 written only after a spent OAuth intent when no accepted acquisition is produced.
@@ -190,8 +221,7 @@ post-dispatch outcome that cannot be locally validated remains
 READ retains its one-use `LIVE_READ_GO` binding, deadline and evidence rules.
 Those raw HTTP qualifications were synthetic, not proof of Google's live response
 shape at that time. Attempt #5 later validated its CREATE HTTP 200 response;
-the first Sheets GET remains unobserved. At that earlier snapshot there had been no real spreadsheet operation or paper observation;
-paper observations were **0**. OAuth attempt #4 subsequently completed a reviewed live OAuth acquisition successfully under frozen commit `594c95f`; the resident session was intentionally stopped before provisioning. Attempt #5 later created the validated fixture and issued the first authorization, which expired unused as recorded at the top. Any later live Sheets action requires separate hostile
+the first Sheets GET was subsequently executed and validated under authorization #4 in attempt #9, returning HTTP 200 for the empty grid baseline. Live engineering qualification is complete. At all snapshots, paper observations were and remain **0**. OAuth attempt #4 had earlier completed a reviewed live OAuth acquisition successfully under frozen commit `594c95f`; the resident session was intentionally stopped before provisioning. Attempt #5 later created the validated fixture and issued the first authorization, which expired unused as recorded at the top. Any future live Sheets action or paper collection requires separate hostile
 audit, freeze and authorization.
 
 ## Concrete operational budgets
@@ -381,7 +411,7 @@ live-action permission.
 
 ## Historical controlled live operator sequence — superseded, do not execute
 
-OAuth attempts #1, #2 and #3 were separately authorized and reached their callbacks. The then-frozen parsers rejected `iss` and `scope` on #1 and #2, respectively. Attempt #3's callback matched its accepted shape, but the old build did not localize the subsequent failure. All three packages and their `oauth-intent.json` records remain permanently spent; none accepted a local acquisition artifact. OAuth attempt #4 was then performed from a fresh reviewed package bound to frozen commit `594c95f` and successfully produced an accepted local `acquisition.json`; `acquisition-failure.json` was absent. The resident session reached `phase4>` and was intentionally terminated with `stop` before provisioning. At that earlier point, no fixture CREATE, genuine `LIVE_READ_GO`, Sheets GET or Sheets mutation had occurred, and paper observations were **0**. Attempt #5 later created the validated fixture and issued authorization #1; attempt #6 adopted that fixture and issued authorization #2; OAuth attempt #7 succeeded for the second reused-fixture successor bound to newly frozen commit `739b30e4d5b34997defa9beb0eabcb0d40084677`, the same fixture was adopted, and authorization #3 was issued; the verbose read line (~1410 bytes) was truncated at byte 1024 by the macOS TTY line limit before execution. OAuth attempt #8 then succeeded in the next reused-fixture successor, but its resident session was explicitly stopped before adoption. No fixture-adoption artifact or authorization #4 was written. None of the reads was executed, so GET dispatches and paper observations remain zero. The commands below record the superseded workflow and grant no execution authority. Never rerun its CREATE against the existing fixture.
+OAuth attempts #1, #2 and #3 were separately authorized and reached their callbacks. The then-frozen parsers rejected `iss` and `scope` on #1 and #2, respectively. Attempt #3's callback matched its accepted shape, but the old build did not localize the subsequent failure. All three packages and their `oauth-intent.json` records remain permanently spent; none accepted a local acquisition artifact. OAuth attempt #4 was then performed from a fresh reviewed package bound to frozen commit `594c95f` and successfully produced an accepted local `acquisition.json`; `acquisition-failure.json` was absent. The resident session reached `phase4>` and was intentionally terminated with `stop` before provisioning. At that earlier point, no fixture CREATE, genuine `LIVE_READ_GO`, Sheets GET or Sheets mutation had occurred, and paper observations were **0**. Attempt #5 later created the validated fixture and issued authorization #1; attempt #6 adopted that fixture and issued authorization #2; OAuth attempt #7 succeeded for the second reused-fixture successor bound to newly frozen commit `739b30e4d5b34997defa9beb0eabcb0d40084677`, the same fixture was adopted, and authorization #3 was issued; the verbose read line (~1410 bytes) was truncated at byte 1024 by the macOS TTY line limit before execution. OAuth attempt #8 then succeeded in the next reused-fixture successor, but its resident session was explicitly stopped before adoption; no fixture-adoption artifact or authorization was written in that package. The reviewed recovery lifecycle then created fresh successor package `sheets-phase4-unused-acquisition-successor-df5e884b07bb3c9b2fed18049767bd01eb08782cee5e1646900b93962a04a238`, where OAuth attempt #9 succeeded, the same historical fixture was adopted without recreation, authorization #4 was issued, and the compact `read-current` command executed for exactly one GET dispatch and one successful HTTP 200 GET. Paper observations remain zero. The commands below record the superseded workflow and grant no execution authority. Never rerun CREATE or GET against the existing fixture.
 
 1. Obtain the audited full Phase 4 commit from the freeze review. Checkout it under that later permission, verify clean tree. Run regression before the live session. No dependency download/update during session.
 2. Establish independently clock <=2s, dedicated reviewed app/project/account, API enabled/consent configured, no existing unrelated data/default-domain sharing/automation/writers, local trusted disk and capture controls. Cloud/API configuration is a separately authorized human setup prerequisite, not a hidden API call in this tool.
@@ -489,7 +519,7 @@ git status --short
 git rev-parse HEAD
 ```
 
-No second provider request. Independently review and freeze the first-read engineering result before any mutation work. No AppendCellsRequest, batchUpdate, ambiguity injection, replay, regeneration or paper collection follows automatically.
+No second Google Sheets API request. Independently review and freeze the first-read engineering result before any mutation work. No AppendCellsRequest, batchUpdate, ambiguity injection, replay, regeneration or paper collection follows automatically.
 
 ## Provisioning ambiguity and abort/recovery
 
@@ -497,7 +527,7 @@ Any connection failure, timeout, response loss, malformed/unsupported response, 
 
 Human incident procedure: stop session; preserve all local records; record setup attempt interval, public app/account/title and visible status; mark uncertainty unresolved. Do not run another create. Reconciliation requiring a provider UI/read/list is **a separate explicitly approved and recorded incident action outside this package**. This implementation authorizes/executes none. Drive metadata listing could inspect app-authorized files under drive.file, but a negative/empty result is not proof no file was created and must never trigger automatic recreation. Title is not unique/provider-idempotent; multiple candidates cannot be silently selected. If provider incident inspection is later approved, record exact method/scope/filter/pagination/time/coverage/result independently and reopen hostile audit of that procedure. This first-read package cannot convert an uncertain result into a positive descriptor; retire it until a reviewed incident disposition/new audited plan. No claim of remote cancellation from local close/kill.
 
-For OAuth failure before issuance: preserve oauth-intent; no read authorization exists or is consumed. For local review/reservation/issuance failure: partial artifacts stay unusable, with no repairs or overwrites. For read failure/death/storage drift after dispatch might have begun: read intent and/or claim remain spent/unusable; inspect inherited recovery without assuming absence of result means absence of GET. No automatic retry, token refresh, new authorization or remote cleanup is allowed for those failure states. Attempts #5, #6, and #7 are different: authorizations #1, #2, and #3 expired unused with no read intent or GET evidence. Attempt #8 accepted an acquisition but stopped before fixture adoption and issued no authorization. Only the narrow recovery at the top can create a fresh package that may later, under separate approvals, adopt the fixture, issue authorization #4 and permit one explicit GET (`read-current`). It never permits another CREATE.
+For OAuth failure before issuance: preserve oauth-intent; no read authorization exists or is consumed. For local review/reservation/issuance failure: partial artifacts stay unusable, with no repairs or overwrites. For read failure/death/storage drift after dispatch might have begun: read intent and/or claim remain spent/unusable; inspect inherited recovery without assuming absence of result means absence of GET. No automatic retry, token refresh, new authorization or remote cleanup is allowed for those failure states. Attempts #5, #6, and #7 were distinct: authorizations #1, #2, and #3 expired unused with no read intent or GET evidence. Attempt #8 accepted an acquisition but stopped before fixture adoption and issued no authorization. The narrow reused-fixture recovery lifecycle was executed to create fresh successor package `sheets-phase4-unused-acquisition-successor-df5e884b07bb3c9b2fed18049767bd01eb08782cee5e1646900b93962a04a238`, which completed fresh OAuth #9, adopted the historical fixture, issued authorization #4, and executed exactly one explicit compact GET (`read-current`) returning HTTP 200, successfully completing live engineering qualification. It never repeated CREATE; the successful engineering GET is stop-no-retry, and no further engineering-qualification requests, retries, or authorizations against this retained qualification package or fixture are authorized. Any future Study 2 paper experiment requires a separate hostile-audited, frozen paper protocol and separate explicit authorization; this engineering qualification record grants NO authority for future paper calls.
 
 ## Success criteria fixed before execution
 
@@ -597,8 +627,9 @@ unused authorization #1. No new checklist counts are asserted here.
 The entries then recorded as REQUIRES LIVE VALIDATION were
 `actual_grid_response_shapes`, `baseline_isolation`,
 `clean_success_placement`, `live_ambiguity_boundary`, and
-`actual_tls_trust_phase1`. No first GET had occurred then or has occurred now;
-read-result review and any later mutation protocol remain separate work.
+`actual_tls_trust_phase1`. No first GET had occurred at that earlier snapshot;
+the first engineering GET has now succeeded with HTTP 200 under authorization #4,
+while read-result review is complete and any later mutation paper protocol remains separate work.
 Study 2 also included Stripe TEST MODE.
 
 That historical audit recorded limits including the trusted stable session,
@@ -607,10 +638,10 @@ remote introspection, selected runtime pinning, OS capture limits, and bounded
 setup operations without a hard total setup watchdog. At that snapshot, only
 the first three callback shapes had been observed; token response, CREATE/READ
 framing, and empty-grid response remained live-unvalidated. Attempts #4, #5,
-#6, #7, and #8 later accepted OAuth responses, and attempt #5 validated one real CREATE
-HTTP 200 response. The READ response and empty grid remain unobserved because no
-GET was dispatched. The independent Phase 3 clean-room re-audit had passed for
+#6, #7, #8, and #9 later accepted OAuth responses. Attempt #5 validated one real CREATE
+HTTP 200 response, and attempt #9 validated the first real Sheets GET HTTP 200 response over the
+suitable empty grid. The independent Phase 3 clean-room re-audit had passed for
 its historical build. No experimental mutation trial or ambiguity injection
 had begun at that snapshot; the later engineering spreadsheet CREATE did occur.
 
-**CURRENT RECOVERY: ACCEPTED-UNUSED OAUTH #8 REUSED-FIXTURE PACKAGE → REVIEWED REUSED-FIXTURE `supersede-unused-acquisition` TRANSITION → FRESH CLIENT REVIEW/STARTUP/OAUTH → EXPLICIT ADOPTION OF THE SAME HISTORICAL VALIDATED FIXTURE → FRESH READ PIN/PREFLIGHT → AUTHORIZATION #4 → ONE EXPLICIT COMPACT GET (`read-current`). AUTHORIZATION #4 HAS NOT YET BEEN ISSUED. CREATE = 1; GET DISPATCHES = 0; PAPER OBSERVATIONS = 0. NO SECOND CREATE.**
+**CANONICAL QUALIFICATION STATE: ENGINEERING QUALIFICATION COMPLETE. OAuth attempts = 9; accepted acquisitions = 6 (#4, #5, #6, #7, #8, #9); CREATE = 1; real Sheets mutations = 1; GET dispatches = 1; successful real Sheets GETs = 1 (HTTP 200, schema `sheets-phase3-first-read-result-v1`, baseline `suitable-current-empty-grid`, byte_count 356, nonempty_rows 0, outcome `zero_matches_currently_not_observed`, engineering_only true, stop-no-retry); paper observations = 0. STUDY 2 PAPER EXPERIMENT NOT STARTED. REPLAY/REGENERATION NOT TESTED ON SHEETS. NO SECOND ENGINEERING CREATE OR GET. THIS ENGINEERING QUALIFICATION IS CLOSED; NO FURTHER ENGINEERING-QUALIFICATION REQUESTS, RETRIES, OR AUTHORIZATIONS AGAINST THIS RETAINED QUALIFICATION PACKAGE OR FIXTURE ARE AUTHORIZED. ANY FUTURE STUDY 2 PAPER EXPERIMENT REQUIRES A SEPARATE HOSTILE-AUDITED, FROZEN PAPER PROTOCOL AND SEPARATE EXPLICIT AUTHORIZATION; THIS ENGINEERING QUALIFICATION RECORD GRANTS NO AUTHORITY FOR FUTURE PAPER CALLS.**
