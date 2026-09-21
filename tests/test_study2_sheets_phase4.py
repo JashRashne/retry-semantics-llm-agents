@@ -2300,6 +2300,374 @@ except Exception:
         'operator.json', 'registry', 'unused-acquisition-supersession.json']
 
 
+@pytest.fixture
+def reused_unused_acquisition(expired_unused_read, client, monkeypatch):
+    """Synthetic analogue of accepted OAuth followed by stop before fixture adoption."""
+    old = expired_unused_read['config']
+    result = control.supersede_unused_read_authorization(
+        old, old.expected_head, control.UNUSED_READ_CONFIRMATION)
+    root = Path(result['successor'])
+    config = inherited._typed(p3.load_json(root / 'operator.json'), control.OperatorConfiguration)
+    review = expired_unused_read['review']
+    p3.write_json(config.path('client-review.json'), review)
+    attestation = control.startup(config, review, dict.fromkeys(control.ASSUMPTIONS, True))
+    pin = control.runtime_projection(config, review)
+    p3.write_json(config.path('startup.json'), attestation)
+    p3.write_json(config.path('offline-pin.json'), pin)
+    now = time.time()
+    body = canonical_json_bytes(dict(access_token='ya29.synthetic-unused-reuse-bearer',
+        expires_in=3600, scope=p1.SCOPE, token_type='Bearer',
+        refresh_token='synthetic-unused-reuse-refresh'))
+    token, metadata = credentials.validate_token_response(body, client,
+        account_alias=config.account_alias, exchange_started_at=now + 1,
+        prepared_at=now + 2, clock_uncertainty_seconds=2)
+    persist_acquisition(config, review, (token, metadata))
+    monkeypatch.setattr(time, 'time', lambda: now + 3)
+    return dict(config=config, review=review, attestation=attestation, pin=pin,
+                token=token, metadata=metadata, historical=expired_unused_read)
+
+
+def recover_reused_unused(value, head=None):
+    config = value['config']
+    return control.supersede_unused_acquisition(config, head or config.expected_head,
+        control.REUSED_UNUSED_ACQUISITION_CONFIRMATION)
+
+
+def test_reused_unused_acquisition_same_head_preserves_lineage_and_starts_fresh(
+        reused_unused_acquisition):
+    value = reused_unused_acquisition
+    config = value['config']
+    old_root = Path(config.storage_root)
+    before = {str(p.relative_to(old_root)): p.read_bytes()
+              for p in old_root.rglob('*') if p.is_file()}
+    result = recover_reused_unused(value)
+    destination = unused_acquisition_path(config)
+    assert result['successor'] == str(destination)
+    assert result['expected_head'] == config.expected_head
+    assert {str(p.relative_to(old_root)): p.read_bytes()
+            for p in old_root.rglob('*') if p.is_file()} == before
+    assert sorted(p.name for p in destination.iterdir()) == [
+        'operator.json', 'registry', 'unused-acquisition-supersession.json']
+    assert not list((destination / 'registry').iterdir())
+    fresh = inherited._typed(p3.load_json(destination / 'operator.json'),
+                             control.OperatorConfiguration)
+    assert control.storage_check(fresh)['secrets'] == 'excluded'
+    origin = control.reused_fixture_origin(fresh)
+    assert origin == control.reused_fixture_origin(config)
+    record = p3.load_json(destination / 'unused-acquisition-supersession.json')
+    assert record['schema'] == (
+        'sheets-phase4-reviewed-reused-fixture-unused-acquisition-supersession-v2')
+    assert record['predecessor_expected_head'] == config.expected_head
+    assert record['predecessor_acquisition_sha256'] == control.hash_public(
+        p3.load_json(config.path('acquisition.json')))
+    assert record['predecessor_reused_fixture_origin_sha256'] == control.hash_public(origin)
+    assert record['predecessor_reused_fixture_chain_sha256'] == control.hash_public(
+        control.reused_fixture_chain(config))
+    assert record['historical_fixture_sha256'] == value['historical']['descriptor']['fixture_hash']
+    assert record['fresh_fixture_adoption_required'] is True
+    assert record['provisioning_forbidden'] is True
+    assert not any(fresh.path(name).exists() for name in (
+        'client-review.json', 'startup.json', 'offline-pin.json', 'oauth-intent.json',
+        'acquisition.json', 'fixture-adoption.json', 'fixture.json', 'authorization.json',
+        'issue-intent.json', 'read-intent.json', 'result.json', 'create-intent.json',
+        'create-result.json', 'provisioning.json'))
+    stored = b''.join(p.read_bytes() for p in destination.rglob('*') if p.is_file())
+    for secret in (BEARER, CLIENT_SECRET, 'synthetic-refresh',
+                   'ya29.synthetic-unused-reuse-bearer', 'synthetic-unused-reuse-refresh'):
+        assert secret.encode() not in stored
+
+
+def test_reused_unused_acquisition_changed_valid_head_succeeds(reused_unused_acquisition):
+    result = recover_reused_unused(reused_unused_acquisition, NEXT_HEAD)
+    fresh = inherited._typed(p3.load_json(Path(result['successor']) / 'operator.json'),
+                             control.OperatorConfiguration)
+    assert fresh.expected_head == NEXT_HEAD
+    assert control.reused_fixture_origin(fresh)['predecessor_fixture_sha256'] == (
+        reused_unused_acquisition['historical']['descriptor']['fixture_hash'])
+
+
+def test_reused_unused_acquisition_rejects_valid_older_lineage_acquisition(
+        reused_unused_acquisition):
+    value = reused_unused_acquisition
+    config = value['config']
+    historical = value['historical']['config'].path('acquisition.json').read_bytes()
+    config.path('acquisition.json').write_bytes(historical)
+    with pytest.raises(Exception):
+        recover_reused_unused(value)
+    assert not unused_acquisition_path(config).exists()
+
+
+def test_reused_unused_successor_requires_fresh_review_startup_oauth_and_adoption(
+        reused_unused_acquisition, client, monkeypatch):
+    value = reused_unused_acquisition
+    result = recover_reused_unused(value)
+    fresh = inherited._typed(p3.load_json(Path(result['successor']) / 'operator.json'),
+                             control.OperatorConfiguration)
+    assert control.offline_preflight(fresh, None, None, None)['status'] == 'BLOCKED'
+    assert operator.inspect_artifacts(fresh, None)['next_action'] == 'fresh-client-review-required'
+    with pytest.raises(Exception):
+        control.adopt_existing_fixture(fresh, value['review'], value['metadata'],
+                                       'EXPLICIT_ADOPT_VALIDATED_EXISTING_FIXTURE')
+    p3.write_json(fresh.path('client-review.json'), value['review'])
+    attestation = control.startup(fresh, value['review'], dict.fromkeys(control.ASSUMPTIONS, True))
+    pin = control.runtime_projection(fresh, value['review'])
+    p3.write_json(fresh.path('startup.json'), attestation)
+    p3.write_json(fresh.path('offline-pin.json'), pin)
+    assert control.offline_preflight(fresh, value['review'], attestation, pin)['status'] == 'PASS'
+    with pytest.raises(Exception):
+        control.adopt_existing_fixture(fresh, value['review'], value['metadata'],
+                                       'EXPLICIT_ADOPT_VALIDATED_EXISTING_FIXTURE')
+    now = time.time()
+    body = canonical_json_bytes(dict(access_token='ya29.synthetic-post-recovery', expires_in=3600,
+                                     scope=p1.SCOPE, token_type='Bearer'))
+    token, metadata = credentials.validate_token_response(body, client,
+        account_alias=fresh.account_alias, exchange_started_at=now + 3,
+        prepared_at=now + 4, clock_uncertainty_seconds=2)
+    persist_acquisition(fresh, value['review'], (token, metadata))
+    adopted = control.adopt_existing_fixture(fresh, value['review'], metadata,
+                                              'EXPLICIT_ADOPT_VALIDATED_EXISTING_FIXTURE')
+    assert adopted['create'] == 'not-repeated'
+    assert p3.load_json(fresh.path('fixture.json')) == value['historical']['descriptor']
+    assert p3.load_json(fresh.path('fixture-adoption.json'))['fixture_sha256'] == (
+        value['historical']['descriptor']['fixture_hash'])
+    assert not any(fresh.path(name).exists() for name in (
+        'create-intent.json', 'create-result.json', 'provisioning.json', 'authorization.json',
+        'issue-intent.json', 'read-intent.json', 'result.json'))
+    monkeypatch.setattr(time, 'time', lambda: now + 5)
+    p3.write_json(fresh.path('conditions.json'),
+                  asdict(p3.LocalConditions(True, True, True, True, True)))
+    inputs = operator.post_inputs(fresh, token, metadata)
+    preflight = control.post_setup_preflight(**inputs)
+    assert preflight['status'] == 'PASS', preflight
+    authorization = issue(inputs)
+    assert authorization['next_action'] == 'inspect-then-explicit-read'
+    assert fresh.path('authorization.json').exists()
+    assert not fresh.path('read-intent.json').exists()
+    assert not fresh.path('result.json').exists()
+
+
+def test_reused_unused_successor_rejects_copied_predecessor_acquisition(
+        reused_unused_acquisition):
+    value = reused_unused_acquisition
+    result = recover_reused_unused(value)
+    fresh = inherited._typed(p3.load_json(Path(result['successor']) / 'operator.json'),
+                             control.OperatorConfiguration)
+    p3.write_json(fresh.path('client-review.json'), value['review'])
+    attestation = control.startup(fresh, value['review'], dict.fromkeys(control.ASSUMPTIONS, True))
+    p3.write_json(fresh.path('startup.json'), attestation)
+    p3.write_json(fresh.path('offline-pin.json'), control.runtime_projection(fresh, value['review']))
+    p3.write_json(fresh.path('oauth-intent.json'), setup.oauth_intent(fresh, value['review']))
+    p3.write_json(fresh.path('acquisition.json'), value['metadata'].projection())
+    with pytest.raises(Exception):
+        control.adopt_existing_fixture(fresh, value['review'], value['metadata'],
+                                       'EXPLICIT_ADOPT_VALIDATED_EXISTING_FIXTURE')
+    assert not fresh.path('fixture-adoption.json').exists()
+
+
+def test_reused_unused_successor_cannot_provision_or_create(reused_unused_acquisition, monkeypatch):
+    value = reused_unused_acquisition
+    result = recover_reused_unused(value)
+    fresh = inherited._typed(p3.load_json(Path(result['successor']) / 'operator.json'),
+                             control.OperatorConfiguration)
+    monkeypatch.setattr(setup.http.client, 'HTTPSConnection',
+                        lambda *a, **kw: pytest.fail('provider call from reuse successor'))
+    with pytest.raises(credentials.CredentialRefused):
+        setup.provision(fresh, value['review'], value['token'], value['metadata'],
+            execute_provisioning=True, operator_confirmation=setup.CREATE_CONFIRMATION)
+    parser = operator.session_parser()
+    for line in ('provision --execute-provisioning --operator-confirmation ' +
+                 setup.CREATE_CONFIRMATION,
+                 'review-provisioning --operator-confirmation ' + p3.PROVISION_CONFIRMATION +
+                 ' --isolated --no-writers', 'reserve-and-descriptor'):
+        with pytest.raises(Exception):
+            operator.dispatch(parser.parse_args(line.split()), fresh, value['review'],
+                              value['token'], value['metadata'])
+    assert not fresh.path('create-intent.json').exists()
+
+
+@pytest.mark.parametrize('attack', [
+    'wrong-confirmation', 'repository', 'missing-acquisition', 'tampered-acquisition',
+    'missing-lineage', 'tampered-lineage', 'tampered-fixture', 'fixture-adoption.json',
+    'fixture.json', 'authorization.json', 'issue-intent.json', 'read-intent.json',
+    'result.json', 'create-intent.json', 'create-result.json', 'provisioning.json',
+    'read-pin.json', 'conditions.json', 'phase3-receipt.json', 'phase4-receipt.json',
+    'acquisition-failure.json', 'registry', 'unexpected',
+])
+def test_reused_unused_acquisition_hostile_predecessors_reject(
+        reused_unused_acquisition, monkeypatch, attack):
+    value = reused_unused_acquisition
+    config = value['config']
+    confirmation = control.REUSED_UNUSED_ACQUISITION_CONFIRMATION
+    if attack == 'wrong-confirmation':
+        confirmation = control.UNUSED_ACQUISITION_CONFIRMATION
+    elif attack == 'repository':
+        monkeypatch.setattr(p3, 'repository_check',
+                            lambda head: (_ for _ in ()).throw(p2.Refused()))
+    elif attack == 'missing-acquisition':
+        config.path('acquisition.json').unlink()
+    elif attack == 'tampered-acquisition':
+        acquisition = p3.load_json(config.path('acquisition.json'))
+        acquisition['public_config_sha256'] = '0' * 64
+        config.path('acquisition.json').write_bytes(canonical_json_bytes(acquisition) + b'\n')
+    elif attack in ('missing-lineage', 'tampered-lineage'):
+        path = config.path('unused-read-authorization-supersession.json')
+        if attack == 'missing-lineage':
+            path.unlink()
+        else:
+            lineage = p3.load_json(path)
+            lineage['predecessor_fixture_sha256'] = '0' * 64
+            path.write_bytes(canonical_json_bytes(lineage) + b'\n')
+    elif attack == 'tampered-fixture':
+        origin = control.reused_fixture_origin(config)
+        path = Path(origin['predecessor_root']) / 'fixture.json'
+        descriptor = p3.load_json(path)
+        descriptor['fixture_hash'] = '0' * 64
+        path.write_bytes(canonical_json_bytes(descriptor) + b'\n')
+    elif attack == 'registry':
+        p3.write_json(Path(config.runtime().registry_root) / 'registry.lock', {})
+    elif attack == 'unexpected':
+        p3.write_json(Path(config.storage_root) / 'unexpected.json', {})
+    else:
+        p3.write_json(config.path(attack), {})
+    with pytest.raises(Exception):
+        control.supersede_unused_acquisition(config, config.expected_head, confirmation)
+    assert not unused_acquisition_path(config).exists()
+
+
+@pytest.mark.parametrize('attack', ['existing', 'symlink'])
+def test_reused_unused_destination_collision_rejects(
+        reused_unused_acquisition, tmp_path, attack):
+    destination = unused_acquisition_path(reused_unused_acquisition['config'])
+    if attack == 'existing':
+        destination.mkdir(mode=0o700)
+        (destination / 'preserve').write_text('yes')
+    else:
+        destination.symlink_to(tmp_path)
+    with pytest.raises(FileExistsError):
+        recover_reused_unused(reused_unused_acquisition)
+    if attack == 'existing':
+        assert (destination / 'preserve').read_text() == 'yes'
+    else:
+        assert destination.is_symlink()
+
+
+def test_reused_unused_crash_residue_stays_blocked(reused_unused_acquisition, monkeypatch):
+    config = reused_unused_acquisition['config']
+    destination = unused_acquisition_path(config)
+    original = control._fsync_directory
+    calls = []
+    def fail(path):
+        calls.append(path)
+        if len(calls) == 6:
+            raise OSError('synthetic crash')
+        return original(path)
+    monkeypatch.setattr(control, '_fsync_directory', fail)
+    with pytest.raises(OSError):
+        recover_reused_unused(reused_unused_acquisition)
+    assert (destination / 'unused-acquisition-supersession.pending.json').exists()
+    assert (destination / 'unused-acquisition-supersession.json').exists()
+    candidate = inherited._typed(p3.load_json(destination / 'operator.json'),
+                                 control.OperatorConfiguration)
+    with pytest.raises(Exception):
+        control.storage_check(candidate)
+    with pytest.raises(FileExistsError):
+        recover_reused_unused(reused_unused_acquisition)
+
+
+def test_reused_unused_late_predecessor_mutation_blocks_activation(
+        reused_unused_acquisition, monkeypatch):
+    config = reused_unused_acquisition['config']
+    destination = unused_acquisition_path(config)
+    original = control._fsync_directory
+    injected = []
+    def mutate(path):
+        original(path)
+        if path == destination and (destination / 'unused-acquisition-supersession.json').exists() \
+                and not injected:
+            p3.write_json(config.path('read-intent.json'), {})
+            injected.append(True)
+    monkeypatch.setattr(control, '_fsync_directory', mutate)
+    with pytest.raises(Exception):
+        recover_reused_unused(reused_unused_acquisition)
+    assert injected
+    assert (destination / 'unused-acquisition-supersession.pending.json').exists()
+    candidate = inherited._typed(p3.load_json(destination / 'operator.json'),
+                                 control.OperatorConfiguration)
+    with pytest.raises(Exception):
+        control.storage_check(candidate)
+
+
+def test_reused_unused_transition_is_one_shot_across_heads(reused_unused_acquisition):
+    config = reused_unused_acquisition['config']
+    recover_reused_unused(reused_unused_acquisition)
+    with pytest.raises(FileExistsError):
+        recover_reused_unused(reused_unused_acquisition, NEXT_HEAD)
+    assert sorted(p.name for p in unused_acquisition_path(config).iterdir()) == [
+        'operator.json', 'registry', 'unused-acquisition-supersession.json']
+
+
+@pytest.mark.parametrize('field', [
+    'predecessor_acquisition_sha256', 'predecessor_reused_fixture_origin_sha256',
+    'predecessor_reused_fixture_chain_sha256', 'historical_fixture_sha256',
+    'fresh_fixture_adoption_required', 'transitioned_at',
+])
+def test_reused_unused_successor_provenance_tampering_rejects(
+        reused_unused_acquisition, field):
+    result = recover_reused_unused(reused_unused_acquisition)
+    fresh = inherited._typed(p3.load_json(Path(result['successor']) / 'operator.json'),
+                             control.OperatorConfiguration)
+    path = fresh.path('unused-acquisition-supersession.json')
+    record = p3.load_json(path)
+    if field == 'fresh_fixture_adoption_required':
+        record[field] = False
+    elif field == 'transitioned_at':
+        record[field] = reused_unused_acquisition['metadata'].prepared_at
+    else:
+        record[field] = '0' * 64
+    path.write_bytes(canonical_json_bytes(record) + b'\n')
+    with pytest.raises(Exception):
+        control.storage_check(fresh)
+    with pytest.raises(Exception):
+        control.reused_fixture_origin(fresh)
+
+
+def test_two_processes_cannot_recover_reused_unused_acquisition_twice(
+        reused_unused_acquisition):
+    config = reused_unused_acquisition['config']
+    child = '''
+import http.client, socket, ssl, sys, time, urllib.request, webbrowser
+from pathlib import Path
+from retry_semantics.study2 import sheets_phase2_control as p2
+from retry_semantics.study2 import sheets_phase3_control as p3
+from retry_semantics.study2 import sheets_phase3_operator as op
+from retry_semantics.study2 import sheets_phase4_control as p4
+def denied(*a, **kw): raise AssertionError("network/browser forbidden")
+for name in ("socket", "create_connection", "getaddrinfo", "gethostbyname"):
+    setattr(socket, name, denied)
+http.client.HTTPSConnection.connect = denied
+ssl.SSLContext.wrap_socket = denied
+urllib.request.urlopen = denied
+webbrowser.open = denied
+time.time = lambda: float(sys.argv[2])
+p3.repository_check = lambda head: p2.require(head == "a" * 40)
+config = op._typed(p3.load_json(Path(sys.argv[1])), p4.OperatorConfiguration)
+try:
+    p4.supersede_unused_acquisition(config, "a" * 40,
+                                    p4.REUSED_UNUSED_ACQUISITION_CONFIRMATION)
+    print("WIN")
+except Exception:
+    print("BLOCK")
+'''
+    processes = [subprocess.Popen([sys.executable, '-c', child,
+                 str(config.path('operator.json')), str(time.time())], stdout=subprocess.PIPE,
+                 stderr=subprocess.PIPE, text=True, env={}) for _ in range(2)]
+    outputs = [process.communicate(timeout=30) for process in processes]
+    assert sorted(output.strip() for output, _ in outputs) == ['BLOCK', 'WIN'], outputs
+    assert all(process.returncode == 0 for process in processes)
+    assert sorted(p.name for p in unused_acquisition_path(config).iterdir()) == [
+        'operator.json', 'registry', 'unused-acquisition-supersession.json']
+
+
 def make_adopted_package(predecessor_config, review, client, monkeypatch, *, head=None):
     if head is None:
         head = predecessor_config.expected_head

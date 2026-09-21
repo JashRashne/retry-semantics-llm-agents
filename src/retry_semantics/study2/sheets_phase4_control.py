@@ -36,6 +36,8 @@ PRELIVE_FILES = frozenset(("operator.json", "client-review.json", "startup.json"
 SUPERSESSION_CONFIRMATION = "EXPLICIT_OFFLINE_PRELIVE_SUPERSESSION"
 NEW_ACQUISITION_CONFIRMATION = "EXPLICIT_REVIEWED_NEW_ACQUISITION_ATTEMPT"
 UNUSED_ACQUISITION_CONFIRMATION = "EXPLICIT_UNUSED_ACQUISITION_SESSION_STOPPED"
+REUSED_UNUSED_ACQUISITION_CONFIRMATION = (
+    "EXPLICIT_REUSED_FIXTURE_UNUSED_ACQUISITION_SESSION_STOPPED_BEFORE_ADOPTION")
 UNUSED_READ_CONFIRMATION = "EXPLICIT_UNUSED_READ_AUTHORIZATION_EXPIRED_WITHOUT_DISPATCH"
 SPENT_OAUTH_FILES = frozenset(("operator.json", "client-review.json", "startup.json",
     "offline-pin.json", "oauth-intent.json"))
@@ -225,10 +227,10 @@ def storage_check(config):
         record = p3.load_json(unused_path)
         p2.require(type(record) is dict and type(record.get("predecessor_root")) is str)
         predecessor = Path(record["predecessor_root"])
-        p2.require(predecessor.parent == root.parent
+        p2.require(predecessor.parent == root.parent and predecessor != root
                    and not any(path.is_symlink() for path in (predecessor, *predecessor.parents))
                    and root == _unused_acquisition_successor_root(record["predecessor_root"]))
-        p2.require(type(record) is dict and set(record) == {"schema", "predecessor_root",
+        original_keys = {"schema", "predecessor_root",
                    "predecessor_expected_head", "predecessor_operator_sha256",
                    "predecessor_oauth_intent_sha256", "predecessor_acquisition_sha256",
                    "successor_root", "successor_expected_head", "offline_files_present",
@@ -236,22 +238,55 @@ def storage_check(config):
                    "operator_attested_session_stopped_before_provisioning",
                    "fresh_client_review_required", "fresh_startup_pin_required",
                    "fresh_oauth_required", "no_credential_inherited", "review_confirmation"}
-                   and record["schema"] == "sheets-phase4-reviewed-unused-acquisition-supersession-v1"
-                   and record["predecessor_root"] == str(predecessor)
+        reused_keys = {"schema", "predecessor_root", "predecessor_expected_head",
+                   "predecessor_operator_sha256", "predecessor_oauth_intent_sha256",
+                   "predecessor_acquisition_sha256", "predecessor_reused_fixture_origin_sha256",
+                   "predecessor_reused_fixture_chain_sha256", "historical_fixture_sha256",
+                   "successor_root", "successor_expected_head", "offline_files_present",
+                   "accepted_local_acquisition", "no_create_side_artifacts_in_predecessor_package",
+                   "no_read_side_artifacts_in_predecessor_package", "registry_empty",
+                   "operator_attested_session_stopped_before_adoption_provisioning_or_read",
+                   "fresh_client_review_required", "fresh_startup_pin_required",
+                   "fresh_oauth_required", "fresh_fixture_adoption_required",
+                   "provisioning_forbidden", "no_credential_inherited", "transitioned_at",
+                   "review_confirmation"}
+        common = (record["predecessor_root"] == str(predecessor)
                    and record["successor_root"] == config.storage_root
                    and record["successor_expected_head"] == config.expected_head
                    and type(record["predecessor_expected_head"]) is str
                    and re.fullmatch(r"[0-9a-f]{40}", record["predecessor_expected_head"])
-                   and record["predecessor_expected_head"] != config.expected_head
-                   and all(record[name] is True for name in (
-                       "accepted_local_acquisition", "no_sheets_side_artifacts", "registry_empty",
-                       "operator_attested_session_stopped_before_provisioning",
-                       "fresh_client_review_required", "fresh_startup_pin_required",
-                       "fresh_oauth_required", "no_credential_inherited"))
-                   and record["review_confirmation"] == UNUSED_ACQUISITION_CONFIRMATION)
+                   and record["accepted_local_acquisition"] is True
+                   and record["registry_empty"] is True
+                   and record["fresh_client_review_required"] is True
+                   and record["fresh_startup_pin_required"] is True
+                   and record["fresh_oauth_required"] is True
+                   and record["no_credential_inherited"] is True)
+        p2.require(type(record) is dict and common)
         for name in ("predecessor_operator_sha256", "predecessor_oauth_intent_sha256",
                      "predecessor_acquisition_sha256"):
             p2.digest(record[name])
+        if record["schema"] == "sheets-phase4-reviewed-unused-acquisition-supersession-v1":
+            p2.require(set(record) == original_keys
+                       and record["predecessor_expected_head"] != config.expected_head
+                       and record["no_sheets_side_artifacts"] is True
+                       and record["operator_attested_session_stopped_before_provisioning"] is True
+                       and record["review_confirmation"] == UNUSED_ACQUISITION_CONFIRMATION)
+        else:
+            p2.require(set(record) == reused_keys
+                       and record["schema"] ==
+                           "sheets-phase4-reviewed-reused-fixture-unused-acquisition-supersession-v2"
+                       and all(record[name] is True for name in (
+                           "no_create_side_artifacts_in_predecessor_package",
+                           "no_read_side_artifacts_in_predecessor_package",
+                           "operator_attested_session_stopped_before_adoption_provisioning_or_read",
+                           "fresh_fixture_adoption_required", "provisioning_forbidden"))
+                       and record["review_confirmation"] ==
+                           REUSED_UNUSED_ACQUISITION_CONFIRMATION)
+            for name in ("predecessor_reused_fixture_origin_sha256",
+                         "predecessor_reused_fixture_chain_sha256", "historical_fixture_sha256"):
+                p2.digest(record[name])
+            frozen._number(record["transitioned_at"], positive=True)
+            _validate_reused_unused_acquisition_predecessor(record)
         p2.require(type(record["offline_files_present"]) is list
                    and record["offline_files_present"] in (
                        sorted(ACQUIRED_UNUSED_FILES | extra) for extra in PREDECESSOR_PROVENANCE))
@@ -474,6 +509,13 @@ def reused_fixture_origin(config):
     storage_check(config)
     if config.path("unused-read-authorization-supersession.json").exists():
         return p3.load_json(config.path("unused-read-authorization-supersession.json"))
+    if config.path("unused-acquisition-supersession.json").exists():
+        record = p3.load_json(config.path("unused-acquisition-supersession.json"))
+        if record.get("schema") != (
+                "sheets-phase4-reviewed-reused-fixture-unused-acquisition-supersession-v2"):
+            return None
+        old_config = _validate_reused_unused_acquisition_predecessor(record)
+        return reused_fixture_origin(old_config)
     if not config.path("supersession.json").exists():
         return None
     record = p3.load_json(config.path("supersession.json"))
@@ -484,6 +526,58 @@ def reused_fixture_origin(config):
                and old_config.expected_head == record["predecessor_expected_head"])
     p2.require(_prelive_snapshot(old_config)[0] == record["offline_files_present"])
     return reused_fixture_origin(old_config)
+
+
+def _validate_reused_unused_acquisition_predecessor(record):
+    """Revalidate the accepted acquisition package and its historical fixture lineage."""
+    predecessor = Path(record["predecessor_root"])
+    old_config = operator._typed(p3.load_json(predecessor / "operator.json"), OperatorConfiguration)
+    p2.require(old_config.storage_root == str(predecessor)
+               and old_config.expected_head == record["predecessor_expected_head"]
+               and hash_public(old_config.projection()) == record["predecessor_operator_sha256"])
+    before = _prelive_snapshot(old_config, unused_acquisition=True)
+    metadata = operator._metadata(p3.load_json(old_config.path("acquisition.json")))
+    p2.require(before[0] == record["offline_files_present"]
+               and hash_public(p3.load_json(old_config.path("oauth-intent.json"))) ==
+                   record["predecessor_oauth_intent_sha256"]
+               and hash_public(p3.load_json(old_config.path("acquisition.json"))) ==
+                   record["predecessor_acquisition_sha256"]
+               and record["transitioned_at"] > metadata.prepared_at
+               and record["transitioned_at"] <=
+                   time.time() + old_config.runtime().clock_uncertainty_seconds)
+    origin = reused_fixture_origin(old_config)
+    p2.require(origin is not None
+               and hash_public(origin) == record["predecessor_reused_fixture_origin_sha256"]
+               and origin["predecessor_fixture_sha256"] == record["historical_fixture_sha256"]
+               and hash_public(reused_fixture_chain(old_config)) ==
+                   record["predecessor_reused_fixture_chain_sha256"])
+    return old_config
+
+
+def reused_fixture_fresh_acquisition_after(config):
+    """Latest lineage transition after which a reusable-fixture acquisition must be fresh."""
+    origin = reused_fixture_origin(config)
+    p2.require(origin is not None)
+    cutoff = origin["transitioned_at"]
+    current = config
+    while True:
+        if current.path("unused-acquisition-supersession.json").exists():
+            record = p3.load_json(current.path("unused-acquisition-supersession.json"))
+            if record.get("schema") == (
+                    "sheets-phase4-reviewed-reused-fixture-unused-acquisition-supersession-v2"):
+                cutoff = max(cutoff, record["transitioned_at"])
+                predecessor = Path(record["predecessor_root"])
+                current = operator._typed(p3.load_json(predecessor / "operator.json"),
+                                          OperatorConfiguration)
+                continue
+        if current.path("supersession.json").exists():
+            record = p3.load_json(current.path("supersession.json"))
+            predecessor = Path(record["predecessor_root"])
+            current = operator._typed(p3.load_json(predecessor / "operator.json"),
+                                      OperatorConfiguration)
+            continue
+        break
+    return cutoff
 
 
 def reused_fixture_chain(config):
@@ -605,14 +699,22 @@ def new_acquisition_attempt(config, new_head, operator_confirmation):
 
 def supersede_unused_acquisition(config, new_head, operator_confirmation):
     """Attest a stopped resident session and preserve its accepted acquisition."""
-    p2.require(operator_confirmation == UNUSED_ACQUISITION_CONFIRMATION)
     config.__post_init__()
-    p2.require(reused_fixture_origin(config) is None)
+    reused_origin = reused_fixture_origin(config)
+    reused = reused_origin is not None
+    p2.require(operator_confirmation == (REUSED_UNUSED_ACQUISITION_CONFIRMATION if reused else
+                                         UNUSED_ACQUISITION_CONFIRMATION))
     p2.require(type(new_head) is str and re.fullmatch(r"[0-9a-f]{40}", new_head)
-               and new_head != config.expected_head)
+               and (reused or new_head != config.expected_head))
     p3.environment_gate()
     p3.repository_check(new_head)
     before = _prelive_snapshot(config, unused_acquisition=True)
+    if reused:
+        metadata = operator._metadata(p3.load_json(config.path("acquisition.json")))
+        p2.require(metadata.prepared_at > reused_fixture_fresh_acquisition_after(config))
+    reused_chain = reused_fixture_chain(config) if reused else None
+    reused_identity = ((hash_public(reused_origin), hash_public(reused_chain),
+                        reused_origin["predecessor_fixture_sha256"]) if reused else None)
     old_root = Path(config.storage_root)
     new_root = _unused_acquisition_successor_root(old_root)
     try:
@@ -635,6 +737,29 @@ def supersede_unused_acquisition(config, new_head, operator_confirmation):
               "fresh_client_review_required": True, "fresh_startup_pin_required": True,
               "fresh_oauth_required": True, "no_credential_inherited": True,
               "review_confirmation": UNUSED_ACQUISITION_CONFIRMATION}
+    if reused:
+        record = {"schema":
+                  "sheets-phase4-reviewed-reused-fixture-unused-acquisition-supersession-v2",
+                  "predecessor_root": config.storage_root,
+                  "predecessor_expected_head": config.expected_head,
+                  "predecessor_operator_sha256": hash_public(config.projection()),
+                  "predecessor_oauth_intent_sha256":
+                      hash_public(p3.load_json(config.path("oauth-intent.json"))),
+                  "predecessor_acquisition_sha256":
+                      hash_public(p3.load_json(config.path("acquisition.json"))),
+                  "predecessor_reused_fixture_origin_sha256": reused_identity[0],
+                  "predecessor_reused_fixture_chain_sha256": reused_identity[1],
+                  "historical_fixture_sha256": reused_identity[2],
+                  "successor_root": str(new_root), "successor_expected_head": new_head,
+                  "offline_files_present": before[0], "accepted_local_acquisition": True,
+                  "no_create_side_artifacts_in_predecessor_package": True,
+                  "no_read_side_artifacts_in_predecessor_package": True, "registry_empty": True,
+                  "operator_attested_session_stopped_before_adoption_provisioning_or_read": True,
+                  "fresh_client_review_required": True, "fresh_startup_pin_required": True,
+                  "fresh_oauth_required": True, "fresh_fixture_adoption_required": True,
+                  "provisioning_forbidden": True, "no_credential_inherited": True,
+                  "transitioned_at": time.time(),
+                  "review_confirmation": REUSED_UNUSED_ACQUISITION_CONFIRMATION}
     # A deterministic exclusive name wins the race; failure residue is never repaired.
     os.mkdir(new_root, 0o700)
     _fsync_directory(new_root.parent)
@@ -647,6 +772,10 @@ def supersede_unused_acquisition(config, new_head, operator_confirmation):
     p3.write_json(new_root / "unused-acquisition-supersession.pending.json", record)
     p3.write_json(new_config.path("operator.json"), new_config.projection())
     p2.require(_prelive_snapshot(config, unused_acquisition=True) == before)
+    if reused:
+        current_origin = reused_fixture_origin(config)
+        p2.require((hash_public(current_origin), hash_public(reused_fixture_chain(config)),
+                    current_origin["predecessor_fixture_sha256"]) == reused_identity)
     p3.repository_check(new_head)
     _fsync_directory(new_root / "registry")
     _fsync_directory(new_root)
@@ -655,6 +784,10 @@ def supersede_unused_acquisition(config, new_head, operator_confirmation):
             new_root / "unused-acquisition-supersession.json")
     _fsync_directory(new_root)
     p2.require(_prelive_snapshot(config, unused_acquisition=True) == before)
+    if reused:
+        current_origin = reused_fixture_origin(config)
+        p2.require((hash_public(current_origin), hash_public(reused_fixture_chain(config)),
+                    current_origin["predecessor_fixture_sha256"]) == reused_identity)
     os.unlink(new_root / "unused-acquisition-supersession.pending.json")
     return {"schema": "sheets-phase4-reviewed-unused-acquisition-supersession-result-v1",
             "network": "not-performed", "predecessor": config.storage_root,
@@ -735,7 +868,7 @@ def adopted_fixture(config, review):
     p2.require(p3.load_json(config.path("oauth-intent.json")) == setup.oauth_intent(config, review))
     adoption = p3.load_json(config.path("fixture-adoption.json"))
     metadata = operator._metadata(p3.load_json(config.path("acquisition.json")))
-    p2.require(metadata.prepared_at > provenance["transitioned_at"]
+    p2.require(metadata.prepared_at > reused_fixture_fresh_acquisition_after(config)
                and metadata.public_config_sha256 == review["public_sha256"]
                and metadata.account_alias == config.account_alias
                and metadata.projection() != p3.load_json(old_config.path("acquisition.json")))
@@ -772,7 +905,7 @@ def adopt_existing_fixture(config, review, metadata, operator_confirmation):
                                  OperatorConfiguration)
     old = _expired_unused_read_snapshot(old_config)
     p2.require(review["public_sha256"] == old["review"]["public_sha256"]
-               and metadata.prepared_at > provenance["transitioned_at"]
+               and metadata.prepared_at > reused_fixture_fresh_acquisition_after(config)
                and metadata.projection() != p3.load_json(old_config.path("acquisition.json"))
                and not os.listdir(Path(config.runtime().registry_root)))
     descriptor = old["descriptor"]
@@ -844,6 +977,7 @@ def runtime_projection(config, review, descriptor=None):
             "schemas": ["sheets-phase4-startup-v1", "sheets-phase4-prelive-supersession-v1",
                         "sheets-phase4-reviewed-acquisition-attempt-v1",
                         "sheets-phase4-reviewed-unused-acquisition-supersession-v1",
+                        "sheets-phase4-reviewed-reused-fixture-unused-acquisition-supersession-v2",
                         "sheets-phase4-expired-unused-read-supersession-v1",
                         "sheets-phase4-fixture-adoption-v1",
                         "sheets-phase4-acquisition-failure-v1",
