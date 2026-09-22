@@ -2,8 +2,6 @@
 
 GitHub documentation reconnaissance is recorded in github_semantics.py and
 research/study2/github/GITHUB_SEMANTICS_DRAFT.md; its capability is provisional.
-Stripe documentation evidence is recorded in stripe_semantics.py and
-research/study2/stripe/STRIPE_SEMANTICS_DRAFT.md; its capability is provisional.
 Sheets knowledge remains limited here to the earlier candidate record.
 GitHub/Sheets absence of a documented create key is not established: UNKNOWN.
 """
@@ -22,7 +20,6 @@ from retry_semantics.study2.contracts import (
     Provider,
     ProviderIdempotency,
     RequestIdentityPart,
-    RuntimeKeyRequirement,
 )
 
 _OBSERVATION_CONSTRAINTS = (
@@ -107,34 +104,4 @@ GOOGLE_SHEETS_ROWS = _candidate(
     ),
 )
 
-STRIPE_CUSTOMERS = _candidate(
-    Provider.STRIPE, "create_customer", "list_customers", "customer",
-    "Use a unique synthetic pre-dispatch Customer email as the marker; list_customers supports an exact case-sensitive email filter. Never use real-person email/PII.",
-    "Qualify a sandbox/test account scope and marker namespace that distinguish families, runs, stale Customers, and engineering activity; require livemode=false.",
-    ProviderIdempotency(
-        capability=IdempotencyCapability.CLIENT_SUPPLIED_KEY,
-        basis="Official Stripe API documentation supplied as checked 2026-09-21 establishes client-supplied Idempotency-Key support for POST requests, retained-result replay, parameter comparison, mismatch errors, and the at-least-24-hour pruning caveat; see STRIPE_SEMANTICS_DRAFT.md.",
-        mechanism="Idempotency-Key",
-        runtime_key_requirements=tuple(RuntimeKeyRequirement),
-        key_reuse_constraints=(
-            "Stripe compares parameters when a retained key is reused and returns an error when they do not match the original request.",
-            "A retained key returns the first request's status code and response body once endpoint execution began.",
-            "Keys may be pruned after they are at least 24 hours old; a request rejected before endpoint execution may lack an idempotency record.",
-            "If enabled, one runtime-owned key is stable only for retries and recovery attempts for one original mutation within one experimental arm.",
-            "Replay and Regeneration arms require independent keys or namespaces; keys must not be shared across arms, families, or runs.",
-            "Changed mutation parameters under a stable runtime-owned key remain representable; runtime equality is not required.",
-        ),
-    ),
-    marker_verification_constraint=(
-        "Email marker encoding/namespace, persistence, and read-after-write visibility still require engineering qualification."
-    ),
-    additional_observation_constraints=(
-        "Use GET /v1/customers with the exact case-sensitive email filter; Customer Search is not authoritative.",
-        "The eventual frozen Customer mutation schema must reject test_clock; arbitrary test-clock observation is not supported.",
-        "Process every returned Customer and follow starting_after while has_more=true; require a usable final Customer ID before advancing.",
-        "Malformed or inconsistent pagination is UNKNOWN/INCOMPLETE, never zero; first-match lookup is prohibited.",
-        "No strict list consistency or read-after-write visibility guarantee is claimed.",
-    ),
-)
-
-PROVISIONAL_CAPABILITIES = (GITHUB_ISSUES, GOOGLE_SHEETS_ROWS, STRIPE_CUSTOMERS)
+PROVISIONAL_CAPABILITIES = (GITHUB_ISSUES, GOOGLE_SHEETS_ROWS)

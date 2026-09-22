@@ -359,7 +359,8 @@ Purpose:
 
 - compare execution-layer replay when duplicate suppression is available.
 
-This is especially relevant for APIs such as Stripe sandbox.
+This is especially relevant where an API supports a client-controlled stable
+idempotency mechanism.
 
 ---
 
@@ -778,22 +779,24 @@ Use a dedicated experiment spreadsheet.
 
 ---
 
-## Real API C — Stripe Sandbox
+## External API C — Provider TBD After Access + Semantics Preflight
 
-Use only sandbox/test mode.
+The prospective governance record for this slot is
+`research/protocol/STUDY2_EXTERNAL_PROVIDER_AMENDMENT_V1.md`.
 
-Candidate operations should be harmless test entities, such as:
+Do not select or implement the replacement until a prospective preflight
+establishes all of the following:
 
-- create test customer,
-- create other sandbox resources that support idempotency behavior.
+1. operator/account accessibility from the researcher's jurisdiction;
+2. sandbox/test credentials obtainable legitimately;
+3. no real-money requirement;
+4. the required mutation API is accessible in sandbox/test mode;
+5. an authoritative observation/reconciliation API is available;
+6. retry/idempotency semantics are documented sufficiently;
+7. only then may semantics reconnaissance and implementation begin.
 
-Stripe is especially valuable for comparing:
-
-- same request + same idempotency key,
-- same request + changed key,
-- regenerated request + changed parameters.
-
-No real charges or financial transactions should be used.
+Before any Study 2 paper observation, freeze the provider identity, scenario
+catalogue, exact manifest, and authoritative state evaluator.
 
 ---
 
@@ -1586,11 +1589,11 @@ Implement APPEND trials using a dedicated spreadsheet.
 
 ---
 
-## Phase 12 — Stripe Sandbox
+## Phase 12 — External API C, Provider TBD
 
-Implement safe sandbox mutation trials and stable idempotency-key comparison.
-
-No real money or production data.
+After the access and semantics preflight above passes, freeze the provider
+identity and study design artifacts before implementing safe sandbox/test-mode
+mutation trials. No real money or production data.
 
 ---
 

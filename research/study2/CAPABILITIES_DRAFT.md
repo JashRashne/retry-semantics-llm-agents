@@ -1,19 +1,18 @@
 # DRAFT — NOT FROZEN — ZERO PAPER OBSERVATIONS
 
 These are design objects for investigation, not a protocol or provider selection.
-No Stripe provider was contacted by this slice. Stripe official-documentation
-facts supplied as independently checked on 2026-09-21 now support its endpoint,
-exact-email list, and key-semantics records; this slice did not browse to re-fetch
-them.
 GitHub/Sheets key capability remains **unknown / not yet established** here.
 The contract also supports **no documented client-controlled mechanism**, which
 must not be read as mathematical non-idempotence or proof of duplication.
+The third external provider candidate is pending prospective access and semantics
+qualification and therefore has no active capability record. Its allocation and
+selection gate are recorded prospectively in
+`research/protocol/STUDY2_EXTERNAL_PROVIDER_AMENDMENT_V1.md`.
 
 | Candidate provider | Mutation | Observation | Retry-relevant idempotency capability | Plausible pre-dispatch correlation | Major unresolved isolation question | Major correctness risk | Investigate further? |
 |---|---|---|---|---|---|---|---|
 | GitHub | `create_issue` | `list_issues` | Unknown here; no create-request key established | Writable issue content, provisional; no field/format selected | What scope/namespace separates families, runs, stale issues, and engineering activity? | List filters, issue state, permissions, pagination, or mixed resource types could hide/miscount duplicates | Appears plausible enough to investigate; not verified |
 | Google Sheets | `append_row` | `list_rows` (logical read, concrete API mapping unresolved) | Unknown here; no append-request key established | Writable row cells, provisional; no cells/format selected | What spreadsheet/tab/range and namespace isolate each logical object? | Append placement, range limits, edits, or value transformation could hide/misidentify rows | Appears plausible enough to investigate; not verified |
-| Stripe TEST MODE | `create_customer` (`POST /v1/customers`), documentation-supported but provisional mapping | `list_customers` (`GET /v1/customers`) with exact case-sensitive email filter, documentation-supported but provisional mapping; process every Customer and follow `starting_after` while `has_more=true` | Documented client-supplied POST `Idempotency-Key`; if enabled, each arm receives an independent key/namespace stable only for one original mutation's retries; enablement remains unresolved | Unique synthetic pre-dispatch Customer email; no real-person PII; metadata supplemental only | Qualify sandbox account/principal, `livemode=false`, namespace isolation, and live read-after-write visibility | Mutation schema must prohibit `test_clock`; malformed/incomplete pagination is unknown, not zero; provider deduplication is distinct from retry policy | Proceed only to separately authorized TEST/SANDBOX engineering qualification; overall capability and both operation mappings remain provisional |
 
 The additive `retry_semantics.study2` package describes stable operation, target
 scope, payload, and runtime options (including a key **if enabled**) independently
@@ -58,15 +57,15 @@ Risks requiring later resolution:
   attempts. Account-wide rate limits, abuse protection, and concurrency could
   alter outcomes. No client or retry behavior is implemented here.
 
-Stripe's candidate operation mappings and email filter field are now documented
-but remain provisional; its mutation schema must reject `test_clock`, because an
-unscoped Customer list omits Customers associated with test clocks. Its
-authoritative traversal must honor `has_more`, require a usable final Customer ID
-before `starting_after` advancement, and fail closed on malformed pagination;
-its marker encoding/namespace, isolation strategy, read-after-write visibility,
-completeness/consistency qualification, runtime key enablement, frozen API version,
-and eventual experimental role remain unresolved. Other candidates retain their
-previously recorded mapping uncertainties. So do scenario/replicate
-counts, multiplicity correction, schedule, counterbalancing, manifests, evidence
-schema, and stopping rules. There are no trial families, execution policies,
-ambiguity injection, observations, or new dependencies in this phase.
+The current candidates retain their previously recorded mapping uncertainties.
+The third external provider remains unselected and must pass prospective access
+and semantics qualification before a capability record or implementation is
+added. The external environment family allocations are fixed by the frozen V1.3
+plan and prospectively preserved by the Study 2 amendment: 64 families for
+GitHub, 64 for Google Sheets, and 64 for external provider C. Still unresolved
+are Provider C's identity; its provider-specific scenario catalogue and exact
+manifest; marker/correlation design; evaluator; scheduling and counterbalancing
+implementation details where not otherwise frozen; evidence-schema/provider
+binding; and any required provider-specific analysis amendment. There are no
+trial families, execution policies, ambiguity injection, observations, or new
+dependencies in this phase.

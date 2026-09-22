@@ -13,7 +13,6 @@ class ContractValidationError(ValueError):
 class Provider(str, Enum):
     GITHUB = "github"
     GOOGLE_SHEETS = "google_sheets"
-    STRIPE = "stripe"
 
 
 class DesignStatus(str, Enum):

@@ -8,7 +8,6 @@ from retry_semantics.study2.candidates import (
     GITHUB_ISSUES,
     GOOGLE_SHEETS_ROWS,
     PROVISIONAL_CAPABILITIES,
-    STRIPE_CUSTOMERS,
 )
 from retry_semantics.study2.contracts import (
     ContractValidationError,
@@ -28,13 +27,24 @@ from retry_semantics.study2.contracts import (
     RuntimeKeyRequirement,
 )
 
+_SYNTHETIC_CLIENT_KEY = ProviderIdempotency(
+    capability=IdempotencyCapability.CLIENT_SUPPLIED_KEY,
+    basis="Synthetic client-key capability for generic contract validation.",
+    mechanism="synthetic-key",
+    runtime_key_requirements=tuple(RuntimeKeyRequirement),
+    key_reuse_constraints=(
+        "A runtime-owned key is stable for retries and recovery attempts for one original mutation within one experimental arm.",
+        "Replay and Regeneration arms use independent keys or namespaces; keys are not shared across arms, families, or runs.",
+        "Changed mutation parameters under the same key may be attempted; a provider may return a mismatch error.",
+    ),
+)
+
 
 def test_provisional_candidates_are_distinct_operations_for_each_provider() -> None:
     assert [(c.provider, c.mutation.name, c.observation.name, c.mutation.resource)
             for c in PROVISIONAL_CAPABILITIES] == [
         (Provider.GITHUB, "create_issue", "list_issues", "issue"),
         (Provider.GOOGLE_SHEETS, "append_row", "list_rows", "row"),
-        (Provider.STRIPE, "create_customer", "list_customers", "customer"),
     ]
     for candidate in PROVISIONAL_CAPABILITIES:
         assert candidate.mutation.state_mutating is True
@@ -65,55 +75,43 @@ def test_candidate_explicitly_describes_identity_correlation_and_isolation(candi
 def test_idempotency_can_change_without_changing_mutation_or_observation() -> None:
     no_documented_mechanism = ProviderIdempotency(
         IdempotencyCapability.NO_DOCUMENTED_CLIENT_MECHANISM,
-        "Synthetic structural example, not a claim about Stripe.", None, (),
+        "Synthetic structural example, not a claim about any provider.", None, (),
     )
-    changed = replace(STRIPE_CUSTOMERS, idempotency=no_documented_mechanism)
-    assert changed.provider is STRIPE_CUSTOMERS.provider
-    assert changed.mutation is STRIPE_CUSTOMERS.mutation
-    assert changed.observation is STRIPE_CUSTOMERS.observation
-    assert changed.correlation is STRIPE_CUSTOMERS.correlation
-    assert changed.isolation is STRIPE_CUSTOMERS.isolation
+    changed = replace(GITHUB_ISSUES, idempotency=no_documented_mechanism)
+    assert changed.provider is GITHUB_ISSUES.provider
+    assert changed.mutation is GITHUB_ISSUES.mutation
+    assert changed.observation is GITHUB_ISSUES.observation
+    assert changed.correlation is GITHUB_ISSUES.correlation
+    assert changed.isolation is GITHUB_ISSUES.isolation
 
 
-def test_stripe_key_capability_is_optional_and_arm_local_if_enabled() -> None:
-    key = STRIPE_CUSTOMERS.idempotency
+def test_client_key_capability_is_optional_and_arm_local_if_enabled() -> None:
+    key = _SYNTHETIC_CLIENT_KEY
     assert key.capability is IdempotencyCapability.CLIENT_SUPPLIED_KEY
-    assert key.mechanism == "Idempotency-Key"
+    assert key.mechanism == "synthetic-key"
     assert set(key.runtime_key_requirements) == set(RuntimeKeyRequirement)
     constraints = " ".join(key.key_reuse_constraints)
     assert "one original mutation within one experimental arm" in constraints
     assert "independent keys or namespaces" in constraints
-    assert "must not be shared across arms, families, or runs" in constraints
-    assert len([c for c in PROVISIONAL_CAPABILITIES if c.provider is Provider.STRIPE]) == 1
-    for record in (STRIPE_CUSTOMERS, key, STRIPE_CUSTOMERS.mutation,
-                   STRIPE_CUSTOMERS.observation):
+    assert "not shared across arms, families, or runs" in constraints
+    synthetic_candidate = replace(GITHUB_ISSUES, idempotency=key)
+    for record in (synthetic_candidate, key, synthetic_candidate.mutation,
+                   synthetic_candidate.observation):
         assert not {"policy", "retry_policy", "arm", "arm_id", "enabled"} & {
             field.name for field in fields(record)
         }
 
 
 def test_client_key_capability_does_not_require_mutation_parameter_equality() -> None:
-    capability = ProviderIdempotency(
-        capability=IdempotencyCapability.CLIENT_SUPPLIED_KEY,
-        basis="Synthetic client key support, not a provider documentation claim.",
-        mechanism="synthetic-key",
-        runtime_key_requirements=(
-            RuntimeKeyRequirement.RUNTIME_OWNED,
-            RuntimeKeyRequirement.STABLE_ACROSS_RETRIES,
-        ),
-        key_reuse_constraints=(
-            "Changed mutation parameters under the same key may be attempted; provider may return a mismatch error.",
-            "Parameter comparison details remain unresolved.",
-        ),
-    )
+    capability = _SYNTHETIC_CLIENT_KEY
     assert {requirement.value for requirement in capability.runtime_key_requirements} == {
         "runtime_owned", "stable_across_retries",
     }
     assert capability.key_reuse_constraints
     # Exact replay's payload equality is distinct from the key's reuse rules.
-    assert RequestIdentityPart.PAYLOAD in STRIPE_CUSTOMERS.mutation.stable_request_parts
-    changed = replace(STRIPE_CUSTOMERS, idempotency=capability)
-    assert changed.mutation is STRIPE_CUSTOMERS.mutation
+    assert RequestIdentityPart.PAYLOAD in GITHUB_ISSUES.mutation.stable_request_parts
+    changed = replace(GITHUB_ISSUES, idempotency=capability)
+    assert changed.mutation is GITHUB_ISSUES.mutation
 
 
 @pytest.mark.parametrize("with_marker", [False, True])
@@ -223,7 +221,7 @@ def test_partial_exact_replay_identity_is_rejected(part) -> None:
 @pytest.mark.parametrize("requirement", tuple(RuntimeKeyRequirement))
 def test_key_reuse_cannot_omit_runtime_ownership_or_stability(requirement) -> None:
     with pytest.raises(ContractValidationError):
-        replace(STRIPE_CUSTOMERS.idempotency, runtime_key_requirements=tuple(
+        replace(_SYNTHETIC_CLIENT_KEY, runtime_key_requirements=tuple(
             item for item in RuntimeKeyRequirement if item is not requirement
         ))
 
@@ -233,13 +231,13 @@ def test_key_reuse_cannot_omit_runtime_ownership_or_stability(requirement) -> No
 ])
 def test_key_mechanism_cannot_be_attached_to_unknown_or_absent_support(capability) -> None:
     with pytest.raises(ContractValidationError, match="documented key support"):
-        replace(STRIPE_CUSTOMERS.idempotency, capability=capability)
+        replace(_SYNTHETIC_CLIENT_KEY, capability=capability)
 
 
 @pytest.mark.parametrize("mechanism", [None, "", " "])
 def test_key_support_requires_a_named_mechanism(mechanism) -> None:
     with pytest.raises(ContractValidationError, match="key mechanism"):
-        replace(STRIPE_CUSTOMERS.idempotency, mechanism=mechanism)
+        replace(_SYNTHETIC_CLIENT_KEY, mechanism=mechanism)
 
 
 def test_unknown_correlation_remains_representable_without_claiming_establishment() -> None:
@@ -410,13 +408,13 @@ def test_provisional_provider_cannot_be_promoted_by_changing_only_outer_status()
 
 
 @pytest.mark.parametrize("field,value", [
-    ("provider", "stripe"), ("provider", "stripe_protected"),
+    ("provider", "synthetic"), ("provider", "github_protected"),
     ("status", "frozen"), ("mutation", None), ("observation", None),
     ("correlation", None), ("idempotency", None), ("isolation", None),
 ])
 def test_invalid_contract_types_and_provider_arm_names_are_rejected(field, value) -> None:
     with pytest.raises(ContractValidationError):
-        replace(STRIPE_CUSTOMERS, **{field: value})
+        replace(GITHUB_ISSUES, **{field: value})
 
 
 @pytest.mark.parametrize("record,changes", [
@@ -437,12 +435,12 @@ def test_invalid_contract_types_and_provider_arm_names_are_rejected(field, value
     (GITHUB_ISSUES.correlation, {"pre_dispatch_marker_supported": 1}),
     (GITHUB_ISSUES.isolation, {"status": "unresolved"}),
     (GITHUB_ISSUES.isolation, {"distinguish_from": (IsolationBoundary.RUN,) * 2}),
-    (STRIPE_CUSTOMERS.idempotency, {"capability": "client_supplied_key"}),
-    (STRIPE_CUSTOMERS.idempotency, {"basis": ""}),
-    (STRIPE_CUSTOMERS.idempotency, {"runtime_key_requirements": ()}),
-    (STRIPE_CUSTOMERS.idempotency, {"runtime_key_requirements": list(RuntimeKeyRequirement)}),
-    (STRIPE_CUSTOMERS.idempotency, {"key_reuse_constraints": ["mutable"]}),
-    (STRIPE_CUSTOMERS.idempotency, {"key_reuse_constraints": (" ",)}),
+    (_SYNTHETIC_CLIENT_KEY, {"capability": "client_supplied_key"}),
+    (_SYNTHETIC_CLIENT_KEY, {"basis": ""}),
+    (_SYNTHETIC_CLIENT_KEY, {"runtime_key_requirements": ()}),
+    (_SYNTHETIC_CLIENT_KEY, {"runtime_key_requirements": list(RuntimeKeyRequirement)}),
+    (_SYNTHETIC_CLIENT_KEY, {"key_reuse_constraints": ["mutable"]}),
+    (_SYNTHETIC_CLIENT_KEY, {"key_reuse_constraints": (" ",)}),
 ])
 def test_malformed_or_contradictory_nested_specs_fail_at_construction(record, changes) -> None:
     with pytest.raises(ContractValidationError):
