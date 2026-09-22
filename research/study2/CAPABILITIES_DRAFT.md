@@ -1,8 +1,10 @@
 # DRAFT — NOT FROZEN — ZERO PAPER OBSERVATIONS
 
 These are design objects for investigation, not a protocol or provider selection.
-No external documentation was fetched and no provider was contacted. Stripe key
-support comes from the supplied brief; detailed guarantees need a later audit.
+No Stripe provider was contacted by this slice. Stripe official-documentation
+facts supplied as independently checked on 2026-09-21 now support its endpoint,
+exact-email list, and key-semantics records; this slice did not browse to re-fetch
+them.
 GitHub/Sheets key capability remains **unknown / not yet established** here.
 The contract also supports **no documented client-controlled mechanism**, which
 must not be read as mathematical non-idempotence or proof of duplication.
@@ -11,7 +13,7 @@ must not be read as mathematical non-idempotence or proof of duplication.
 |---|---|---|---|---|---|---|---|
 | GitHub | `create_issue` | `list_issues` | Unknown here; no create-request key established | Writable issue content, provisional; no field/format selected | What scope/namespace separates families, runs, stale issues, and engineering activity? | List filters, issue state, permissions, pagination, or mixed resource types could hide/miscount duplicates | Appears plausible enough to investigate; not verified |
 | Google Sheets | `append_row` | `list_rows` (logical read, concrete API mapping unresolved) | Unknown here; no append-request key established | Writable row cells, provisional; no cells/format selected | What spreadsheet/tab/range and namespace isolate each logical object? | Append placement, range limits, edits, or value transformation could hide/misidentify rows | Appears plausible enough to investigate; not verified |
-| Stripe TEST MODE | `create_customer` | `list_customers` | Client-supplied POST `Idempotency-Key` support per brief; enablement unresolved | Writable customer fields/metadata, provisional; no field/format selected | What test-mode scope/namespace separates families, runs, and prior test customers? | Provider deduplication could explain replay safety; list filtering/pagination could hide duplicates | Appears plausible enough to investigate; not verified |
+| Stripe TEST MODE | `create_customer` (`POST /v1/customers`), documentation-supported but provisional mapping | `list_customers` (`GET /v1/customers`) with exact case-sensitive email filter, documentation-supported but provisional mapping; process every Customer and follow `starting_after` while `has_more=true` | Documented client-supplied POST `Idempotency-Key`; if enabled, each arm receives an independent key/namespace stable only for one original mutation's retries; enablement remains unresolved | Unique synthetic pre-dispatch Customer email; no real-person PII; metadata supplemental only | Qualify sandbox account/principal, `livemode=false`, namespace isolation, and live read-after-write visibility | Mutation schema must prohibit `test_clock`; malformed/incomplete pagination is unknown, not zero; provider deduplication is distinct from retry policy | Proceed only to separately authorized TEST/SANDBOX engineering qualification; overall capability and both operation mappings remain provisional |
 
 The additive `retry_semantics.study2` package describes stable operation, target
 scope, payload, and runtime options (including a key **if enabled**) independently
@@ -43,9 +45,12 @@ Risks requiring later resolution:
   establish the payload's correctness or reveal unmarked unintended mutations.
 - Cleanup could destroy evidence; retention and cleanup strategy are unresolved.
 - Provider deduplication can mask duplicate requests independently of the LLM.
-  If a key is later enabled, the runtime must own it and keep it stable; allowing
-  generation to change the key invalidates that condition. Provider parameter
-  comparison may produce a mismatch/error when generated parameters change; the
+  If a key is later enabled, the runtime must own it and keep it stable only for
+  retries/recovery of one original mutation in one arm. Replay and Regeneration
+  require independent keys or namespaces, with no sharing across arms, families,
+  or runs. Allowing generation to change its arm-local key invalidates that
+  condition. Provider parameter comparison may produce a mismatch/error when
+  generated parameters change; the
   runtime key requirements do not prohibit attempting changed parameters under
   the stable key. Provider key-reuse constraints are separately descriptive and
   unresolved. Key retention, scope, concurrency, and error caching need audit.
@@ -53,9 +58,15 @@ Risks requiring later resolution:
   attempts. Account-wide rate limits, abuse protection, and concurrency could
   alter outcomes. No client or retry behavior is implemented here.
 
-All operation choices, concrete API mappings, marker fields/formats, isolation
-strategies, completeness/consistency guarantees, runtime key enablement, and
-Stripe's eventual experimental role remain unresolved. So do scenario/replicate
+Stripe's candidate operation mappings and email filter field are now documented
+but remain provisional; its mutation schema must reject `test_clock`, because an
+unscoped Customer list omits Customers associated with test clocks. Its
+authoritative traversal must honor `has_more`, require a usable final Customer ID
+before `starting_after` advancement, and fail closed on malformed pagination;
+its marker encoding/namespace, isolation strategy, read-after-write visibility,
+completeness/consistency qualification, runtime key enablement, frozen API version,
+and eventual experimental role remain unresolved. Other candidates retain their
+previously recorded mapping uncertainties. So do scenario/replicate
 counts, multiplicity correction, schedule, counterbalancing, manifests, evidence
 schema, and stopping rules. There are no trial families, execution policies,
 ambiguity injection, observations, or new dependencies in this phase.

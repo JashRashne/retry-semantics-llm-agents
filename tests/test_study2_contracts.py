@@ -75,11 +75,15 @@ def test_idempotency_can_change_without_changing_mutation_or_observation() -> No
     assert changed.isolation is STRIPE_CUSTOMERS.isolation
 
 
-def test_stripe_key_capability_is_optional_and_has_no_policy_or_arm() -> None:
+def test_stripe_key_capability_is_optional_and_arm_local_if_enabled() -> None:
     key = STRIPE_CUSTOMERS.idempotency
     assert key.capability is IdempotencyCapability.CLIENT_SUPPLIED_KEY
     assert key.mechanism == "Idempotency-Key"
     assert set(key.runtime_key_requirements) == set(RuntimeKeyRequirement)
+    constraints = " ".join(key.key_reuse_constraints)
+    assert "one original mutation within one experimental arm" in constraints
+    assert "independent keys or namespaces" in constraints
+    assert "must not be shared across arms, families, or runs" in constraints
     assert len([c for c in PROVISIONAL_CAPABILITIES if c.provider is Provider.STRIPE]) == 1
     for record in (STRIPE_CUSTOMERS, key, STRIPE_CUSTOMERS.mutation,
                    STRIPE_CUSTOMERS.observation):
