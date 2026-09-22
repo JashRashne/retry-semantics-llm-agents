@@ -1,10 +1,10 @@
 # Stripe Offline Adapter Engineering Draft
 
-**DRAFT / NOT FROZEN**  
-**ENGINEERING ONLY**  
-**ZERO PAPER OBSERVATIONS**  
-**NO STRIPE PROVIDER CALL WAS PERFORMED IN THIS SLICE**  
-**PROCESS-LOCAL one-shot protection is NOT crash-durable authorization**  
+**DRAFT / NOT FROZEN**
+**ENGINEERING ONLY**
+**ZERO PAPER OBSERVATIONS**
+**NO STRIPE PROVIDER CALL WAS PERFORMED IN THIS SLICE**
+**PROCESS-LOCAL one-shot protection is NOT crash-durable authorization**
 **Live qualification remains separately gated**
 
 ## Implemented boundary
