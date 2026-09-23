@@ -1,0 +1,471 @@
+{
+  "catalogue_version": "google-sheets-paper-family-catalogue-v1",
+  "status": "FROZEN PAPER CATALOGUE / INDEPENDENT HOSTILE AUDIT PASSED",
+  "study2_paper_observations": 0,
+  "collection_status": "BLOCKED",
+  "canonical_repository_head": "333a89e635e0482930f7c0382341b65711a2e7e3",
+  "frozen_sha256": {
+    "sheets_provider_semantics": "b88d13c059d1716b1528386d2446a53e770e7c078e223e46aefa8f9daba98a2e",
+    "cross_provider_protocol": "d4d20ddba32dd80249f116463d57d92d12cc762d844cb6309099604a242035b2",
+    "v1_3_analysis_plan": "23ecd98293a5a7b3b399aed270f8cd257c1aa9b5070d3845575ac2e02580bf88",
+    "analysis_amendment_decision": "05ded80d5dad442f278997bb0bdbca980f2d42261b0f6d058d08996970b443ba",
+    "external_provider_amendment": "21ff3b3ca90d27a46669e12bab62de89d7ddd191ba96dfa5a8e12c0a69521ecb"
+  },
+  "task_template": "Append exactly one row with item \"{item}\" and detail \"{detail}\".",
+  "audit_provenance": {
+    "audit_status": "PASSED",
+    "pre_freeze_line_count": 465,
+    "pre_freeze_sha256": "503512cc8b625c03a7c9ab28162e2b310b3ca941aabd8f5aade9a47f886dcd23",
+    "note": "Freeze edit changes audit status and provenance only."
+  },
+  "families": [
+    {
+      "family_id": "sheets-f001",
+      "semantic_m": {
+        "item": "Blue notebook",
+        "detail": "A compact notebook with a matte blue cover."
+      }
+    },
+    {
+      "family_id": "sheets-f002",
+      "semantic_m": {
+        "item": "Green folder",
+        "detail": "A slim document folder with a pale green cover."
+      }
+    },
+    {
+      "family_id": "sheets-f003",
+      "semantic_m": {
+        "item": "Amber binder",
+        "detail": "A sturdy ring binder with an amber spine."
+      }
+    },
+    {
+      "family_id": "sheets-f004",
+      "semantic_m": {
+        "item": "Gray clipboard",
+        "detail": "A rigid clipboard with a smooth gray surface."
+      }
+    },
+    {
+      "family_id": "sheets-f005",
+      "semantic_m": {
+        "item": "White notepad",
+        "detail": "A small writing pad with plain white pages."
+      }
+    },
+    {
+      "family_id": "sheets-f006",
+      "semantic_m": {
+        "item": "Black pen case",
+        "detail": "A zippered pen case with a soft black shell."
+      }
+    },
+    {
+      "family_id": "sheets-f007",
+      "semantic_m": {
+        "item": "Silver ruler",
+        "detail": "A straight metal ruler with clear markings."
+      }
+    },
+    {
+      "family_id": "sheets-f008",
+      "semantic_m": {
+        "item": "Yellow highlighter",
+        "detail": "A broad marker with a bright yellow tip."
+      }
+    },
+    {
+      "family_id": "sheets-f009",
+      "semantic_m": {
+        "item": "Red pencil cup",
+        "detail": "A round pencil cup with a muted red finish."
+      }
+    },
+    {
+      "family_id": "sheets-f010",
+      "semantic_m": {
+        "item": "Cork pinboard",
+        "detail": "A square cork board with a light wooden frame."
+      }
+    },
+    {
+      "family_id": "sheets-f011",
+      "semantic_m": {
+        "item": "Canvas pouch",
+        "detail": "A flat canvas pouch with a cream colored flap."
+      }
+    },
+    {
+      "family_id": "sheets-f012",
+      "semantic_m": {
+        "item": "Glass paperweight",
+        "detail": "A clear paperweight with a rounded edge."
+      }
+    },
+    {
+      "family_id": "sheets-f013",
+      "semantic_m": {
+        "item": "Brass bookmark",
+        "detail": "A thin brass bookmark with a leaf shaped end."
+      }
+    },
+    {
+      "family_id": "sheets-f014",
+      "semantic_m": {
+        "item": "Maple desk tray",
+        "detail": "A shallow wooden tray with a maple finish."
+      }
+    },
+    {
+      "family_id": "sheets-f015",
+      "semantic_m": {
+        "item": "Blue file box",
+        "detail": "A compact file box with a navy blue lid."
+      }
+    },
+    {
+      "family_id": "sheets-f016",
+      "semantic_m": {
+        "item": "Green desk mat",
+        "detail": "A wide desk mat with a soft green surface."
+      }
+    },
+    {
+      "family_id": "sheets-f017",
+      "semantic_m": {
+        "item": "White card holder",
+        "detail": "A small card holder with a smooth white base."
+      }
+    },
+    {
+      "family_id": "sheets-f018",
+      "semantic_m": {
+        "item": "Black stapler",
+        "detail": "A compact stapler with a matte black body."
+      }
+    },
+    {
+      "family_id": "sheets-f019",
+      "semantic_m": {
+        "item": "Copper tape dispenser",
+        "detail": "A weighted tape dispenser with a copper finish."
+      }
+    },
+    {
+      "family_id": "sheets-f020",
+      "semantic_m": {
+        "item": "Gray pencil sharpener",
+        "detail": "A small pencil sharpener with a gray casing."
+      }
+    },
+    {
+      "family_id": "sheets-f021",
+      "semantic_m": {
+        "item": "Linen document sleeve",
+        "detail": "A light document sleeve with a linen texture."
+      }
+    },
+    {
+      "family_id": "sheets-f022",
+      "semantic_m": {
+        "item": "Bamboo letter rack",
+        "detail": "A narrow letter rack with a bamboo finish."
+      }
+    },
+    {
+      "family_id": "sheets-f023",
+      "semantic_m": {
+        "item": "Ceramic pen stand",
+        "detail": "A cylindrical pen stand with a glazed surface."
+      }
+    },
+    {
+      "family_id": "sheets-f024",
+      "semantic_m": {
+        "item": "Navy badge holder",
+        "detail": "A flat badge holder with a navy fabric strap."
+      }
+    },
+    {
+      "family_id": "sheets-f025",
+      "semantic_m": {
+        "item": "Orange sticky pad",
+        "detail": "A square note pad with a soft orange color."
+      }
+    },
+    {
+      "family_id": "sheets-f026",
+      "semantic_m": {
+        "item": "Brown envelope",
+        "detail": "A large paper envelope with a kraft finish."
+      }
+    },
+    {
+      "family_id": "sheets-f027",
+      "semantic_m": {
+        "item": "Clear file sleeve",
+        "detail": "A transparent file sleeve with a sealed edge."
+      }
+    },
+    {
+      "family_id": "sheets-f028",
+      "semantic_m": {
+        "item": "Steel bookend",
+        "detail": "A sturdy bookend with a brushed steel finish."
+      }
+    },
+    {
+      "family_id": "sheets-f029",
+      "semantic_m": {
+        "item": "Felt mouse pad",
+        "detail": "A soft mouse pad with a charcoal felt surface."
+      }
+    },
+    {
+      "family_id": "sheets-f030",
+      "semantic_m": {
+        "item": "Walnut monitor riser",
+        "detail": "A low monitor riser with a walnut veneer."
+      }
+    },
+    {
+      "family_id": "sheets-f031",
+      "semantic_m": {
+        "item": "Teal card case",
+        "detail": "A pocket card case with a smooth teal finish."
+      }
+    },
+    {
+      "family_id": "sheets-f032",
+      "semantic_m": {
+        "item": "Purple tab divider",
+        "detail": "A slim tab divider with a soft purple edge."
+      }
+    },
+    {
+      "family_id": "sheets-f033",
+      "semantic_m": {
+        "item": "Beige desk organizer",
+        "detail": "A small desk organizer with a warm beige finish."
+      }
+    },
+    {
+      "family_id": "sheets-f034",
+      "semantic_m": {
+        "item": "Chrome desk bell",
+        "detail": "A compact desk bell with a polished chrome dome."
+      }
+    },
+    {
+      "family_id": "sheets-f035",
+      "semantic_m": {
+        "item": "Oak document stand",
+        "detail": "An angled document stand with a light oak surface."
+      }
+    },
+    {
+      "family_id": "sheets-f036",
+      "semantic_m": {
+        "item": "Sand timer",
+        "detail": "A small sand timer with a clear glass center."
+      }
+    },
+    {
+      "family_id": "sheets-f037",
+      "semantic_m": {
+        "item": "Rubber stamp",
+        "detail": "A square rubber stamp with a wooden handle."
+      }
+    },
+    {
+      "family_id": "sheets-f038",
+      "semantic_m": {
+        "item": "Blue ink pad",
+        "detail": "A shallow ink pad with a dark blue surface."
+      }
+    },
+    {
+      "family_id": "sheets-f039",
+      "semantic_m": {
+        "item": "Calendar stand",
+        "detail": "A folding calendar stand with a plain white face."
+      }
+    },
+    {
+      "family_id": "sheets-f040",
+      "semantic_m": {
+        "item": "Acrylic sign holder",
+        "detail": "A clear sign holder with a stable acrylic base."
+      }
+    },
+    {
+      "family_id": "sheets-f041",
+      "semantic_m": {
+        "item": "Leather card wallet",
+        "detail": "A slim card wallet with a brown leather cover."
+      }
+    },
+    {
+      "family_id": "sheets-f042",
+      "semantic_m": {
+        "item": "Grid sketchpad",
+        "detail": "A compact sketchpad with faint square grid lines."
+      }
+    },
+    {
+      "family_id": "sheets-f043",
+      "semantic_m": {
+        "item": "Paper label roll",
+        "detail": "A narrow label roll with plain white paper."
+      }
+    },
+    {
+      "family_id": "sheets-f044",
+      "semantic_m": {
+        "item": "Brass desk lamp",
+        "detail": "A small desk lamp with a brushed brass shade."
+      }
+    },
+    {
+      "family_id": "sheets-f045",
+      "semantic_m": {
+        "item": "Gray cable sleeve",
+        "detail": "A flexible cable sleeve with a smooth gray weave."
+      }
+    },
+    {
+      "family_id": "sheets-f046",
+      "semantic_m": {
+        "item": "Screen cleaning cloth",
+        "detail": "A soft cleaning cloth with a pale blue edge."
+      }
+    },
+    {
+      "family_id": "sheets-f047",
+      "semantic_m": {
+        "item": "Wooden phone cradle",
+        "detail": "A simple phone cradle with a natural wood finish."
+      }
+    },
+    {
+      "family_id": "sheets-f048",
+      "semantic_m": {
+        "item": "Black tablet stand",
+        "detail": "An adjustable tablet stand with a black base."
+      }
+    },
+    {
+      "family_id": "sheets-f049",
+      "semantic_m": {
+        "item": "Round desk clock",
+        "detail": "A round desk clock with a plain cream face."
+      }
+    },
+    {
+      "family_id": "sheets-f050",
+      "semantic_m": {
+        "item": "Foam wrist rest",
+        "detail": "A low wrist rest with a dark foam surface."
+      }
+    },
+    {
+      "family_id": "sheets-f051",
+      "semantic_m": {
+        "item": "Clear keyboard cover",
+        "detail": "A thin keyboard cover with a transparent finish."
+      }
+    },
+    {
+      "family_id": "sheets-f052",
+      "semantic_m": {
+        "item": "Green earbud case",
+        "detail": "A compact earbud case with a muted green shell."
+      }
+    },
+    {
+      "family_id": "sheets-f053",
+      "semantic_m": {
+        "item": "Canvas laptop sleeve",
+        "detail": "A padded laptop sleeve with a natural canvas shell."
+      }
+    },
+    {
+      "family_id": "sheets-f054",
+      "semantic_m": {
+        "item": "Metal storage tin",
+        "detail": "A small storage tin with a brushed metal lid."
+      }
+    },
+    {
+      "family_id": "sheets-f055",
+      "semantic_m": {
+        "item": "Mesh pencil holder",
+        "detail": "A cylindrical pencil holder with a black mesh wall."
+      }
+    },
+    {
+      "family_id": "sheets-f056",
+      "semantic_m": {
+        "item": "Wooden coaster",
+        "detail": "A round coaster with a smooth wooden surface."
+      }
+    },
+    {
+      "family_id": "sheets-f057",
+      "semantic_m": {
+        "item": "Ceramic desk mug",
+        "detail": "A plain ceramic mug with a light gray glaze."
+      }
+    },
+    {
+      "family_id": "sheets-f058",
+      "semantic_m": {
+        "item": "Steel water bottle",
+        "detail": "A narrow water bottle with a brushed steel body."
+      }
+    },
+    {
+      "family_id": "sheets-f059",
+      "semantic_m": {
+        "item": "Foam footrest",
+        "detail": "A low footrest with a firm charcoal foam surface."
+      }
+    },
+    {
+      "family_id": "sheets-f060",
+      "semantic_m": {
+        "item": "Fabric seat cushion",
+        "detail": "A flat seat cushion with a soft navy fabric cover."
+      }
+    },
+    {
+      "family_id": "sheets-f061",
+      "semantic_m": {
+        "item": "Recycled paper pad",
+        "detail": "A compact paper pad with lightly textured pages."
+      }
+    },
+    {
+      "family_id": "sheets-f062",
+      "semantic_m": {
+        "item": "Chalkboard sign",
+        "detail": "A small chalkboard sign with a natural wood frame."
+      }
+    },
+    {
+      "family_id": "sheets-f063",
+      "semantic_m": {
+        "item": "Acrylic label holder",
+        "detail": "A clear label holder with a flat acrylic front."
+      }
+    },
+    {
+      "family_id": "sheets-f064",
+      "semantic_m": {
+        "item": "Page flag dispenser",
+        "detail": "A compact page flag dispenser with a white shell."
+      }
+    }
+  ]
+}
