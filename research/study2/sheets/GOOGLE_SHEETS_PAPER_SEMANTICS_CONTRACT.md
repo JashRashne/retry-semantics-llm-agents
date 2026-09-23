@@ -1,6 +1,6 @@
 # Google Sheets Study-2 paper semantics and observer binding
 
-**PROSPECTIVE DRAFT / NOT FROZEN**
+**FROZEN PROVIDER-SPECIFIC CONTRACT — RECONCILED TO FROZEN CROSS-PROVIDER PROTOCOL**
 
 **STUDY-2 PAPER OBSERVATIONS = 0**
 
@@ -12,14 +12,18 @@ Academic byline: J. Rashne
 
 ## 1. Authority and evidence boundary
 
-This is the prospective Google Sheets provider binding, not a 64-family catalogue,
+This is the frozen Google Sheets provider-specific binding, not a 64-family catalogue,
 paper manifest, executable adapter/evaluator, analysis amendment, readiness lock,
 or collection authorization. `research/protocol/primary_experiment_v1.md` and
 `primary_create_v1_3_analysis_plan.md` govern the four-arm science, state-only
 endpoint, and evaluability. `STUDY2_EXTERNAL_PROVIDER_AMENDMENT_V1.md` keeps
-collection blocked. The unfrozen `STUDY2_CROSS_PROVIDER_PROTOCOL_V1.md` owns
-external logical pairing and OBS-1; this document supplies Sheets input to it,
-not final cross-provider offsets or a horizon.
+collection blocked. The frozen `research/protocol/STUDY2_CROSS_PROVIDER_PROTOCOL_V1.md`
+(SHA-256 `d4d20ddba32dd80249f116463d57d92d12cc762d844cb6309099604a242035b2`)
+owns external logical pairing and the OBS-1 schedule. The Sheets provider-specific
+revision with SHA-256 `141e896e5163017bae691af3eedeffb2781b9936fa65fce45808de81e0ea3ccf`
+passed independent hostile audit as a prospective input and is now mechanically
+reconciled to that frozen protocol. Its provider semantics and observer-cost
+inputs are unchanged. **NO PROVIDER-SPECIFIC ANALYSIS AMENDMENT REQUIRED.**
 
 The frozen Sheets reconnaissance, offline engineering contract, live preparation,
 Phase 1–4 live-go records, fixtures, adapter/observer code and tests, and
@@ -31,7 +35,7 @@ post-write readback, model continuation, or paper observation. The candidate
 AppendCells serializer and whole-grid verifier were tested offline with fake
 wires; they are not a paper adapter. The retained engineering spreadsheet is
 closed to further engineering-qualification requests and is not selected for
-paper work. The frozen Razorpay contract and hostile-audited GitHub draft are
+paper work. The frozen Razorpay and reconciled GitHub contracts are
 structural examples only; their observer authority, identifiers, and visibility
 rules do not transfer to Sheets.
 
@@ -441,25 +445,25 @@ policy dispatch capability while reusing stored application request bytes.
 
 ## 11. INPUT TO CROSS-PROVIDER OBS-1
 
-These are **Sheets observer-cost facts and prospective caps**, not final
-cross-provider offsets, number of rounds, or observation horizon:
+These are **Sheets observer-cost facts and caps**; the frozen cross-provider
+protocol pinned in Section 1 controls final offsets, rounds and horizon:
 
 | Cost / authority item | Sheets input to OBS-1 |
 | --- | --- |
 | One complete baseline, model-selected read, constructor confirmation, or scheduled observation | **1** literal `spreadsheets.get` provider GET for the full `A1:C100` selected tab; no `batchGet` or pagination. Each occurrence is a separate request. |
-| Provider request time | Proposed common hard **30 seconds end to end per GET**; one complete Sheets observation therefore uses at most 30 request seconds. A socket-only timeout does not meet this cap. |
+| Provider request time | Frozen common hard **30 seconds end to end per GET**; one complete Sheets observation therefore uses at most 30 request seconds. A socket-only timeout does not meet this cap. |
 | Local processing | Reserve at most **10 seconds** per read for bounded ≤1 MiB response parsing, full 100×3 scan, safe evidence persistence and projection, to be enforced/qualified offline; total per complete observation cap **40 seconds**. Failure/overrun is incomplete, not a zero result. |
 | Constructor cost | H0 needs one clean baseline GET and certified non-dispatch; H1 needs one clean baseline GET, one original POST, and **one additional complete GET** to confirm exactly one row before policy entry. A successful POST acknowledgement alone is insufficient. |
 | Whole bounded state | Normally returned by one request **if** the paper fixture has exactly the declared extent and the strict paper parser accepts the complete grid. No second range/page is needed. |
 | Engineering visibility evidence | The sole real engineering GET was a successful **empty baseline**, before any AppendCells mutation. It observed **no delayed read visibility** and supplies **no post-write latency estimate**. |
-| Scheduled read need | **No Sheets-specific multiple scheduled reads are methodologically required** once one complete read's authority and post-write visibility are qualified. OBS-1 may still mandate multiple common/scheduled rounds; this contract does not select them. One model read never bundles repeats. |
+| Scheduled read need | **No Sheets-specific multiple scheduled reads are methodologically required** once one complete read's authority and post-write visibility are qualified. Frozen OBS-1 controls the scheduled round count; this contract does not independently select it. One model read never bundles repeats. |
 | Immediate certificate | A successful, structurally complete, consistent paper read can certify the **current bounded state immediately after parsing** under Section 5's qualified authority/isolation conditions; a later contradictory read invalidates or requires explanation. |
 | Failed/incomplete read | Zero negative proof and no exact count; preserve independently verified positives, record failure, obey fixed OBS-1 schedule/stop rule, and leave primary state unset/non-evaluable unless another allowed exact/positive route suffices. No outcome-adaptive extra GET. |
 
-OBS-1 must budget each selected Sheets round as one GET plus local allowance,
+Frozen OBS-1 budgets each selected Sheets round as one GET plus local allowance,
 constructor confirmation separately, and any model-selected reads under the
-three-action budget. It must decide fixed offsets, number of scheduled rounds,
-and common maximum horizon across providers. No Sheets visibility latency is
+three-action budget. Its fixed offsets, scheduled round count and common
+maximum horizon control; no Sheets visibility latency is
 inferred from the engineering empty-grid result.
 
 ## 12. Paper readiness and status ledger
@@ -481,9 +485,9 @@ None of those live qualifications is performed here.
 
 | Item | Status |
 | --- | --- |
-| Selected append-row semantics, 100×3 bounded paper scope, column-A arm correlation, strict complete GET, state/cardinality/projection rules, and proposed model tools | **RESOLVED IN SHEETS PAPER CONTRACT** as prospective design. |
-| Projected logical pairing and one family-wide `M` → arm-local `W_arm` | **DEFINED IN SHEETS PAPER CONTRACT**; final acceptance of external paired-state equivalence **REQUIRES CROSS-PROVIDER PROTOCOL FREEZE**. |
-| Exact fixed read offsets, scheduled round count, terminal horizon and shared timing/failure rules | **REQUIRES CROSS-PROVIDER OBS-1**. This document supplies one GET/40-second total proposed cost and H1 constructor read count only. |
+| Selected append-row semantics, 100×3 bounded paper scope, column-A arm correlation, strict complete GET, state/cardinality/projection rules, and proposed model tools | **RESOLVED IN SHEETS PAPER CONTRACT** as frozen provider-specific design; physical paper scope and implementation remain unqualified. |
+| Projected logical pairing and one family-wide `M` → arm-local `W_arm` | **DEFINED IN SHEETS PAPER CONTRACT**; the external projected-state-equivalence protocol-freeze dependency is **SATISFIED** by the frozen cross-provider protocol pinned in Section 1. |
+| Exact fixed read offsets, scheduled round count, terminal horizon and shared timing/failure rules | Cross-provider OBS-1 freeze dependency **SATISFIED** by the frozen schedule pinned in Section 1; that protocol controls final timing. This document supplies one GET/40-second total cost and H1 constructor read count only. |
 | Actual paper fixture, authority/visibility/correlation/cardinality qualification, transport, model adapter, catalogue, manifest, evaluator, offline tests, hostile audit and final readiness | **REQUIRES PAPER IMPLEMENTATION / MANIFEST / EVALUATOR**. Engineering qualification does not close these. |
 | Current provider-specific impossibility | **FATAL SHEETS BLOCKER: none established prospectively.** Failure to obtain isolated bounded placement, reliable marker round-trip, complete authoritative read, or exact-one H1 construction before collection becomes a fatal pre-data Sheets blocker; it cannot be waived after outcomes. |
 
@@ -491,7 +495,14 @@ The frozen engineering counters remain: OAuth attempts **9**; accepted
 acquisitions **6**; real spreadsheet CREATEs **1**; real Sheets mutations **1**
 (that CREATE); real GET dispatches **1**; successful real GETs **1**; duplicate
 engineering CREATEs **0**; **paper observations 0**. Those are engineering
-provenance, not paper outcomes. This prospective contract requires hostile audit
-before it may inform OBS-1. Cross-provider protocol freeze, all downstream
-paper readiness gates and separate explicit collection authorization are still
-required. **COLLECTION BLOCKED.**
+provenance, not paper outcomes. The hostile-audited provider semantics are
+mechanically reconciled to the frozen cross-provider protocol. The remaining
+order is: record the no-analysis-amendment decision → provider 64-family
+catalogue → paper manifest selecting one exact physical topology for the 100×3
+arm scope → paper adapter/evaluator and offline adversarial validation → select
+and qualify a real non-production spreadsheet/tab with paper provisioning,
+marker round-trip, authoritative post-write read, transport and live readiness
+→ final cross-artifact hostile audit/readiness freeze → separate explicit
+collection authorization → only then Study-2 observation #1. No real paper
+spreadsheet has been selected. Sheets is **NOT COLLECTION-READY**.
+**STUDY-2 PAPER OBSERVATIONS = 0. COLLECTION BLOCKED.**

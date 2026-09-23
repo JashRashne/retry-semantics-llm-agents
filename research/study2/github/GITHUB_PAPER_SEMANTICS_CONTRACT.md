@@ -1,6 +1,6 @@
 # GitHub Study-2 paper semantics and observer binding
 
-**PROSPECTIVE DRAFT / NOT FROZEN**
+**FROZEN PROVIDER-SPECIFIC CONTRACT — RECONCILED TO FROZEN CROSS-PROVIDER PROTOCOL**
 
 **STUDY-2 PAPER OBSERVATIONS = 0**
 
@@ -12,17 +12,20 @@ Academic byline: J. Rashne
 
 ## 1. Authority and evidence boundary
 
-This is a prospective GitHub provider contract, not a scenario catalogue,
+This is the frozen GitHub provider-specific contract, not a scenario catalogue,
 paper manifest, evaluator, readiness freeze, or collection authorization.
 `research/protocol/primary_experiment_v1.md` and
 `primary_create_v1_3_analysis_plan.md` control the scientific family,
 treatments, state-only outcome, and analysis eligibility.
 `STUDY2_EXTERNAL_PROVIDER_AMENDMENT_V1.md` controls the global collection
-gate. The still-unfrozen `STUDY2_CROSS_PROVIDER_PROTOCOL_V1.md` controls the
-external projected-state abstraction, common model/prompt and observer caps;
-its OBS-1 offsets/horizon remain unresolved. This GitHub contract supplies
-provider-specific semantics and cost inputs to OBS-1. It cannot choose those
-offsets or amend the frozen analysis.
+gate. The frozen `research/protocol/STUDY2_CROSS_PROVIDER_PROTOCOL_V1.md`
+(SHA-256 `d4d20ddba32dd80249f116463d57d92d12cc762d844cb6309099604a242035b2`)
+controls the external projected-state abstraction, common model/prompt,
+observer caps, and OBS-1 schedule. The GitHub provider-specific revision with
+SHA-256 `590afd3b6055dee994827157a62a777a5d0fbe834ec71bba0011f38389d62bcb`
+passed independent hostile audit as a prospective input and is now mechanically
+reconciled to that frozen protocol. Its provider semantics and observer-cost
+inputs are unchanged. **NO PROVIDER-SPECIFIC ANALYSIS AMENDMENT REQUIRED.**
 
 Source status matters. `GITHUB_SEMANTICS_DRAFT.md`,
 `GITHUB_ADAPTER_ENGINEERING_DRAFT.md`, `github_semantics.py`,
@@ -257,10 +260,10 @@ issues attributable to a single POST contradict the operational premise and
 void the resource-count sizing assumption. Fail the affected traversal/run
 closed; never extend the cap outcome-adaptively.
 
-**INPUT TO CROSS-PROVIDER OBS-1, not final timing selection:** a complete
+**PROVIDER-COST INPUT TO FROZEN CROSS-PROVIDER OBS-1:** a complete
 permitted paper traversal uses **1–16 GET requests**, depending on actual
 next-Link exhaustion; its maximum request time is `16 × 30 = 480` seconds
-under the proposed common end-to-end 30-second request cap. Allow 60 more
+under the frozen common end-to-end 30-second request cap. Allow 60 more
 seconds for bounded local decoding/validation/persistence, yielding a
 **540-second per-traversal elapsed safety cap**. The engineering adapter's
 30-second *socket* timeout does not enforce that end-to-end cap, especially
@@ -280,15 +283,16 @@ multiple predeclared reconciliation opportunities; a single immediate
 structurally complete zero is not absence evidence. H1 constructor needs
 the Section 7 certificate before policy entry. A completed constructor
 traversal with zero arm matches does not certify construction; follow only
-the future prospectively frozen constructor observation policy. More than one
+the frozen cross-provider constructor observation policy. More than one
 arm match is a provider/protocol contradiction or invalid H1 construction,
 according to one-dispatch attribution evidence. One match with wrong identity
 or content invalidates construction. If certification cannot be obtained
-within the future fixed constructor bound, H1 family construction fails
+within the frozen constructor bound, H1 family construction fails
 rather than becoming H0. Post-recovery rounds and total horizon belong
-to cross-provider **OBS-1**. This contract does not select offsets, number
-of rounds, constructor wait or horizon, nor infer a provider visibility
-latency from engineering. OBS-1 must account for 540 seconds per required
+to frozen cross-provider **OBS-1**, which controls their exact schedule.
+This contract does not independently select offsets, number of rounds,
+constructor wait or horizon, nor infer a provider visibility latency from
+engineering. OBS-1 accounts for 540 seconds per required
 traversal, the number of constructor/scheduled traversals it authorizes,
 model-selected reads under the three-action budget, and the 64-family
 accumulation. A failed/incomplete traversal gives lower bounds only; a
@@ -466,19 +470,22 @@ visibility. Any later model continuation uses only this projected result.
 
 | Item | Status and consequence |
 | --- | --- |
-| Four-arm M/H0/H1/Replay/Regeneration and projected logical pairing | GitHub's provider-specific `M -> W_arm` mapping, suffix projection and proposed logical-state realization are **DEFINED IN GITHUB PAPER CONTRACT**; implementation must assert one `M` hash and pair equality. Final acceptance of the projection and external paired-state equivalence **REQUIRES CROSS-PROVIDER PROTOCOL FREEZE**. |
-| Issue endpoint, semantic title/body, raw-body suffix, arm correlation, LIST identity and structural traversal | **RESOLVED IN GITHUB PAPER CONTRACT** as prospective choices; exact paper encoding/round-trip and scope must still pass implementation/readiness audit. |
+| Four-arm M/H0/H1/Replay/Regeneration and projected logical pairing | GitHub's provider-specific `M -> W_arm` mapping, suffix projection and logical-state realization are **DEFINED IN GITHUB PAPER CONTRACT**; implementation must assert one `M` hash and pair equality. The external projected-state-equivalence protocol-freeze dependency is **SATISFIED** by the frozen cross-provider protocol pinned in Section 1. |
+| Issue endpoint, semantic title/body, raw-body suffix, arm correlation, LIST identity and structural traversal | **RESOLVED IN GITHUB PAPER CONTRACT** as frozen provider-specific choices; exact paper encoding/round-trip and scope must still pass implementation/readiness audit. |
 | Conditional 16-page/540-second cap and ≤860 raw pre-data baseline | **RESOLVED IN GITHUB PAPER CONTRACT** as a conditional cap; selected repository and complete baseline remain unproven. |
-| Exact constructor/post-recovery read offsets, number of rounds and horizon | **REQUIRES CROSS-PROVIDER OBS-1**; this document supplies 1–16 requests/540 seconds per traversal and delayed-visibility caution, not final timing. |
+| Exact constructor/post-recovery read offsets, number of rounds and horizon | Cross-provider OBS-1 freeze dependency **SATISFIED** by the frozen schedule pinned in Section 1; that protocol controls final timing. This document supplies 1–16 requests/540 seconds per traversal and delayed-visibility caution. |
 | Paper scope, exclusive-writer attestation, suffix preservation, exact stored-request Replay, end-to-end deadlines, bounded observer wrapper, model projection and offline validation | **REQUIRES PAPER IMPLEMENTATION / MANIFEST / EVALUATOR**; readiness freeze must verify sufficient provider request/rate-limit and secondary-limit headroom for constructor/LIST traversals, plus the frozen serial scheduling/failure policy. Existing engineering code grants no paper readiness. |
 | Provider infeasibility | **FATAL GITHUB BLOCKER: none established prospectively**. Failure to obtain a scope meeting baseline/isolation, suffix preservation, projected H1 construction or evaluable terminal-state rules before data would become fatal; it cannot be waived after outcomes. |
 
-After independent hostile audit, this draft supplies GitHub's structural
-coverage rule, conditional request/time cost and failure handling needed
-for the cross-provider protocol to resolve OBS-1 once analogous Sheets
-binding exists. It does **not** itself resolve OBS-1 or prove GitHub paper
-feasibility in an unselected repository. Freeze the paper bindings and
-cross-provider observer schedule before catalogue, manifest, evaluator,
-final cross-artifact readiness audit and separate collection authorization.
+The hostile-audited provider semantics are frozen against the cross-provider
+protocol; its projected-state equivalence and OBS-1 are frozen separately.
+This contract does **not** prove GitHub paper feasibility in an unselected
+repository. The remaining order is: record the no-analysis-amendment decision
+→ provider 64-family catalogue → paper manifest → paper adapter/evaluator and
+offline adversarial validation → select and qualify an exact non-production
+repository scope, including the fully enumerated ≤860 baseline, exclusive
+writer and rate-limit readiness → final cross-artifact hostile audit/readiness
+freeze → separate explicit collection authorization → only then Study-2
+observation #1. GitHub is **NOT COLLECTION-READY**.
 
 **STUDY-2 PAPER OBSERVATIONS = 0. COLLECTION REMAINS BLOCKED.**
