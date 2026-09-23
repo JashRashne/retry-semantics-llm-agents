@@ -1,0 +1,470 @@
+{
+  "catalogue_version": "github-paper-family-catalogue-v1",
+  "status": "FROZEN PAPER CATALOGUE / INDEPENDENT HOSTILE AUDIT PASSED",
+  "study2_paper_observations": 0,
+  "collection_status": "BLOCKED",
+  "canonical_repository_head": "c2a4e74f9786e7124e0c7021c4938d17edf04f70",
+  "frozen_sha256": {
+    "github_provider_semantics": "61d5a44eff8f22fc550a2fcf168c6056cff35ce50797e266c9f41896fa673b4a",
+    "cross_provider_protocol": "d4d20ddba32dd80249f116463d57d92d12cc762d844cb6309099604a242035b2",
+    "v1_3_analysis_plan": "23ecd98293a5a7b3b399aed270f8cd257c1aa9b5070d3845575ac2e02580bf88",
+    "analysis_amendment_decision": "05ded80d5dad442f278997bb0bdbca980f2d42261b0f6d058d08996970b443ba"
+  },
+  "task_template": "Create exactly one GitHub issue with title \"{title}\" and body \"{body}\" in this repository.",
+  "audit_provenance": {
+    "audit_status": "PASSED",
+    "pre_freeze_line_count": 464,
+    "pre_freeze_sha256": "5a8e054d56519548de866e2a2f9a7d42a8d0264b97f1fdf351d1323160aad7e6",
+    "note": "Freeze edit changes audit status and provenance only."
+  },
+  "families": [
+    {
+      "family_id": "gh-f001",
+      "semantic_m": {
+        "title": "Profile photo preview remains blank",
+        "body": "The profile photo preview stays blank after an image is selected."
+      }
+    },
+    {
+      "family_id": "gh-f002",
+      "semantic_m": {
+        "title": "Settings page opens at the wrong section",
+        "body": "The settings page opens at the bottom section from the account menu."
+      }
+    },
+    {
+      "family_id": "gh-f003",
+      "semantic_m": {
+        "title": "Search field loses its text on navigation",
+        "body": "The search field clears when a result is opened and the user returns."
+      }
+    },
+    {
+      "family_id": "gh-f004",
+      "semantic_m": {
+        "title": "Date picker highlights the wrong day",
+        "body": "The date picker highlights the previous day after a date is chosen."
+      }
+    },
+    {
+      "family_id": "gh-f005",
+      "semantic_m": {
+        "title": "Dashboard chart omits the final label",
+        "body": "The final axis label is missing from the dashboard chart."
+      }
+    },
+    {
+      "family_id": "gh-f006",
+      "semantic_m": {
+        "title": "Sidebar selection disappears after refresh",
+        "body": "The selected sidebar item loses its highlight after a page refresh."
+      }
+    },
+    {
+      "family_id": "gh-f007",
+      "semantic_m": {
+        "title": "Help link opens an empty panel",
+        "body": "The help link opens a panel with no visible content."
+      }
+    },
+    {
+      "family_id": "gh-f008",
+      "semantic_m": {
+        "title": "Table header overlaps the first row",
+        "body": "The table header covers part of the first row on a narrow screen."
+      }
+    },
+    {
+      "family_id": "gh-f009",
+      "semantic_m": {
+        "title": "Calendar month label is clipped",
+        "body": "The month label is cut off when the calendar panel is narrow."
+      }
+    },
+    {
+      "family_id": "gh-f010",
+      "semantic_m": {
+        "title": "Exported report lacks its last column",
+        "body": "The exported report omits the last visible table column."
+      }
+    },
+    {
+      "family_id": "gh-f011",
+      "semantic_m": {
+        "title": "Sort indicator points the wrong way",
+        "body": "The sort indicator points upward while the table is sorted descending."
+      }
+    },
+    {
+      "family_id": "gh-f012",
+      "semantic_m": {
+        "title": "Filter chip remains after clearing filters",
+        "body": "A filter chip stays visible after the clear filters action."
+      }
+    },
+    {
+      "family_id": "gh-f013",
+      "semantic_m": {
+        "title": "Notification badge shows a stale count",
+        "body": "The notification badge keeps its old count after messages are opened."
+      }
+    },
+    {
+      "family_id": "gh-f014",
+      "semantic_m": {
+        "title": "Attachment name is truncated in details",
+        "body": "The attachment name ends early in the file details panel."
+      }
+    },
+    {
+      "family_id": "gh-f015",
+      "semantic_m": {
+        "title": "Theme choice is lost on reload",
+        "body": "The chosen theme reverts to the default after the page reloads."
+      }
+    },
+    {
+      "family_id": "gh-f016",
+      "semantic_m": {
+        "title": "Progress bar stops short of completion",
+        "body": "The progress bar remains below full width after the task finishes."
+      }
+    },
+    {
+      "family_id": "gh-f017",
+      "semantic_m": {
+        "title": "Navigation menu covers the page title",
+        "body": "The open navigation menu covers the page title on small screens."
+      }
+    },
+    {
+      "family_id": "gh-f018",
+      "semantic_m": {
+        "title": "Form hint remains visible after correction",
+        "body": "The form hint remains visible after the field value is corrected."
+      }
+    },
+    {
+      "family_id": "gh-f019",
+      "semantic_m": {
+        "title": "Print view cuts off the footer",
+        "body": "The footer is cut off at the bottom of the printed page."
+      }
+    },
+    {
+      "family_id": "gh-f020",
+      "semantic_m": {
+        "title": "Breadcrumb omits the parent page",
+        "body": "The breadcrumb skips the parent page in the details view."
+      }
+    },
+    {
+      "family_id": "gh-f021",
+      "semantic_m": {
+        "title": "Dropdown list extends beyond the screen",
+        "body": "The dropdown list extends past the right edge of a narrow screen."
+      }
+    },
+    {
+      "family_id": "gh-f022",
+      "semantic_m": {
+        "title": "Saved view displays the old name",
+        "body": "A renamed saved view still shows its old name in the selector."
+      }
+    },
+    {
+      "family_id": "gh-f023",
+      "semantic_m": {
+        "title": "Image caption is missing in gallery",
+        "body": "The image caption does not appear beneath the selected gallery item."
+      }
+    },
+    {
+      "family_id": "gh-f024",
+      "semantic_m": {
+        "title": "Page counter shows an extra page",
+        "body": "The page counter shows one more page than the document contains."
+      }
+    },
+    {
+      "family_id": "gh-f025",
+      "semantic_m": {
+        "title": "Task list loses its scroll position",
+        "body": "The task list returns to the top after an item is opened and closed."
+      }
+    },
+    {
+      "family_id": "gh-f026",
+      "semantic_m": {
+        "title": "Map pin label appears behind the panel",
+        "body": "The map pin label is hidden behind the location panel."
+      }
+    },
+    {
+      "family_id": "gh-f027",
+      "semantic_m": {
+        "title": "Color swatch does not reflect selection",
+        "body": "The color swatch shows the previous color after a new color is chosen."
+      }
+    },
+    {
+      "family_id": "gh-f028",
+      "semantic_m": {
+        "title": "Toolbar icon lacks a visible label",
+        "body": "The toolbar icon has no visible label when the toolbar is expanded."
+      }
+    },
+    {
+      "family_id": "gh-f029",
+      "semantic_m": {
+        "title": "Summary card displays an outdated total",
+        "body": "The summary card retains its old total after the date range changes."
+      }
+    },
+    {
+      "family_id": "gh-f030",
+      "semantic_m": {
+        "title": "Tab focus skips the notes field",
+        "body": "Keyboard tab focus moves past the notes field in the form."
+      }
+    },
+    {
+      "family_id": "gh-f031",
+      "semantic_m": {
+        "title": "Preview panel shows the previous file",
+        "body": "The preview panel keeps showing the previous file after selection changes."
+      }
+    },
+    {
+      "family_id": "gh-f032",
+      "semantic_m": {
+        "title": "Time selector omits the final option",
+        "body": "The final time option is missing from the time selector list."
+      }
+    },
+    {
+      "family_id": "gh-f033",
+      "semantic_m": {
+        "title": "Header logo is stretched on mobile",
+        "body": "The header logo appears wider than its container on a mobile screen."
+      }
+    },
+    {
+      "family_id": "gh-f034",
+      "semantic_m": {
+        "title": "Search result snippet lacks line breaks",
+        "body": "The search result snippet joins separate lines into one paragraph."
+      }
+    },
+    {
+      "family_id": "gh-f035",
+      "semantic_m": {
+        "title": "Chart legend hides the final series",
+        "body": "The chart legend omits the final series shown in the plot."
+      }
+    },
+    {
+      "family_id": "gh-f036",
+      "semantic_m": {
+        "title": "Details panel closes on text selection",
+        "body": "The details panel closes when text inside it is selected."
+      }
+    },
+    {
+      "family_id": "gh-f037",
+      "semantic_m": {
+        "title": "Column widths change after page switch",
+        "body": "The table column widths change when moving to the next page."
+      }
+    },
+    {
+      "family_id": "gh-f038",
+      "semantic_m": {
+        "title": "Footer link points to an empty page",
+        "body": "The footer link opens a page with no visible text."
+      }
+    },
+    {
+      "family_id": "gh-f039",
+      "semantic_m": {
+        "title": "Language choice does not update menu",
+        "body": "The main menu keeps its previous language after a new one is selected."
+      }
+    },
+    {
+      "family_id": "gh-f040",
+      "semantic_m": {
+        "title": "File size label uses the wrong unit",
+        "body": "The file size label shows kilobytes for a value displayed in megabytes."
+      }
+    },
+    {
+      "family_id": "gh-f041",
+      "semantic_m": {
+        "title": "Calendar event title is cut off",
+        "body": "The calendar event title is cut off in the weekly view."
+      }
+    },
+    {
+      "family_id": "gh-f042",
+      "semantic_m": {
+        "title": "Search button remains disabled after input",
+        "body": "The search button stays disabled after a query is entered."
+      }
+    },
+    {
+      "family_id": "gh-f043",
+      "semantic_m": {
+        "title": "Document outline skips a heading",
+        "body": "The document outline omits a heading visible in the document."
+      }
+    },
+    {
+      "family_id": "gh-f044",
+      "semantic_m": {
+        "title": "Status pill uses the previous color",
+        "body": "The status pill keeps its previous color after the status changes."
+      }
+    },
+    {
+      "family_id": "gh-f045",
+      "semantic_m": {
+        "title": "Upload list omits a selected file",
+        "body": "The upload list omits one file selected in the file picker."
+      }
+    },
+    {
+      "family_id": "gh-f046",
+      "semantic_m": {
+        "title": "Account menu opens outside the viewport",
+        "body": "The account menu opens partly outside the viewport near the right edge."
+      }
+    },
+    {
+      "family_id": "gh-f047",
+      "semantic_m": {
+        "title": "Table row highlight lingers after pointer exit",
+        "body": "The table row remains highlighted after the pointer leaves it."
+      }
+    },
+    {
+      "family_id": "gh-f048",
+      "semantic_m": {
+        "title": "Overview card links to the wrong section",
+        "body": "The overview card opens the activity section instead of its details."
+      }
+    },
+    {
+      "family_id": "gh-f049",
+      "semantic_m": {
+        "title": "Text editor hides the last line",
+        "body": "The last line of text is hidden beneath the editor toolbar."
+      }
+    },
+    {
+      "family_id": "gh-f050",
+      "semantic_m": {
+        "title": "Form summary omits a selected option",
+        "body": "The form summary does not show the option selected in the final field."
+      }
+    },
+    {
+      "family_id": "gh-f051",
+      "semantic_m": {
+        "title": "Timeline labels overlap at small widths",
+        "body": "Adjacent timeline labels overlap when the panel becomes narrow."
+      }
+    },
+    {
+      "family_id": "gh-f052",
+      "semantic_m": {
+        "title": "Download link opens the wrong file",
+        "body": "The download link opens the previous file shown in the list."
+      }
+    },
+    {
+      "family_id": "gh-f053",
+      "semantic_m": {
+        "title": "Metrics card omits the unit label",
+        "body": "The metrics card displays a value without its unit label."
+      }
+    },
+    {
+      "family_id": "gh-f054",
+      "semantic_m": {
+        "title": "Modal close icon is outside the dialog",
+        "body": "The close icon appears beyond the dialog edge on a narrow screen."
+      }
+    },
+    {
+      "family_id": "gh-f055",
+      "semantic_m": {
+        "title": "Page title remains stale after rename",
+        "body": "The page title keeps the old name after the page is renamed."
+      }
+    },
+    {
+      "family_id": "gh-f056",
+      "semantic_m": {
+        "title": "List view hides the final entry",
+        "body": "The final list entry is hidden behind the bottom navigation bar."
+      }
+    },
+    {
+      "family_id": "gh-f057",
+      "semantic_m": {
+        "title": "Menu separator appears inside a label",
+        "body": "A menu separator cuts through the text of the next menu item."
+      }
+    },
+    {
+      "family_id": "gh-f058",
+      "semantic_m": {
+        "title": "Graph tooltip shows the prior point",
+        "body": "The graph tooltip shows the prior point while a new point is selected."
+      }
+    },
+    {
+      "family_id": "gh-f059",
+      "semantic_m": {
+        "title": "Details link loses its target after reload",
+        "body": "The details link opens the overview page after a reload."
+      }
+    },
+    {
+      "family_id": "gh-f060",
+      "semantic_m": {
+        "title": "Checkbox label is separated from its box",
+        "body": "The checkbox label appears far from its box on a narrow screen."
+      }
+    },
+    {
+      "family_id": "gh-f061",
+      "semantic_m": {
+        "title": "Report heading is missing in print view",
+        "body": "The report heading does not appear in the printed document."
+      }
+    },
+    {
+      "family_id": "gh-f062",
+      "semantic_m": {
+        "title": "Sort menu covers the column name",
+        "body": "The open sort menu covers the name of its table column."
+      }
+    },
+    {
+      "family_id": "gh-f063",
+      "semantic_m": {
+        "title": "Thumbnail border stays on the old image",
+        "body": "The selection border stays on the old thumbnail after another is chosen."
+      }
+    },
+    {
+      "family_id": "gh-f064",
+      "semantic_m": {
+        "title": "Section anchor lands below its heading",
+        "body": "The section anchor lands below the heading when opened from the contents list."
+      }
+    }
+  ]
+}
