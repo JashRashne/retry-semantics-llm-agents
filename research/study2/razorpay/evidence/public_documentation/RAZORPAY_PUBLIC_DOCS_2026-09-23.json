@@ -1,0 +1,480 @@
+{
+  "human_create_order": {
+    "description": "Use this endpoint to create an order with basic details such as amount and currency.",
+    "duplicate_receipt_error": "An order with the same receipt value has already been created on this account. receipt is treated as an idempotency key, so a second create call with the same value is rejected.",
+    "duplicate_receipt_http_status": 400,
+    "heading": "Create an Order",
+    "notes_description": "Key-value pair that can be used to store additional information about the entity. Maximum 15 key-value pairs, 256 characters (maximum) each.",
+    "operation": "POST /v1/orders",
+    "request_receipt_description": "Receipt number that corresponds to this order, set for your internal reference. Can have a maximum length of 40 characters and has to be unique.",
+    "response_entity_description": "Name of the entity. Here, it is order .",
+    "response_id_description": "The unique identifier of the order.",
+    "source_url": "https://razorpay.com/docs/api/orders/create/",
+    "success_response_example": {
+      "amount": 5000,
+      "amount_due": 5000,
+      "amount_paid": 0,
+      "attempts": 0,
+      "created_at": 1756455561,
+      "currency": "INR",
+      "entity": "order",
+      "id": "order_RB58MiP5SPFYyM",
+      "notes": {
+        "key1": "value3",
+        "key2": "value2"
+      },
+      "offer_id": null,
+      "receipt": "receipt#1",
+      "status": "created"
+    }
+  },
+  "human_fetch_all_orders": {
+    "description": "Fetch all Orders using Razorpay Orders API.",
+    "from_description": "Timestamp (in Unix format) from when the orders should be fetched.",
+    "heading": "Fetch All Orders",
+    "operation": "GET /v1/orders",
+    "receipt_filter_description": "Retrieves the orders that contain the provided value for receipt.",
+    "request_count_description": "The number of orders to be fetched. The default value is 10. The maximum value is 100. This can be used for pagination, in combination with skip .",
+    "skip_description": "The number of orders to be skipped. The default value is 0 . This can be used for pagination, in combination with count .",
+    "source_url": "https://razorpay.com/docs/api/orders/fetch-all/",
+    "success_response_example": {
+      "count": 2,
+      "entity": "collection",
+      "items": [
+        {
+          "amount": 1234,
+          "amount_due": 1234,
+          "amount_paid": 0,
+          "attempts": 0,
+          "created_at": 1582637108,
+          "currency": "INR",
+          "entity": "order",
+          "id": "order_EKzX2WiEWbMxmx",
+          "notes": [],
+          "offer_id": null,
+          "receipt": "Receipt No. 1",
+          "status": "created"
+        },
+        {
+          "amount": 100,
+          "amount_due": 100,
+          "amount_paid": 0,
+          "attempts": 0,
+          "created_at": 1580300731,
+          "currency": "INR",
+          "entity": "order",
+          "id": "order_EAI5nRfThga2TU",
+          "notes": [],
+          "offer_id": null,
+          "receipt": "Receipt No. 1",
+          "status": "created"
+        }
+      ]
+    },
+    "to_description": "Timestamp (in Unix format) up till when orders are to be fetched."
+  },
+  "openapi": {
+    "components": {
+      "parameters": {
+        "count": {
+          "description": "Number of records to return per call. Maximum 100. Default 10.",
+          "in": "query",
+          "name": "count",
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "from": {
+          "description": "Unix timestamp (seconds). Fetch records created on or after this time.",
+          "in": "query",
+          "name": "from",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        "skip": {
+          "description": "Number of records to skip. Use with count for pagination. Default 0.",
+          "in": "query",
+          "name": "skip",
+          "schema": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "to": {
+          "description": "Unix timestamp (seconds). Fetch records created on or before this time.",
+          "in": "query",
+          "name": "to",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      },
+      "schemas": {
+        "Collection": {
+          "properties": {
+            "count": {
+              "description": "Number of items in the current page.",
+              "type": "integer"
+            },
+            "entity": {
+              "enum": [
+                "collection"
+              ],
+              "type": "string"
+            },
+            "items": {
+              "items": {},
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "Notes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Key-value pairs for storing custom metadata. Maximum 15 pairs. Each key and value must not exceed 256 characters.",
+          "maxProperties": 15,
+          "type": "object"
+        },
+        "Order": {
+          "properties": {
+            "amount": {
+              "description": "Order amount in paise. Example: 50000 = ₹500.",
+              "type": "integer"
+            },
+            "amount_due": {
+              "description": "Remaining unpaid amount (paise).",
+              "type": "integer"
+            },
+            "amount_paid": {
+              "description": "Total amount paid against this order (paise).",
+              "type": "integer"
+            },
+            "attempts": {
+              "description": "Number of payment attempts made.",
+              "type": "integer"
+            },
+            "created_at": {
+              "description": "Unix timestamp of order creation.",
+              "type": "integer"
+            },
+            "currency": {
+              "description": "ISO 4217 currency code. Example: INR.",
+              "type": "string"
+            },
+            "entity": {
+              "enum": [
+                "order"
+              ],
+              "type": "string"
+            },
+            "id": {
+              "description": "Unique order identifier. Prefix: order_",
+              "type": "string"
+            },
+            "notes": {
+              "$ref": "#/components/schemas/Notes"
+            },
+            "offer_id": {
+              "type": "string"
+            },
+            "offers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "receipt": {
+              "description": "Your internal receipt or order reference number.",
+              "type": "string"
+            },
+            "status": {
+              "description": "created: awaiting payment. attempted: payment attempted but not captured. paid: fully paid.",
+              "enum": [
+                "created",
+                "attempted",
+                "paid"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    },
+    "info_version": "1.0.0",
+    "openapi_version": "3.0.0",
+    "paths": {
+      "/orders": {
+        "get": {
+          "description": "Retrieve a paginated list of orders. Maximum 100 records per call.",
+          "operationId": "fetchAllOrders",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/from"
+            },
+            {
+              "$ref": "#/components/parameters/to"
+            },
+            {
+              "$ref": "#/components/parameters/count"
+            },
+            {
+              "$ref": "#/components/parameters/skip"
+            },
+            {
+              "description": "1 = orders with authorized payments only. 0 = without.",
+              "in": "query",
+              "name": "authorized",
+              "schema": {
+                "enum": [
+                  0,
+                  1
+                ],
+                "type": "integer"
+              }
+            },
+            {
+              "description": "Filter by receipt value.",
+              "in": "query",
+              "name": "receipt",
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "description": "Expand: payments, payments.card, transfers, virtual_account.",
+              "explode": true,
+              "in": "query",
+              "name": "expand[]",
+              "schema": {
+                "items": {
+                  "enum": [
+                    "payments",
+                    "payments.card",
+                    "transfers",
+                    "virtual_account"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "style": "form"
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Collection"
+                      },
+                      {
+                        "properties": {
+                          "items": {
+                            "items": {
+                              "$ref": "#/components/schemas/Order"
+                            },
+                            "type": "array"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "description": "Collection of orders."
+            },
+            "400": {
+              "$ref": "#/components/responses/400"
+            },
+            "401": {
+              "$ref": "#/components/responses/401"
+            },
+            "429": {
+              "$ref": "#/components/responses/429"
+            }
+          },
+          "summary": "Fetch all orders",
+          "tags": [
+            "Orders"
+          ]
+        },
+        "post": {
+          "description": "Create an order before initiating a payment. The returned order_id must be passed to Razorpay Checkout. An order can have multiple payment attempts but only one successful capture.",
+          "operationId": "createOrder",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "amount": 50000,
+                  "currency": "INR",
+                  "receipt": "receipt_001"
+                },
+                "schema": {
+                  "properties": {
+                    "amount": {
+                      "description": "Payment amount in paise. Example: 50000 for ₹500. Must be >= 100.",
+                      "minimum": 100,
+                      "type": "integer"
+                    },
+                    "currency": {
+                      "default": "INR",
+                      "description": "ISO 4217 currency code. Example: INR.",
+                      "type": "string"
+                    },
+                    "notes": {
+                      "$ref": "#/components/schemas/Notes"
+                    },
+                    "partial_payment": {
+                      "default": false,
+                      "description": "Allow partial payments.",
+                      "type": "boolean"
+                    },
+                    "receipt": {
+                      "description": "Your internal receipt number. Max 40 characters.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "amount",
+                    "currency"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Order"
+                  }
+                }
+              },
+              "description": "Order created."
+            },
+            "400": {
+              "$ref": "#/components/responses/400"
+            },
+            "401": {
+              "$ref": "#/components/responses/401"
+            },
+            "429": {
+              "$ref": "#/components/responses/429"
+            },
+            "500": {
+              "$ref": "#/components/responses/500"
+            }
+          },
+          "summary": "Create an order",
+          "tags": [
+            "Orders"
+          ]
+        }
+      },
+      "/orders/{id}": {
+        "get": {
+          "description": "Retrieve the full details and current status of a specific order.",
+          "operationId": "fetchOrder",
+          "parameters": [
+            {
+              "description": "Order ID (order_*).",
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Order"
+                  }
+                }
+              },
+              "description": "Order details."
+            },
+            "401": {
+              "$ref": "#/components/responses/401"
+            },
+            "404": {
+              "$ref": "#/components/responses/404"
+            },
+            "429": {
+              "$ref": "#/components/responses/429"
+            }
+          },
+          "summary": "Fetch order by ID",
+          "tags": [
+            "Orders"
+          ]
+        }
+      }
+    },
+    "server_base_path_descriptive_only": "https://api.razorpay.com/v1",
+    "source_url": "https://razorpay.com/openapi.json"
+  },
+  "retrieval_scope": {
+    "absence_scope": "No guarantee of authoritative completeness, stable ordering, snapshot consistency, total-result count, read-after-write convergence, or general visibility latency was found in those complete relevant operation/schema surfaces or the two human pages. This is documentation absence, not proof of provider behavior.",
+    "api_razorpay_com_intentionally_contacted": false,
+    "credentials_used": false,
+    "dashboard_or_account_access": false,
+    "human_pages_inspection": "Entire locally retrieved visible HTML text was inspected for the relevant operation, success, parameter, response, and receipt/error material; only relevant fragments are preserved here.",
+    "openapi_inspection": "Complete /orders POST and GET, /orders/{id} GET, referenced Order/Collection/Notes schemas, and referenced from/to/count/skip parameters were parsed and inspected.",
+    "provider_resource_operation": false,
+    "public_documentation_only": true
+  },
+  "snapshot_type": "prospective_public_documentation_provenance_only",
+  "source_metadata": [
+    {
+      "name": "create",
+      "retrieved_body_bytes": 1062757,
+      "retrieved_body_sha256": "0de19749c50f3bb949aec04e21bc26d32318fe6955748eda890531a813065acd",
+      "retrieved_utc": "2026-09-23T12:04:09.970239Z",
+      "type": "human_documentation",
+      "url": "https://razorpay.com/docs/api/orders/create/"
+    },
+    {
+      "name": "fetch_all",
+      "retrieved_body_bytes": 1001018,
+      "retrieved_body_sha256": "a288c633520f7823de2d7fdd6eacea91a9e100e8abaa04f8fec0d2fcbb54171e",
+      "retrieved_utc": "2026-09-23T12:04:10.364530Z",
+      "type": "human_documentation",
+      "url": "https://razorpay.com/docs/api/orders/fetch-all/"
+    },
+    {
+      "name": "openapi",
+      "retrieved_body_bytes": 402421,
+      "retrieved_body_sha256": "824ca9e6faef0f08da4670d219931a842a68e6c88a4015160e5f4815a5e6a9a4",
+      "retrieved_utc": "2026-09-23T12:04:10.586068Z",
+      "type": "openapi",
+      "url": "https://razorpay.com/openapi.json"
+    }
+  ],
+  "status": "PROSPECTIVE DRAFT / NOT FROZEN",
+  "study2_paper_observations": 0,
+  "study2_protocol_interpretation_not_provider_documentation": {
+    "contradiction_rule": "Positive evidence of more than one Order attributable to one recorded acknowledged Create dispatch invalidates the affected construction as an infrastructure/protocol contradiction.",
+    "correlation": "Use a harness-owned marker in notes, not receipt. The Fetch All receipt filter is unavailable for receipt-less paper correlation.",
+    "one_acknowledged_create_one_order_status": "SUPPORTED AS DOCUMENTED OPERATIONAL SEMANTICS; prospective assumption, not a mathematical or implementation-level guarantee",
+    "reason_for_omission": "A stable receipt would invoke documented duplicate-receipt rejection and could mask Replay resource multiplicity.",
+    "receipt_omission_does_not_prove_non_idempotence": true,
+    "selected_mutation": "POST /v1/orders with receipt omitted/prohibited"
+  }
+}
