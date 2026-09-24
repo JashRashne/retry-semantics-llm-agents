@@ -1,0 +1,499 @@
+{
+  "catalogue_version": "razorpay-paper-family-catalogue-v1",
+  "status": "FROZEN PAPER CATALOGUE / INDEPENDENT HOSTILE AUDIT PASSED",
+  "study2_paper_observations": 0,
+  "collection_status": "BLOCKED",
+  "canonical_repository_head": "423ecd4cb53c8466007670a620ad33c4cf537dda",
+  "frozen_sha256": {
+    "razorpay_provider_semantics": "e8cc1963e6b2a5e17c933e31a282054cf7f2c6473722693c9427702d8b591d8e",
+    "cross_provider_protocol": "d4d20ddba32dd80249f116463d57d92d12cc762d844cb6309099604a242035b2",
+    "v1_3_analysis_plan": "23ecd98293a5a7b3b399aed270f8cd257c1aa9b5070d3845575ac2e02580bf88",
+    "analysis_amendment_decision": "05ded80d5dad442f278997bb0bdbca980f2d42261b0f6d058d08996970b443ba",
+    "external_provider_amendment": "21ff3b3ca90d27a46669e12bab62de89d7ddd191ba96dfa5a8e12c0a69521ecb"
+  },
+  "semantic_m_fields": [
+    "amount",
+    "currency"
+  ],
+  "frozen_semantic_target": {
+    "amount": 200,
+    "currency": "INR"
+  },
+  "provider_constants": {
+    "mode": "Test Mode",
+    "method": "POST",
+    "path": "/v1/orders"
+  },
+  "harness_owned_excluded_from_semantic_m": [
+    "notes.retry_semantics_marker",
+    "account scope",
+    "authentication"
+  ],
+  "receipt_policy": "Omitted from every Create Order request; prohibited as a model argument and correlation key.",
+  "semantic_target_policy": {
+    "distinct_semantic_m_payloads": 1,
+    "explanation": "The 64 family IDs are separate scheduled original-generation opportunities with the same frozen semantic target. Each eligible family generates its own original model tool call once and reuses that call across its four arms.",
+    "authority": [
+      "research/study2/razorpay/RAZORPAY_PAPER_SEMANTICS_CONTRACT.md Section 2",
+      "research/protocol/STUDY2_CROSS_PROVIDER_PROTOCOL_V1.md Sections 2, 5, and 9",
+      "research/protocol/primary_create_v1_3_analysis_plan.md Sections 8 and 15"
+    ]
+  },
+  "task_template": "Create exactly one order for amount {amount} in currency {currency}.",
+  "audit_provenance": {
+    "audit_status": "PASSED",
+    "pre_freeze_line_count": 493,
+    "pre_freeze_sha256": "a8ab9a6867f93fe6c37ff7206d4a296d852b8b4f07b62f85bbb556a3b5042736",
+    "note": "Freeze edit changes audit status and provenance only."
+  },
+  "families": [
+    {
+      "family_id": "razorpay-f001",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f002",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f003",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f004",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f005",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f006",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f007",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f008",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f009",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f010",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f011",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f012",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f013",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f014",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f015",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f016",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f017",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f018",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f019",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f020",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f021",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f022",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f023",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f024",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f025",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f026",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f027",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f028",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f029",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f030",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f031",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f032",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f033",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f034",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f035",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f036",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f037",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f038",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f039",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f040",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f041",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f042",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f043",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f044",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f045",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f046",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f047",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f048",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f049",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f050",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f051",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f052",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f053",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f054",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f055",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f056",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f057",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f058",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f059",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f060",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f061",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f062",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f063",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    },
+    {
+      "family_id": "razorpay-f064",
+      "semantic_m": {
+        "amount": 200,
+        "currency": "INR"
+      }
+    }
+  ]
+}
