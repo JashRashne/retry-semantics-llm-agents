@@ -313,7 +313,8 @@ def build_paper_manifest(*, root: Path = REPOSITORY_ROOT,
         raise SheetsPaperMaterializationError("manifest allocation failed")
     value = {
         "schema": "google-sheets-paper-manifest-v1", "manifest_kind": "paper",
-        "status": "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED", "collection_status": "BLOCKED",
+        "status": "PROSPECTIVE_ACK_SCHEMA_REPAIR_PENDING_INDEPENDENT_AUDIT",
+        "collection_status": "BLOCKED",
         "study2_paper_observations": execution["study2_paper_observations"],
         "manifest_id": execution["manifest_id"],
         "paper_experiment_revision": "primary-create-v1.3",

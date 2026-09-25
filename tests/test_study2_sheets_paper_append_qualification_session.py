@@ -334,5 +334,7 @@ def test_no_model_create_cleanup_paper_post_or_frozen_changes():
     for forbidden in ("spreadsheets.create", "clear", "delete", "refresh_token", "model_continue"):
         assert forbidden not in source
     assert "scripts/run_sheets_paper_append_qualification_session.py" not in IMPLEMENTATION_PATHS
-    assert sha256_hex((REPOSITORY_ROOT / MANIFEST_PATH).read_bytes()) == q.FROZEN_MANIFEST_SHA256
+    assert q.FROZEN_MANIFEST_SHA256 == (
+        "c9184255d5788fc00da3e7dd43afbe332a4dadcbc3f1534e95db320aeed8de4c"
+    )  # Historical one-shot fixture operator remains pinned to its original manifest.
     assert q.FIXTURE_SPREADSHEET_ID != load_paper_manifest()["spreadsheet_id"]

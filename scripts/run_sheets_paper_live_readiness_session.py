@@ -31,7 +31,7 @@ from retry_semantics.study2 import sheets_phase4_setup as setup
 
 FROZEN_RUNTIME_HEAD = "f002fdfa3e17a168ce5fef2ccdcee9af386fc17a"
 FROZEN_MANIFEST_SHA256 = (
-    "c9184255d5788fc00da3e7dd43afbe332a4dadcbc3f1534e95db320aeed8de4c"
+    "5b6f273f248539684695ceb4cf81ecc71dc0c179a0fc94f73cd755914b315c27"
 )
 LIVE_READINESS_CONFIRMATION = "EXPLICIT_SHEETS_PAPER_LIVE_READINESS"
 

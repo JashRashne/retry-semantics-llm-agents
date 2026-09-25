@@ -56,12 +56,12 @@ def test_manifest_bytes_and_sha_remain_unchanged():
     """Verify that adding the operator session bridge does not alter the frozen manifest."""
     manifest_raw = (REPOSITORY_ROOT / MANIFEST_PATH).read_bytes()
     assert FROZEN_MANIFEST_SHA256 == (
-        "c9184255d5788fc00da3e7dd43afbe332a4dadcbc3f1534e95db320aeed8de4c"
+        "5b6f273f248539684695ceb4cf81ecc71dc0c179a0fc94f73cd755914b315c27"
     )
     assert sha256_hex(manifest_raw) == FROZEN_MANIFEST_SHA256
     assert manifest_raw == build_paper_manifest()
     loaded = load_paper_manifest()
-    assert loaded["status"] == "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"
+    assert loaded["status"] == "PROSPECTIVE_ACK_SCHEMA_REPAIR_PENDING_INDEPENDENT_AUDIT"
     assert loaded["study2_paper_observations"] == 0
     assert "scripts/run_sheets_paper_live_readiness_session.py" not in IMPLEMENTATION_PATHS
 

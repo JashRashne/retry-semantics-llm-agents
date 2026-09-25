@@ -126,7 +126,7 @@ def dispatch_stage(facts: DispatchFacts) -> str:
 
 def validate_append_acknowledgement(request: FrozenMutation, arm: dict[str, Any],
                                     result: PaperHTTPResult) -> DispatchFacts:
-    """Frozen batchUpdate success: exact target, one empty reply, no extras."""
+    """Frozen AppendCells acknowledgement with the documented no-update state."""
     if (type(request) is not FrozenMutation or type(result) is not PaperHTTPResult
             or type(result.facts) is not DispatchFacts
             or request.uri != f"/v4/spreadsheets/{arm['spreadsheet_id']}:batchUpdate"
@@ -140,9 +140,13 @@ def validate_append_acknowledgement(request: FrozenMutation, arm: dict[str, Any]
         body = _parse(result.body)
     except Exception as exc:
         raise PaperRunnerError("append acknowledgement malformed") from exc
-    if (type(body) is not dict or set(body) != {"spreadsheetId", "replies"}
+    if (type(body) is not dict
+            or not {"spreadsheetId", "replies"} <= set(body)
+            or not set(body) <= {"spreadsheetId", "replies", "commentUpdateState"}
             or body["spreadsheetId"] != arm["spreadsheet_id"]
-            or type(body["replies"]) is not list or body["replies"] != [{}]):
+            or type(body["replies"]) is not list or body["replies"] != [{}]
+            or ("commentUpdateState" in body
+                and body["commentUpdateState"] != "NO_UPDATES_REQUESTED")):
         raise PaperRunnerError("append acknowledgement contradicts frozen response")
     return DispatchFacts(True, True, 200, True, False)
 
