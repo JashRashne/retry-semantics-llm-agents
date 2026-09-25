@@ -55,6 +55,9 @@ def _clean_git(*args: str, root: Path = REPOSITORY_ROOT, head: str = TEST_OPERAT
 def test_manifest_bytes_and_sha_remain_unchanged():
     """Verify that adding the operator session bridge does not alter the frozen manifest."""
     manifest_raw = (REPOSITORY_ROOT / MANIFEST_PATH).read_bytes()
+    assert FROZEN_MANIFEST_SHA256 == (
+        "c9184255d5788fc00da3e7dd43afbe332a4dadcbc3f1534e95db320aeed8de4c"
+    )
     assert sha256_hex(manifest_raw) == FROZEN_MANIFEST_SHA256
     assert manifest_raw == build_paper_manifest()
     loaded = load_paper_manifest()

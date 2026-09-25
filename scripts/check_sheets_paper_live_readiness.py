@@ -26,7 +26,6 @@ READ_INTERVAL_SECONDS = 2.0  # 30/minute, leaving headroom under the standard qu
 REQUEST_CAP_SECONDS = 30.0
 LOCAL_ALLOWANCE_SECONDS = 10.0
 TOKEN_ALLOWANCE_SECONDS = 60.0
-MAX_START_LAG_SECONDS = 0.25
 READ_COUNT = 257
 
 
@@ -81,18 +80,22 @@ def run_capture(*, manifest: dict, bearer: str, evidence_dir: Path,
         "planned_seconds": planned_seconds,
         "token_expiry": token_metadata["expires_at"],
         "clock_uncertainty_seconds": token_metadata["clock_uncertainty_seconds"]}))
-    start = monotonic()
+    previous_dispatch_start: float | None = None
     responses = []
     for index, (name, target) in enumerate(schedule):
-        due = start + index * READ_INTERVAL_SECONDS
-        remaining = due - monotonic()
-        if remaining > 0:
-            sleep(remaining)
-        if monotonic() - due > MAX_START_LAG_SECONDS:
-            raise PaperReadinessError(f"fixed readiness slot missed: {name}")
+        if previous_dispatch_start is not None:
+            remaining = (
+                previous_dispatch_start
+                + READ_INTERVAL_SECONDS
+                - monotonic()
+            )
+            if remaining > 0:
+                sleep(remaining)
+        dispatch_start = monotonic()
         result = transport(method="GET", target=target, body=b"",
                            bearer=bearer, spreadsheet_id=spreadsheet_id,
                            max_response_bytes=1_048_576)
+        previous_dispatch_start = dispatch_start
         raw = result.body
         (evidence_dir / f"{name}.response.json").write_bytes(raw)
         (evidence_dir / f"{name}.receipt.json").write_bytes(canonical_json_bytes({

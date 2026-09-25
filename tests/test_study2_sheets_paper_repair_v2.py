@@ -163,17 +163,28 @@ def test_readiness_fixed_pacing_and_no_retry(tmp_path, manifest):
     clock = Clock()
     starts = []
 
-    def slow(**kwargs):
+    def variable_latency(**kwargs):
         starts.append(clock.now())
-        clock.value += READ_INTERVAL_SECONDS + 1
-        return PaperHTTPResult(DispatchFacts(True, True, 200), topology, None)
+        target = kwargs["target"]
+        body = grids.get(target, topology)
+        if len(starts) == 1:
+            clock.value += 3.5
+        elif len(starts) == 2:
+            clock.value += 0.2
+        return PaperHTTPResult(DispatchFacts(True, True, 200), body, None)
 
-    with pytest.raises(PaperReadinessError, match="slot missed"):
-        run_capture(manifest=manifest, bearer="synthetic",
-                    evidence_dir=tmp_path / "slow", token_metadata=_token(),
-                    wall_clock=clock.now, monotonic=clock.now, sleep=clock.sleep,
-                    transport=slow)
-    assert starts == [0.0]
+    state = run_capture(manifest=manifest, bearer="synthetic",
+                        evidence_dir=tmp_path / "variable", token_metadata=_token(),
+                        wall_clock=clock.now, monotonic=clock.now, sleep=clock.sleep,
+                        transport=variable_latency)
+    assert state == "READINESS_CAPTURED_PENDING_INDEPENDENT_AUDIT"
+    assert len(starts) == 257
+    assert abs(starts[0] - 0.0) < 1e-8
+    assert abs(starts[1] - 3.5) < 1e-8
+    assert abs(starts[2] - 5.5) < 1e-8
+    for i in range(1, len(starts)):
+        assert starts[i] - starts[i - 1] >= READ_INTERVAL_SECONDS - 1e-8
+    assert (tmp_path / "variable" / "capture-state.json").is_file()
 
 
 def test_strict_append_ack_and_h1_certificate_revalidation(tmp_path, manifest):
