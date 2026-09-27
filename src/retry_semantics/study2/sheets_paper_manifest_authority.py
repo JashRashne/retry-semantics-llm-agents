@@ -17,6 +17,8 @@ CONTRACT = "research/study2/sheets/GOOGLE_SHEETS_PAPER_SEMANTICS_CONTRACT.md"
 CROSS_PROVIDER = "research/protocol/STUDY2_CROSS_PROVIDER_PROTOCOL_V1.md"
 AMENDMENT = "research/study2/sheets/GOOGLE_SHEETS_PRECOLLECTION_BLANK_READINESS_AMENDMENT_V1.json"
 AMENDMENT_SHA256 = "ae897c79d3649e53283ca47d67b29ecb7e31ff4267fc2d675841c8e85dc3b71d"
+MODEL_AMENDMENT_PATH = "research/protocol/STUDY2_V41_MODEL_AMENDMENT_V1.json"
+MODEL_AMENDMENT_SHA256 = "27d7c35647fa2e87a31d30408cf149500c05af06715cb5d8d8e72d6ccf6e4945"
 SOURCE_SHA256 = {
     INPUTS: "15a2357e99df0c856f99b8b5419e923be927cdfeef7535be4d21a475762e6109",
     REGISTRY: "a8a8bcd2751c56b05e9a9a569a6ad5f16e7d260b6a8ce5fb57dd244aef594506",
@@ -48,7 +50,7 @@ DECISIONS: dict[str, tuple[dict[str, Any], tuple[tuple[str, str], ...]]] = {
                           "second_world_reverses_policy_order": True},
                          ((INPUTS, "## 8. Four-arm counterbalancing"),)),
     "model": ({"provider": "fireworks",
-               "name": "accounts/fireworks/models/deepseek-v4-flash-0731",
+               "name": "accounts/fireworks/models/deepseek-v4p1-flash",
                "version_or_digest_rule": "verified_immutable_identifier_if_available_at_manifest_freeze_else_null",
                "temperature": 0.0, "top_p": 1.0, "max_output_tokens": 1024,
                "tool_choice": "AUTO", "parallel_tool_calls": False,
@@ -103,7 +105,7 @@ DECISIONS: dict[str, tuple[dict[str, Any], tuple[tuple[str, str], ...]]] = {
                   "required_explicit_grid_data": True},
                  ((INPUTS, "## 16. Frozen OBS-1 binding"),
                   (CONTRACT, "## 5. Authoritative bounded paper observer"))),
-    "execution": ({"manifest_id": "study2-sheets-v1-fireworks-deepseek-v4-flash-0731-paper-001",
+    "execution": ({"manifest_id": "study2-sheets-v1-fireworks-deepseek-v4p1-flash-paper-001",
                    "serial_arms": True, "overlap_allowed": False,
                    "hidden_retry": "PROHIBITED", "rescue_read": "PROHIBITED",
                    "collection_authorized": False, "study2_paper_observations": 0},
@@ -133,6 +135,9 @@ def _section(raw: bytes, heading: str) -> bytes:
 
 
 def build_authority(root: Path = REPOSITORY_ROOT) -> bytes:
+    model_amendment_raw = (root / MODEL_AMENDMENT_PATH).read_bytes()
+    if sha256_hex(model_amendment_raw) != MODEL_AMENDMENT_SHA256:
+        raise AuthorityError("prospective model amendment changed")
     sources = {}
     for relative, expected in SOURCE_SHA256.items():
         path = root / relative
@@ -171,11 +176,15 @@ def build_authority(root: Path = REPOSITORY_ROOT) -> bytes:
                 ),
                 "older_frozen_prose_literal_present": False,
             })
+        if name in ("model", "execution"):
+            prov.append({"prospective_model_amendment_path": MODEL_AMENDMENT_PATH,
+                         "prospective_model_amendment_sha256": MODEL_AMENDMENT_SHA256})
         blocks[name] = {"value": value, "provenance": prov}
     return canonical_json_bytes({
         "schema": "google-sheets-paper-manifest-authority-v1",
-        "status": "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED",
+        "status": "PREDATA_MODEL_AMENDMENT_PENDING_INDEPENDENT_AUDIT",
         "frozen_source_sha256": SOURCE_SHA256,
+        "model_amendment_sha256": MODEL_AMENDMENT_SHA256,
         "precollection_readiness_amendment_path": AMENDMENT,
         "precollection_readiness_amendment_sha256": sha256_hex(amendment_raw),
         "decisions": blocks})

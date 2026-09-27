@@ -146,7 +146,7 @@ def test_original_generation_bound_to_frozen_family(tmp_path):
                               complete=complete, evidence=store)
     original = model.generate_original()
     assert original["tool_calls"][0]["function"]["name"] == "create_order"
-    assert payloads[0]["model"] == "accounts/fireworks/models/deepseek-v4-flash-0731"
+    assert payloads[0]["model"] == "accounts/fireworks/models/deepseek-v4p1-flash"
     assert (tmp_path / "model-original-0.json").exists()
     with pytest.raises(Exception):
         model.generate_original()
@@ -420,7 +420,10 @@ def test_github_run_stop_persists_every_unstarted_opportunity(tmp_path, monkeypa
 
 def test_static_identity_includes_collector_transport_model_and_readiness(tmp_path, monkeypatch):
     monkeypatch.setattr(readiness, "load_github_paper_manifest",
-                        lambda root: SimpleNamespace(manifest_hash="a" * 64))
+                        lambda root: SimpleNamespace(
+                            manifest_hash="a" * 64,
+                            as_json=lambda: {"status": "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"},
+                        ))
     for relative in readiness.RUNTIME_FILES["github"]:
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -857,4 +860,3 @@ def test_final_collection_authorization_requires_committed_checkout(tmp_path):
             root=tmp_path,
             now=gate["now"],
         )
-

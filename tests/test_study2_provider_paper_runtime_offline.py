@@ -19,6 +19,7 @@ from retry_semantics.study2.razorpay_paper_manifest import (
     DRAFT as RAZORPAY_DRAFT,
     FROZEN as RAZORPAY_FROZEN,
     MANIFEST_PATH as RAZORPAY_MANIFEST_PATH,
+    MODEL_AMENDMENT_PATH,
     REGISTRY_PATH as RAZORPAY_REGISTRY_PATH,
     ROOT as RAZORPAY_ROOT,
     build_namespace_registry,
@@ -375,10 +376,10 @@ def test_razorpay_unrelated_historical_order_does_not_poison_list():
 
 
 def test_readiness_rejects_missing_manifest_and_audit(tmp_path):
-    github = ready.current_static_identity("github")
-    assert github["manifest_sha256"] == load_github_paper_manifest().manifest_hash
-    razorpay = ready.current_static_identity("razorpay")
-    assert razorpay["manifest_sha256"] == sha256_hex((RAZORPAY_ROOT / RAZORPAY_MANIFEST_PATH).read_bytes())
+    with pytest.raises(ready.ProviderReadinessError, match="not audited"):
+        ready.current_static_identity("github")
+    with pytest.raises(ready.ProviderReadinessError, match="not frozen"):
+        ready.current_static_identity("razorpay")
     with pytest.raises(ready.ProviderReadinessError):
         ready.current_static_identity("razorpay", root=tmp_path)
     with pytest.raises(GitHubPaperManifestError):
@@ -393,7 +394,7 @@ def test_readiness_rejects_missing_manifest_and_audit(tmp_path):
 def test_razorpay_draft_manifest_exact_and_non_authorizing():
     raw = (RAZORPAY_ROOT / RAZORPAY_MANIFEST_PATH).read_bytes()
     manifest = load_razorpay_paper_manifest()
-    assert manifest["status"] == RAZORPAY_FROZEN
+    assert manifest["status"] == RAZORPAY_DRAFT
     assert scientific_projection(manifest) == scientific_projection(json.loads(build_razorpay_paper_manifest()))
     registry = load_namespace_registry()
     assert registry["status"] == RAZORPAY_FROZEN
@@ -444,7 +445,7 @@ def test_razorpay_freeze_is_status_and_provenance_only():
 
 
 def test_future_frozen_razorpay_envelopes_load_without_scientific_rematerialization(tmp_path):
-    for relative in SOURCE_SHA256:
+    for relative in (*SOURCE_SHA256, MODEL_AMENDMENT_PATH):
         destination = tmp_path / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(RAZORPAY_ROOT / relative, destination)

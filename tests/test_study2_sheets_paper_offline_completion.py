@@ -12,7 +12,7 @@ from retry_semantics.serialization import canonical_json_bytes, sha256_hex
 from retry_semantics.study2.sheets_paper_adapter import DispatchFacts, prepare_paper_append
 from retry_semantics.study2.sheets_paper_http import PaperHTTPResult, one_shot_request, send_frozen_mutation
 from retry_semantics.study2.sheets_paper_manifest_authority import (
-    AMENDMENT, AUTHORITY_PATH, SOURCE_SHA256, AuthorityError,
+    AMENDMENT, MODEL_AMENDMENT_PATH, AUTHORITY_PATH, SOURCE_SHA256, AuthorityError,
     build_authority, load_authority,
 )
 from retry_semantics.study2.sheets_paper_model import (
@@ -65,7 +65,7 @@ def _readiness_inputs(manifest):
 
 def test_authority_transcription_tamper_refused(tmp_path):
     assert (REPOSITORY_ROOT / AUTHORITY_PATH).read_bytes() == build_authority()
-    for source in (*SOURCE_SHA256, AMENDMENT):
+    for source in (*SOURCE_SHA256, AMENDMENT, MODEL_AMENDMENT_PATH):
         target = tmp_path / source
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((REPOSITORY_ROOT / source).read_bytes())

@@ -93,7 +93,7 @@ class PaperModelSession:
         config = self.family["model_config"]
         sampling = config["original_generation" if phase == "original" else "regeneration"]
         if (config["model"]["name"] !=
-                "accounts/fireworks/models/deepseek-v4-flash-0731"
+                "accounts/fireworks/models/deepseek-v4p1-flash"
                 or sampling["tool_choice"] != {"mode": "AUTO", "function_name": None}
                 or sampling["parallel_tool_calls"] is not False
                 or sampling["provider_parameters"] != {"reasoning_effort": "none"}):

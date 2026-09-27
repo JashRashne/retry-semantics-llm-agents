@@ -446,7 +446,7 @@ def test_model_capability_requires_raw_tool_call_and_cannot_replace_provider(gh_
     raw = canonical_json_bytes(completion)
     config = manifest["families"][0]["model_config"]["original_generation"]
     payload = canonical_json_bytes({
-        "model": "accounts/fireworks/models/deepseek-v4-flash-0731",
+        "model": "accounts/fireworks/models/deepseek-v4p1-flash",
         "messages": [{"role": "user", "content": "offline capability probe"}],
         "tools": [{"type": "function", "function": tool}
                   for tool in manifest["model_visible_common"]["tools"]],
@@ -458,7 +458,7 @@ def test_model_capability_requires_raw_tool_call_and_cannot_replace_provider(gh_
     })
     model_capture = {
         "source": "model_capability_capture",
-        "request_evidence": {"model": "accounts/fireworks/models/deepseek-v4-flash-0731",
+        "request_evidence": {"model": "accounts/fireworks/models/deepseek-v4p1-flash",
                              "tools_sha256": tools_sha,
                              "parameters_sha256": params_sha,
                              "payload_hex": payload.hex(),
@@ -474,8 +474,17 @@ def test_model_capability_requires_raw_tool_call_and_cannot_replace_provider(gh_
     _check_capture_shape("github", "model_capability_capture",
                          model_capture["request_evidence"],
                          model_capture["response_evidence"])
+    with pytest.raises(ProviderReadinessError):
+        _check_capture_shape("github", "model_capability_capture",
+                             dict(model_capture["request_evidence"],
+                                  model="accounts/fireworks/models/deepseek-v4-flash-0731"),
+                             model_capture["response_evidence"])
     validate_github_control("model_capability", manifest, registry,
                             facts, model_capture, {})
+    with pytest.raises(ControlEvidenceError):
+        validate_github_control("model_capability", manifest, registry,
+                                dict(facts, parameters_sha256="0" * 64),
+                                model_capture, {})
     with pytest.raises(ControlEvidenceError):
         validate_github_control("repository_identity_and_full_baseline",
                                 manifest, registry, facts, model_capture, {})

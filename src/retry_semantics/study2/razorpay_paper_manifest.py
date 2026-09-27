@@ -24,6 +24,9 @@ NAMESPACE = "77969a354fe2d5f1f3f4d91809f64e39"
 SELECTED_HISTORICAL_SCOPE_FINGERPRINT = (
     "5fcd0eb32375ef28ee232ad426a940ce06ee7b3f95281004c687aca964c123a6"
 )
+MODEL_AMENDMENT_PATH = "research/protocol/STUDY2_V41_MODEL_AMENDMENT_V1.json"
+MODEL_AMENDMENT_SHA256 = "27d7c35647fa2e87a31d30408cf149500c05af06715cb5d8d8e72d6ccf6e4945"
+
 SOURCE_SHA256 = {
     "research/study2/razorpay/RAZORPAY_PAPER_FAMILY_CATALOGUE_V1.json":
         "4572cfc26610dcbacbbebd8e1259c6135b68ee4c338fdfd9de12517ffcc96bfa",
@@ -157,7 +160,7 @@ def _config(index: int) -> dict[str, Any]:
               "seed_supported": True}
     return {
         "model": {"provider": "fireworks",
-                  "name": "accounts/fireworks/models/deepseek-v4-flash-0731",
+                  "name": "accounts/fireworks/models/deepseek-v4p1-flash",
                   "version_or_digest": None},
         "original_generation": {**common, "seed": 3_000_000 + index},
         "regeneration": {**common, "seed": 4_000_000 + 4 * index},
@@ -208,6 +211,8 @@ def load_namespace_registry(root: Path = ROOT) -> dict[str, Any]:
 
 
 def build_razorpay_paper_manifest(root: Path = ROOT) -> bytes:
+    if sha256_hex((root / MODEL_AMENDMENT_PATH).read_bytes()) != MODEL_AMENDMENT_SHA256:
+        raise RazorpayManifestError("prospective model amendment changed")
     sources = _read_sources(root)
     catalogue = _families(sources[
         "research/study2/razorpay/RAZORPAY_PAPER_FAMILY_CATALOGUE_V1.json"])
@@ -270,13 +275,14 @@ def build_razorpay_paper_manifest(root: Path = ROOT) -> bytes:
         "status": DRAFT,
         "collection_status": "BLOCKED",
         "study2_paper_observations": 0,
-        "manifest_id": "study2-razorpay-v1-paper-001",
+        "manifest_id": "study2-razorpay-v1-v41-paper-001",
         "scope_selected_from_historical_engineering_fingerprint": True,
         "scope_qualified_currently": False,
         "credential_scope_fingerprint": SELECTED_HISTORICAL_SCOPE_FINGERPRINT,
         "run_namespace": NAMESPACE,
         "registry_semantic_sha256": scientific_sha256(registry),
         "frozen_source_sha256": SOURCE_SHA256,
+        "model_amendment_sha256": MODEL_AMENDMENT_SHA256,
         "model_visible_common": {
             "system_message": FROZEN_SYSTEM_MESSAGE,
             "ambiguity_text": CANONICAL_AMBIGUITY_TEXT,

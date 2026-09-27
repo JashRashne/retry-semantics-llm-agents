@@ -5,7 +5,7 @@
 **Correspondence:** `rashne.jash@gmail.com`<br>
 **Date:** September 2026<br>
 **Artifact Repository:** `https://github.com/JashRashne/retry-semantics-llm-agents`<br>
-**Status:** Pre-Collection Draft (Study 1A Canonical Locked; Study 2 Model Amendment Pending)
+**Status:** Study 1A Canonical Locked; Study 1B Results Pending; Study 2 Pre-Data V4.1 Amendment Pending Audit
 
 ---
 
@@ -13,9 +13,9 @@
 
 Large Language Model (LLM) agents are increasingly entrusted with executing state-mutating operations across software systems, databases, and third-party web APIs. When an external mutation call encounters an ambiguous outcome—such as a network transport timeout or dropped HTTP connection—the client cannot determine whether the request was committed by the remote service or was not executed remotely. In distributed systems, this classical uncertainty is governed by transport-level retry protocols and idempotent endpoint design. However, LLM agent runtimes face a novel architectural fork at the retry boundary: **Exact Request Replay** (deterministically redispatching the identical synthesized request payload without invoking the model) versus **LLM Regeneration** (returning the ambiguity to the model context and allowing it to re-reason, inspect external state, or select alternative actions).
 
-We present a controlled empirical study isolating this execution-boundary choice. We formalize an ambiguity model distinguishing two mutually exclusive hidden execution states: $H_0$ (the original mutation was not executed remotely) and $H_1$ (the original mutation committed, but its acknowledgment was lost). In **Study 1**, evaluating 160 matched four-arm families (640 total arms) on a controlled, non-idempotent Ticket Creation benchmark using DeepSeek-V4-Flash, we observe an extreme interaction between retry locus and hidden execution state. Under $H_0$, both Replay and Regeneration achieved 100.0% state correctness (160/160 each). Under $H_1$, Exact Request Replay suffered a 100.0% failure rate due to duplicate mutations (0/160 state-correct), whereas LLM Regeneration achieved 94.375% state correctness (151/160). The prespecified $H_1$ difference was $-94.375$ percentage points (paired Newcombe Method 10 95% CI: $[-97.013\%, -89.106\%]$; exact McNemar $p = 7.006 \times 10^{-46}$), with an interaction $(\Delta_{H1} - \Delta_{H0})$ of $-94.375$ percentage points (bootstrap 95% CI: $[-97.500\%, -90.625\%]$). Mechanistically, 100.0% of successful $H_1$ regeneration arms (151/151) executed an observation-before-write recovery sequence, whereas all unsuccessful arms (9/9) wrote before observing.
+We present a controlled empirical study isolating this execution-boundary choice. We formalize an ambiguity model distinguishing two mutually exclusive hidden execution states: $H_0$ (the original mutation was not executed remotely) and $H_1$ (the original mutation committed, but its acknowledgment was lost). In **Study 1A**, evaluating 160 matched four-arm families (640 total arms) on a controlled, non-idempotent Ticket Creation benchmark using DeepSeek-V4-Flash, we observe an extreme interaction between retry locus and hidden execution state. Under $H_0$, both Replay and Regeneration achieved 100.0% state correctness (160/160 each). Under $H_1$, Exact Request Replay suffered a 100.0% failure rate due to duplicate mutations (0/160 state-correct), whereas LLM Regeneration achieved 94.375% state correctness (151/160). The prespecified $H_1$ difference was $-94.375$ percentage points (paired Newcombe Method 10 95% CI: $[-97.013\%, -89.106\%]$; exact McNemar $p = 7.006 \times 10^{-46}$), with an interaction $(\Delta_{H1} - \Delta_{H0})$ of $-94.375$ percentage points (bootstrap 95% CI: $[-97.500\%, -90.625\%]$). Mechanistically, 100.0% of successful $H_1$ regeneration arms (151/151) executed an observation-before-write recovery sequence, whereas all unsuccessful arms (9/9) wrote before observing.
 
-To evaluate whether these phenomena extend beyond the controlled benchmark, we present the prospective design, formal semantics contracts, and bounded observation schedule (OBS-1) for **Study 2**, spanning GitHub Issues, Google Sheets v4, and Razorpay Orders (64 scheduled families; 256 arms per provider; 768 total arms). The originally specified Fireworks serverless 0731 model became unavailable before collection and requires a separate prospective pre-data model-binding amendment after capability verification. Zero Study 2 paper observations have been executed, and all Study 2 empirical results remain explicit placeholders.
+To evaluate whether these phenomena extend beyond the controlled benchmark, we present the prospective design, formal semantics contracts, and bounded observation schedule (OBS-1) for **Study 2**, spanning GitHub Issues, Google Sheets v4, and Razorpay Orders (64 scheduled families; 256 arms per provider; 768 total arms). The original 0731 model became unavailable before collection. A prospective pre-data amendment binds Study 2 to Fireworks V4.1 (`accounts/fireworks/models/deepseek-v4p1-flash`) after non-paper capability checks; provider readiness remains pending. Study 1B is a separate V4.1 model-matched replication with results pending. Zero Study 2 paper observations have been executed, and all Study 2 empirical results remain explicit placeholders.
 
 ---
 
@@ -43,7 +43,7 @@ This paper provides a paired empirical analysis and formal account of the Replay
 2. **Controlled Benchmark Evaluation (Study 1A):** We report the canonical, locked results of 160 matched four-arm families (640 experimental arms) evaluated on a non-idempotent Ticket Creation benchmark using DeepSeek-V4-Flash. Both policies achieved 100.0% correctness under $H_0$. Under $H_1$, Replay produced duplicate mutations in 160/160 arms (0/160 correct), while Regeneration achieved 94.375% correctness ($p = 7.006 \times 10^{-46}$).
 3. **Behavioral Mechanism Analysis:** We show that the success of LLM Regeneration under $H_1$ is strictly associated with an emergent *observation-before-write* pattern: 151/151 successful agents observed state prior to mutating, whereas 9/9 failed agents issued duplicate writes without prior observation.
 4. **Cross-Provider External Validation Protocol (Study 2):** We design, formally specify, and freeze a pre-data multi-provider validation suite encompassing three real-world cloud APIs: GitHub Issues (eventual consistency, paginated list traversal), Google Sheets v4 (immediate grid visibility, OAuth scope constraints), and Razorpay Orders (financial test ledger, closed causal attribution).
-5. **Rigorous Pre-Data Integrity:** In adherence to strict prospective protocol registration, zero Study 2 observations have been collected; existing provider manifests and evaluators are frozen, while the model binding and Google Sheets publication-ingestion path remain explicit pre-data work.
+5. **Rigorous Pre-Data Integrity:** In adherence to strict prospective protocol registration, zero Study 2 observations have been collected; existing provider manifests and evaluators are frozen, while provider readiness and the Google Sheets publication-ingestion path remain explicit pre-data work.
 
 ---
 
@@ -202,7 +202,7 @@ If external state cannot be authoritatively certified by the evaluator prior to 
 Study 1 evaluates the primary hypotheses on an isolated, deterministic Ticket Creation benchmark simulating an enterprise service-desk backend.
 - **Scenarios:** 8 distinct ticket scenarios (`CREATE001` through `CREATE008`), specifying customer identifiers, problem domains, titles, and descriptions.
 - **Replicates & Counterbalancing:** 20 replicates across 8 scenarios, yielding $N = 160$ scheduled family opportunities (640 total arms). Replicate ordering was strictly counterbalanced (odd replicates: $1 \to 8$; even replicates: $8 \to 1$).
-- **Model Configuration:** DeepSeek-V4-Flash (`accounts/fireworks/models/deepseek-v4-flash-0731`) served via Fireworks serverless inference. Hyperparameters were frozen: temperature $T = 0.0$, top-$p = 1.0$, maximum completion tokens 1024, `parallel_tool_calls = False`, `reasoning_effort = "none"`.
+- **Study 1A Model Configuration:** DeepSeek-V4-Flash (`accounts/fireworks/models/deepseek-v4-flash-0731`) served via Fireworks serverless inference. Hyperparameters were frozen: temperature $T = 0.0$, top-$p = 1.0$, maximum completion tokens 1024, `parallel_tool_calls = False`, `reasoning_effort = "none"`. Study 1B prospectively repeats the same design with V4.1; its results are pending.
 - **Stopping Rule:** Exactly 160 scheduled opportunities; zero sample replacement, zero model shopping, and zero prompt tuning.
 
 ### 5.2 Statistical Plan and Estimands
@@ -332,7 +332,7 @@ Authentication & Fine-grained GitHub PAT & OAuth2 `drive.file` Desktop & Basic A
 ### 7.2 Experimental Unit and Allocation
 
 - **Sample Size:** 64 scheduled family opportunities per provider $\times$ 4 serial arms = 256 arms per provider (768 total Study 2 arms).
-- **Model Binding:** The originally specified Fireworks serverless 0731 model became unavailable before Study 2 collection. Study 2 remains pre-data and requires a prospective model-binding amendment after capability verification.
+- **Model Binding:** The originally specified Fireworks serverless 0731 model became unavailable before Study 2 collection. Study 2 remains pre-data and is prospectively bound to Fireworks V4.1; provider readiness and collection remain pending.
 - **Provider Scopes:**
   - GitHub: Dedicated non-production sandbox repository (`JashRashne/retry-semantics-study2-github-sandbox`).
   - Google Sheets: One already-created spreadsheet with 256 isolated GRID tabs (one arm per tab), using audited OAuth same-app/principal access. `spreadsheets.create` must not be rerun.
@@ -426,9 +426,9 @@ Total Study 2                192                  768       PRE-DATA
 ### Pre-Data Protocol Integrity Declaration
 In strict conformance with open-science standards:
 - **Zero Study 2 paper observations have been collected.**
-- Existing manifests, catalogues, readiness contracts, and evaluators are frozen; the model binding requires a separate prospective amendment.
+- Existing manifests, catalogues, readiness contracts, and evaluators are frozen; the V4.1 model binding is prospectively amended before collection.
 - The GitHub and Razorpay publication-ingestion path is implemented and tested and refuses incomplete or corrupt run evidence; Google Sheets ingestion remains fail-closed pending a frozen run-projection schema.
-- Empirical results will be populated only after a prospective pre-data model-binding amendment and capability verification.
+- Empirical results will be populated only after provider readiness, authorization, and collection.
 
 ---
 

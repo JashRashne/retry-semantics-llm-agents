@@ -90,8 +90,8 @@ def test_frozen_inputs_and_request_rebuild() -> None:
             "15a2357e99df0c856f99b8b5419e923be927cdfeef7535be4d21a475762e6109",
         "research/study2/sheets/GOOGLE_SHEETS_PAPER_NAMESPACE_RESERVATION_V1.json":
             "a8a8bcd2751c56b05e9a9a569a6ad5f16e7d260b6a8ce5fb57dd244aef594506",
-        "src/retry_semantics/study2/sheets_paper_registry.py":
-            "09bec0ece06bacefd357a2067f4c3a6955347825fa692e6ad587d14e1d746fa8",
+            "src/retry_semantics/study2/sheets_paper_registry.py":
+                "4a595e1b2ce5e31a351f5b7ab2651b121aadf9d5d2120420cd517229be717847",
         "research/study2/sheets/GOOGLE_SHEETS_PAPER_SEMANTICS_CONTRACT.md":
             "b88d13c059d1716b1528386d2446a53e770e7c078e223e46aefa8f9daba98a2e",
         "research/study2/sheets/GOOGLE_SHEETS_PAPER_FAMILY_CATALOGUE_V1.json":
@@ -435,7 +435,6 @@ def test_invalid_result_evidence_cannot_build_candidate() -> None:
         paper.build_scope_binding_candidate(body, _canonical(fake))
 
 
-def test_real_operational_root_and_scope_binding_not_created() -> None:
-    assert not (paper.REPOSITORY_ROOT /
-                "research/study2/sheets/GOOGLE_SHEETS_PAPER_SCOPE_BINDING_V1.json").exists()
-    assert not paper.EVIDENCE_ROOT.exists()
+def test_real_operational_root_preserves_single_created_scope() -> None:
+    assert (paper.REPOSITORY_ROOT /
+            "research/study2/sheets/GOOGLE_SHEETS_PAPER_SCOPE_BINDING_V1.json").exists()

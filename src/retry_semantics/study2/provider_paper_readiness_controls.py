@@ -151,7 +151,7 @@ def _model_control(manifest: dict[str, Any], facts: dict[str, Any],
     config = manifest["families"][0]["model_config"]
     _need(set(facts) == {"model", "tools_sha256", "parameters_sha256",
                           "manifest_sha256"}
-          and facts["model"] == "accounts/fireworks/models/deepseek-v4-flash-0731"
+          and facts["model"] == "accounts/fireworks/models/deepseek-v4p1-flash"
           and facts["tools_sha256"] == sha256_hex(canonical_json_bytes(tools))
           and facts["parameters_sha256"] ==
               sha256_hex(canonical_json_bytes(config["original_generation"]))

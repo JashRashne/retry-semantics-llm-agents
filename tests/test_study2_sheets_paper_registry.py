@@ -75,11 +75,30 @@ def test_frozen_inputs_and_canonical_checked_in_registry() -> None:
     value = json.loads(raw)
     assert raw == _canonical_independent(value)
     assert not raw.endswith(b"\n")
-    assert raw == build_sheets_namespace_reservation()
-    assert raw == build_sheets_namespace_reservation()
+    current = json.loads(build_sheets_namespace_reservation())
+    assert current["collision_check"]["known_prior_paper_registries"] == (
+        value["collision_check"]["known_prior_paper_registries"] + [{
+            "path": "research/study2/razorpay/RAZORPAY_PAPER_NAMESPACE_RESERVATION_V1.json",
+            "sha256": hashlib.sha256((REPOSITORY_ROOT / "research/study2/razorpay/RAZORPAY_PAPER_NAMESPACE_RESERVATION_V1.json").read_bytes()).hexdigest(),
+        }]
+    )
     assert raw == canonicalize_sheets_namespace_reservation(value)
     assert validate_sheets_namespace_reservation(raw) == value
     assert load_sheets_namespace_reservation() == value
+
+
+def test_later_peer_is_checked_without_rewriting_create_bound_registry(tmp_path: Path) -> None:
+    root = _isolated_root(tmp_path)
+    razorpay = "research/study2/razorpay/RAZORPAY_PAPER_NAMESPACE_RESERVATION_V1.json"
+    target = root / razorpay
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPOSITORY_ROOT / razorpay, target)
+    frozen = (root / REGISTRY_PATH).read_bytes()
+    assert load_sheets_namespace_reservation(root)["run_namespace"] == RUN_NAMESPACE
+    assert (root / REGISTRY_PATH).read_bytes() == frozen
+    target.write_bytes(target.read_bytes() + b"\n")
+    with pytest.raises(SheetsPaperRegistryError):
+        load_sheets_namespace_reservation(root)
 
 
 def test_exact_reservations_independently_recomputed() -> None:

@@ -27,7 +27,7 @@ from retry_semantics.study2.sheets_paper_manifest_authority import (
     AUTHORITY_PATH, load_authority,
 )
 from retry_semantics.study2.sheets_paper_scope_provisioning import (
-    EVIDENCE_ROOT, MANIFEST_INPUT_SHA256, _checked_request_bytes,
+    EVIDENCE_ROOT, MANIFEST_INPUT_SHA256, REQUEST_PATH,
 )
 
 BINDING_PATH = Path("research/study2/sheets/GOOGLE_SHEETS_PAPER_SCOPE_BINDING_V1.json")
@@ -97,6 +97,22 @@ def _canonical(raw: bytes) -> dict[str, Any]:
     return value
 
 
+def _historical_create_request_bytes(root: Path, registry: dict[str, Any]) -> bytes:
+    """Recheck the frozen CREATE request without invoking live provisioning gates."""
+
+    raw = _read(root / REQUEST_PATH)
+    expected = canonical_json_bytes({
+        "properties": {"title": registry["spreadsheet_title"]},
+        "sheets": [{"properties": {
+            "gridProperties": {"columnCount": 3, "rowCount": 100},
+            "sheetType": "GRID", "title": row["tab_title"],
+        }} for row in registry["reservations"]],
+    })
+    if raw != expected:
+        raise SheetsPaperMaterializationError("historical CREATE request differs from reservation")
+    return raw
+
+
 def build_scope_binding(*, root: Path = REPOSITORY_ROOT,
                         evidence_root: Path = EVIDENCE_ROOT) -> bytes:
     """Join exact frozen titles to provider IDs by title, never by order."""
@@ -113,7 +129,8 @@ def build_scope_binding(*, root: Path = REPOSITORY_ROOT,
     registry_hash = sha256_hex(registry_raw)
     if (intent.get("namespace_registry_sha256") != registry_hash
             or intent.get("manifest_input_sha256") != MANIFEST_INPUT_SHA256
-            or intent.get("create_request_sha256") != sha256_hex(_checked_request_bytes(root))
+            or intent.get("create_request_sha256") != sha256_hex(
+                _historical_create_request_bytes(root, registry))
             or intent.get("run_namespace") != RUN_NAMESPACE
             or intent.get("expected_tab_count") != 256
             or dispatch.get("schema") != "sheets-paper-scope-create-dispatch-v1"
@@ -324,6 +341,7 @@ def build_paper_manifest(*, root: Path = REPOSITORY_ROOT,
         "scope_binding_sha256": sha256_hex(_read(root / BINDING_PATH)),
         "manifest_input_sha256": MANIFEST_INPUT_SHA256,
         "manifest_authority_sha256": sha256_hex(_read(root / AUTHORITY_PATH)),
+        "model_amendment_sha256": authority["model_amendment_sha256"],
         "spreadsheet_id": binding["spreadsheet_id"],
         "spreadsheet_title": binding["spreadsheet_title"],
         "provenance_sha256": registry["source_sha256"],

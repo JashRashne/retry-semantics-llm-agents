@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retry-semantics.local/schemas/study1b_analysis_provenance_schema_v1.json",
+  "title": "Study1B Ticket analysis provenance V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "analysis_version",
+    "extractor_version",
+    "extractor_implementation_sha256",
+    "extractor_component_sha256",
+    "source_manifest_id",
+    "source_manifest_sha256",
+    "source_paper_experiment_revision",
+    "source_execution_semantics_revision",
+    "source_collection_evidence_revision",
+    "source_run_git_commit",
+    "source_run_timestamp",
+    "source_bundle_file_sha256",
+    "analysis_plan",
+    "bootstrap_seed",
+    "bootstrap_replicates",
+    "derived_artifact_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "ticket-analysis-provenance-v1"
+    },
+    "analysis_version": {
+      "const": "ticket-primary-create-analysis-v1"
+    },
+    "extractor_version": {
+      "const": "ticket-analysis-extractor-v1"
+    },
+    "extractor_implementation_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "extractor_component_sha256": {
+      "type": "object",
+      "minProperties": 7,
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "source_manifest_id": {
+      "const": "primary-create-v1.3-fireworks-deepseek-v4p1-flash-study1b-paper-001"
+    },
+    "source_manifest_sha256": {
+      "const": "aa9e0677cc6b9513322327fd94ee853cf19184e93e38f0e61f7f892e10a20622"
+    },
+    "source_paper_experiment_revision": {
+      "const": "primary-create-v1.3"
+    },
+    "source_execution_semantics_revision": {
+      "const": "primary-create-v1.2"
+    },
+    "source_collection_evidence_revision": {
+      "const": "paper-collection-evidence-v2"
+    },
+    "source_run_git_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40,64}$"
+    },
+    "source_run_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_bundle_file_sha256": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest.json",
+        "run_metadata.json",
+        "scheduled_attempts.jsonl",
+        "arm_traces.jsonl",
+        "collection_events.jsonl",
+        "paper_collection_summary.json"
+      ],
+      "properties": {
+        "manifest.json": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "run_metadata.json": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "scheduled_attempts.jsonl": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "arm_traces.jsonl": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "collection_events.jsonl": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "paper_collection_summary.json": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "analysis_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "identity": {
+          "const": "primary-create-v1.3-analysis-plan-v1.0"
+        },
+        "path": {
+          "const": "research/protocol/primary_create_v1_3_analysis_plan.md"
+        },
+        "sha256": {
+          "const": "23ecd98293a5a7b3b399aed270f8cd257c1aa9b5070d3845575ac2e02580bf88"
+        }
+      }
+    },
+    "bootstrap_seed": {
+      "const": 20260916
+    },
+    "bootstrap_replicates": {
+      "const": 10000
+    },
+    "derived_artifact_sha256": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analysis_arms.jsonl",
+        "analysis_families.jsonl",
+        "analysis_results.json"
+      ],
+      "properties": {
+        "analysis_arms.jsonl": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "analysis_families.jsonl": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "analysis_results.json": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

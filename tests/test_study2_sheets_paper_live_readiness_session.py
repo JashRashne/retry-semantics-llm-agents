@@ -52,11 +52,11 @@ def _clean_git(*args: str, root: Path = REPOSITORY_ROOT, head: str = TEST_OPERAT
     raise AssertionError(f"unexpected git invocation: {args}")
 
 
-def test_manifest_bytes_and_sha_remain_unchanged():
-    """Verify that adding the operator session bridge does not alter the frozen manifest."""
+def test_prospective_manifest_bytes_and_sha_match():
+    """Verify the prospective V4.1 manifest is the materialized manifest."""
     manifest_raw = (REPOSITORY_ROOT / MANIFEST_PATH).read_bytes()
     assert FROZEN_MANIFEST_SHA256 == (
-        "5b6f273f248539684695ceb4cf81ecc71dc0c179a0fc94f73cd755914b315c27"
+        "c5865e8375c66baa8d59a9772d5f00ddcaa6970678aac72b7f8af20fe49a79e6"
     )
     assert sha256_hex(manifest_raw) == FROZEN_MANIFEST_SHA256
     assert manifest_raw == build_paper_manifest()

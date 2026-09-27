@@ -7,6 +7,7 @@ credential, provisioning, manifest, or collection capability.
 from __future__ import annotations
 
 import errno
+import copy
 import hashlib
 import json
 import os
@@ -20,6 +21,11 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 REGISTRY_PATH = Path(
     "research/study2/sheets/GOOGLE_SHEETS_PAPER_NAMESPACE_RESERVATION_V1.json"
 )
+FROZEN_REGISTRY_SHA256 = "a8a8bcd2751c56b05e9a9a569a6ad5f16e7d260b6a8ce5fb57dd244aef594506"
+LATER_RAZORPAY_REGISTRY = {
+    "path": "research/study2/razorpay/RAZORPAY_PAPER_NAMESPACE_RESERVATION_V1.json",
+    "sha256": "b7f5b446c68ee826daaa0454d333d6361a0c1d9d1d7d3ee7cb31007443e783d9",
+}
 RUN_NAMESPACE = "76b0af67d7eece50cb12167e7ec374b9"
 SPREADSHEET_TITLE = "retry-semantics-study2-sheets-primary-v1-" + RUN_NAMESPACE
 FAMILY_COUNT = 64
@@ -294,13 +300,32 @@ def build_sheets_namespace_reservation(root: Path = REPOSITORY_ROOT) -> bytes:
 
 
 def validate_sheets_namespace_reservation(raw: bytes, root: Path = REPOSITORY_ROOT) -> dict[str, Any]:
-    """Reject noncanonical, stale, altered, or locally colliding registry bytes."""
+    """Validate the frozen creation-bound snapshot and all current peer registries."""
 
     value = _parse_json(raw)
     if type(value) is not dict or canonicalize_sheets_namespace_reservation(value) != raw:
         raise SheetsPaperRegistryError("noncanonical Sheets paper registry")
-    if raw != build_sheets_namespace_reservation(root):
-        raise SheetsPaperRegistryError("Sheets paper registry differs from frozen inputs")
+    current = build_sheets_namespace_reservation(root)
+    if raw != current:
+        # The Razorpay reservation was added after this registry was frozen and
+        # provisioned. Rewriting the Sheets bytes would invalidate CREATE's
+        # audited registry hash. Admit only that exact later peer, after the
+        # builder has checked its namespace and every marker for collision.
+        rebuilt = _parse_json(current)
+        frozen_peers = value.get("collision_check", {}).get("known_prior_paper_registries")
+        current_check = rebuilt.get("collision_check", {})
+        current_peers = current_check.get("known_prior_paper_registries")
+        if (sha256_hex(raw) != FROZEN_REGISTRY_SHA256
+                or type(frozen_peers) is not list
+                or type(current_peers) is not list
+                or current_peers != frozen_peers + [LATER_RAZORPAY_REGISTRY]):
+            raise SheetsPaperRegistryError("Sheets paper registry differs from frozen inputs")
+        historical = copy.deepcopy(rebuilt)
+        historical_check = historical["collision_check"]
+        historical_check["known_prior_paper_registries"] = frozen_peers
+        historical_check["known_prior_paper_registry_count"] = len(frozen_peers)
+        if canonical_json_bytes(historical) != raw:
+            raise SheetsPaperRegistryError("Sheets paper registry differs from frozen inputs")
     return value
 
 

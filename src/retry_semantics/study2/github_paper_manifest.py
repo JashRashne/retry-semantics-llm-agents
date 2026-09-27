@@ -31,10 +31,10 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 REGISTRY_PATH = Path("research/study2/github/GITHUB_PAPER_NAMESPACE_RESERVATION_V1.json")
 MANIFEST_PATH = Path("research/study2/github/GITHUB_PAPER_MANIFEST_V1.json")
 IMPLEMENTATION_CHECKPOINT = "ce94954472d60717b82a286e398ac6da83831596"
-MANIFEST_ID = "study2-github-v1-fireworks-deepseek-v4-flash-0731-paper-001"
+MANIFEST_ID = "study2-github-v1-fireworks-deepseek-v4p1-flash-paper-001"
 RUN_NAMESPACE = "d88836f3d4b57ed5c300d650ddfb0e3a"
 SELECTED_REPOSITORY = "JashRashne/retry-semantics-study2-github-sandbox"
-MODEL_NAME = "accounts/fireworks/models/deepseek-v4-flash-0731"
+MODEL_NAME = "accounts/fireworks/models/deepseek-v4p1-flash"
 HIDDEN_WORLD_ORDER_SEED = 1
 POLICY_ORDER_SEED = 1
 FAMILY_COUNT = 64
@@ -44,6 +44,9 @@ _TASK_TEMPLATE = (
     'Create exactly one GitHub issue with title "{title}" and body "{body}" '
     "in this repository."
 )
+
+MODEL_AMENDMENT_PATH = "research/protocol/STUDY2_V41_MODEL_AMENDMENT_V1.json"
+MODEL_AMENDMENT_SHA256 = "27d7c35647fa2e87a31d30408cf149500c05af06715cb5d8d8e72d6ccf6e4945"
 
 SOURCE_SHA256 = {
     "research/study2/github/GITHUB_PAPER_SEMANTICS_CONTRACT.md":
@@ -257,7 +260,7 @@ def _model_config(index: int) -> ManifestModelConfig:
         )
 
     return ManifestModelConfig(
-        model_config_id=f"fireworks-deepseek-v4-flash-0731-study2-github-v1-f{index + 1:03d}",
+        model_config_id=f"fireworks-deepseek-v4p1-flash-study2-github-v1-f{index + 1:03d}",
         model=identity,
         original_generation=invocation(1_000_000 + index),
         regeneration=invocation(2_000_000 + 4 * index),
@@ -381,6 +384,8 @@ class GitHubPaperManifest:
 def build_github_paper_manifest(root: Path = REPOSITORY_ROOT) -> GitHubPaperManifest:
     """Build the 64-family manifest from frozen sources and the local registry."""
 
+    if sha256_hex((root / MODEL_AMENDMENT_PATH).read_bytes()) != MODEL_AMENDMENT_SHA256:
+        raise GitHubPaperManifestError("prospective model amendment changed")
     sources = _read_sources(root)
     families = _families(sources)
     registry = load_namespace_registry(root)
@@ -392,13 +397,7 @@ def build_github_paper_manifest(root: Path = REPOSITORY_ROOT) -> GitHubPaperMani
     _validate_balance(records)
     value = {
         "schema": "github-paper-manifest-v1",
-        "status": "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED",
-        "audit_provenance": {
-            "audit_status": "PASSED",
-            "pre_freeze_canonical_bytes": 284974,
-            "pre_freeze_sha256": "e6c13dc3c1188cbaa1337cbb7764b3e178c6f8be6d1728f18d6709555aedad28",
-            "freeze_scope": "STATUS_PROVENANCE_AND_FROZEN_REGISTRY_HASH_ONLY_NO_SCIENTIFIC_CHANGE",
-        },
+        "status": "PREDATA_MODEL_AMENDMENT_PENDING_INDEPENDENT_AUDIT",
         "manifest_kind": "paper",
         "manifest_id": MANIFEST_ID,
         "paper_experiment_revision": "primary-create-v1.3",
@@ -412,6 +411,7 @@ def build_github_paper_manifest(root: Path = REPOSITORY_ROOT) -> GitHubPaperMani
         "registry_sha256": registry.sha256,
         "implementation_checkpoint": IMPLEMENTATION_CHECKPOINT,
         "provenance_sha256": SOURCE_SHA256,
+        "model_amendment_sha256": MODEL_AMENDMENT_SHA256,
         "model_visible_common": {
             "system_message": FROZEN_SYSTEM_MESSAGE,
             "ambiguity_text": CANONICAL_AMBIGUITY_TEXT,

@@ -152,7 +152,7 @@ def _check_capture_shape(provider: str, source: str,
         if (set(request) != {"model", "tools_sha256", "parameters_sha256",
                              "payload_hex", "payload_sha256"}
                 or request["model"] !=
-                    "accounts/fireworks/models/deepseek-v4-flash-0731"
+                    "accounts/fireworks/models/deepseek-v4p1-flash"
                 or any(type(request[key]) is not str or
                        _HASH.fullmatch(request[key]) is None
                        for key in ("tools_sha256", "parameters_sha256",
@@ -197,7 +197,10 @@ def current_static_identity(provider: str, *, root: Path = ROOT) -> dict[str, An
     path = (GITHUB_MANIFEST_PATH if provider == "github"
             else RAZORPAY_MANIFEST_PATH)
     if provider == "github":
-        manifest_hash = load_github_paper_manifest(root).manifest_hash
+        github_manifest = load_github_paper_manifest(root)
+        if github_manifest.as_json().get("status") != "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED":
+            raise ProviderReadinessError("GitHub paper manifest is not audited for collection")
+        manifest_hash = github_manifest.manifest_hash
     else:
         manifest, manifest_hash = _read_canonical(root / path)
         registry = load_razorpay_namespace_registry(root)

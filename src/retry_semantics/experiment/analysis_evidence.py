@@ -22,6 +22,9 @@ EXTRACTOR_VERSION = "ticket-analysis-extractor-v1"
 ANALYSIS_VERSION = "ticket-primary-create-analysis-v1"
 MANIFEST_ID = "primary-create-v1.3-fireworks-deepseek-v4-flash-0731-paper-001"
 MANIFEST_SHA256 = "a707909df1fcfaa99c6834394e74340788dfcf1d62545d25ff89bf6a6418a03c"
+STUDY1B_MANIFEST_ID = "primary-create-v1.3-fireworks-deepseek-v4p1-flash-study1b-paper-001"
+STUDY1B_MANIFEST_SHA256 = "aa9e0677cc6b9513322327fd94ee853cf19184e93e38f0e61f7f892e10a20622"
+STUDY1B_MANIFEST_BYTES = 241606
 EVIDENCE_REVISION = "paper-collection-evidence-v2"
 PLAN_NAME = "primary_create_v1_3_analysis_plan.md"
 PLAN_SHA256 = "23ecd98293a5a7b3b399aed270f8cd257c1aa9b5070d3845575ac2e02580bf88"
@@ -294,7 +297,7 @@ def operational_rates(attempts, derived_arms=None):
     }
 
 
-def _analysis_validators():
+def _analysis_validators(*, study1b: bool = False):
     registry = Registry()
     schemas = {}
     # Every reference is resolved locally. No network retrieval is installed.
@@ -306,12 +309,14 @@ def _analysis_validators():
     validators = {}
     for name in ("analysis_provenance_schema_v1.json", "analysis_arm_schema_v1.json",
                  "analysis_family_schema_v1.json", "analysis_results_schema_v1.json"):
-        jsonschema.Draft202012Validator.check_schema(schemas[name])
-        validators[name] = jsonschema.Draft202012Validator(schemas[name],registry=registry)
+        selected = ("study1b_analysis_provenance_schema_v1.json"
+                    if study1b and name == "analysis_provenance_schema_v1.json" else name)
+        jsonschema.Draft202012Validator.check_schema(schemas[selected])
+        validators[name] = jsonschema.Draft202012Validator(schemas[selected],registry=registry)
     return validators
 
 
-def extract_ticket_analysis(source_bundle: Path, output_directory: Path):
+def extract_ticket_analysis(source_bundle: Path, output_directory: Path, *, study1b: bool = False):
     """Validate first, derive and schema-check in memory, publish four files once."""
     source = Path(source_bundle).resolve()
     output = Path(output_directory).resolve()
@@ -335,9 +340,17 @@ def extract_ticket_analysis(source_bundle: Path, output_directory: Path):
         raise PaperCollectionError("source bundle changed during input validation")
     manifest = json.loads(source_bytes["manifest.json"])
     metadata = json.loads(source_bytes["run_metadata.json"])
-    if (len(source_bytes["manifest.json"]) != 240807 or sha256_hex(source_bytes["manifest.json"]) != MANIFEST_SHA256
-        or manifest["manifest_id"] != MANIFEST_ID):
+    expected_id = STUDY1B_MANIFEST_ID if study1b else MANIFEST_ID
+    expected_hash = STUDY1B_MANIFEST_SHA256 if study1b else MANIFEST_SHA256
+    expected_bytes = STUDY1B_MANIFEST_BYTES if study1b else 240807
+    if (len(source_bytes["manifest.json"]) != expected_bytes
+        or sha256_hex(source_bytes["manifest.json"]) != expected_hash
+        or manifest["manifest_id"] != expected_id):
         raise PaperCollectionError("not the prospectively frozen Ticket paper manifest")
+    if study1b:
+        from retry_semantics.experiment.fireworks_paper_study1b import build_study1b_manifest
+        if source_bytes["manifest.json"] != build_study1b_manifest().canonical_bytes:
+            raise PaperCollectionError("Study1B manifest differs from the V4.1 frozen builder")
     if metadata.get("collection_evidence_revision") != EVIDENCE_REVISION:
         raise PaperCollectionError("final Ticket analysis requires paper-collection-evidence-v2")
     if output.exists():
@@ -365,12 +378,14 @@ def extract_ticket_analysis(source_bundle: Path, output_directory: Path):
     implementation_paths = [Path(__file__),Path(__file__).with_name("analysis_statistics.py"),
                             Path(__file__).parents[1]/"serialization.py"]
     implementation_paths += sorted(PROTOCOL_ROOT.glob("analysis*schema_v1.json"))
+    if study1b:
+        implementation_paths.append(PROTOCOL_ROOT / "study1b_analysis_provenance_schema_v1.json")
     implementation_hashes = {p.name:sha256_hex(p.read_bytes()) for p in implementation_paths}
     provenance = {"schema_version": "ticket-analysis-provenance-v1", "analysis_version": ANALYSIS_VERSION,
                   "extractor_version": EXTRACTOR_VERSION,
                   "extractor_implementation_sha256": sha256_hex(canonical_json_bytes(implementation_hashes)),
                   "extractor_component_sha256": implementation_hashes,
-                  "source_manifest_id": MANIFEST_ID, "source_manifest_sha256": MANIFEST_SHA256,
+                  "source_manifest_id": expected_id, "source_manifest_sha256": expected_hash,
                   "source_paper_experiment_revision": metadata["paper_experiment_revision"],
                   "source_execution_semantics_revision": metadata["execution_semantics_revision"],
                   "source_collection_evidence_revision": metadata["collection_evidence_revision"],
@@ -379,7 +394,7 @@ def extract_ticket_analysis(source_bundle: Path, output_directory: Path):
                   "analysis_plan": {"identity": "primary-create-v1.3-analysis-plan-v1.0", "path": "research/protocol/"+PLAN_NAME, "sha256": PLAN_SHA256},
                   "bootstrap_seed": BOOTSTRAP_SEED, "bootstrap_replicates": BOOTSTRAP_REPLICATES,
                   "derived_artifact_sha256": {name:sha256_hex(data) for name,data in artifacts.items()}}
-    validators = _analysis_validators()
+    validators = _analysis_validators(study1b=True) if study1b else _analysis_validators()
     validators["analysis_provenance_schema_v1.json"].validate(provenance)
     validators["analysis_results_schema_v1.json"].validate(results)
     for arm in arms:
@@ -411,8 +426,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source_bundle",type=Path)
     parser.add_argument("output_directory",type=Path)
+    parser.add_argument("--study1b", action="store_true", help="Require the exact V4.1 Study1B manifest")
     args = parser.parse_args()
-    extract_ticket_analysis(args.source_bundle,args.output_directory)
+    extract_ticket_analysis(args.source_bundle,args.output_directory,study1b=args.study1b)
 
 
 if __name__ == "__main__":

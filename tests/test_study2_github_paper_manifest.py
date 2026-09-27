@@ -15,6 +15,7 @@ from retry_semantics.study2.github_paper_manifest import (
     FAMILY_COUNT,
     IMPLEMENTATION_CHECKPOINT,
     MANIFEST_ID,
+    MODEL_AMENDMENT_PATH, MODEL_AMENDMENT_SHA256,
     MANIFEST_PATH,
     REGISTRY_PATH,
     REPOSITORY_ROOT,
@@ -29,7 +30,7 @@ from retry_semantics.study2.github_paper_manifest import (
 )
 
 EXPECTED_REGISTRY_SHA256 = "3da0eecb0699d6fce087fff4c7e6adc9aa362676652522bb748c0a04825785c6"
-EXPECTED_MANIFEST_SHA256 = "54bada3a5b3b317fa95a449230f6c09b08898cd06ecbe64d8f2af1a01e8c4b46"
+EXPECTED_MANIFEST_SHA256 = "9ca2fc0f1d401dc71b5a8f10ae49c3c9c8acfe433164399f52fdc9b821a187ee"
 
 
 def _isolated_root(destination: Path) -> Path:
@@ -37,7 +38,7 @@ def _isolated_root(destination: Path) -> Path:
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(REPOSITORY_ROOT / relative, target)
-    for relative in (REGISTRY_PATH, MANIFEST_PATH):
+    for relative in (REGISTRY_PATH, MANIFEST_PATH, MODEL_AMENDMENT_PATH):
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(REPOSITORY_ROOT / relative, target)
@@ -127,13 +128,9 @@ def test_manifest_family_hierarchy_schedule_and_model_binding() -> None:
     families = value["families"]
     assert value["manifest_id"] == MANIFEST_ID
     assert value["manifest_kind"] == "paper"
-    assert value["status"] == "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"
-    assert value["audit_provenance"] == {
-        "audit_status": "PASSED",
-        "pre_freeze_canonical_bytes": 284974,
-        "pre_freeze_sha256": "e6c13dc3c1188cbaa1337cbb7764b3e178c6f8be6d1728f18d6709555aedad28",
-        "freeze_scope": "STATUS_PROVENANCE_AND_FROZEN_REGISTRY_HASH_ONLY_NO_SCIENTIFIC_CHANGE",
-    }
+    assert value["status"] == "PREDATA_MODEL_AMENDMENT_PENDING_INDEPENDENT_AUDIT"
+    assert "audit_provenance" not in value
+    assert value["model_amendment_sha256"] == MODEL_AMENDMENT_SHA256
     assert value["selected_repository"] == SELECTED_REPOSITORY
     assert value["scope_selected"] is True and value["scope_qualified"] is False
     assert value["run_namespace"] == RUN_NAMESPACE
@@ -186,10 +183,10 @@ def test_manifest_family_hierarchy_schedule_and_model_binding() -> None:
             first_policy[(world, family[f"{world.lower()}_policy_order"][0])] += 1
 
         config = family["model_config"]
-        assert config["model_config_id"] == f"fireworks-deepseek-v4-flash-0731-study2-github-v1-f{index + 1:03d}"
+        assert config["model_config_id"] == f"fireworks-deepseek-v4p1-flash-study2-github-v1-f{index + 1:03d}"
         assert config["model"] == {
             "provider": "fireworks",
-            "name": "accounts/fireworks/models/deepseek-v4-flash-0731",
+            "name": "accounts/fireworks/models/deepseek-v4p1-flash",
             "version_or_digest": None,
         }
         for stage, seed in (("original_generation", 1_000_000 + index), ("regeneration", 2_000_000 + 4 * index)):
