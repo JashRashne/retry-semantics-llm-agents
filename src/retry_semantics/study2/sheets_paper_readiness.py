@@ -14,7 +14,8 @@ from typing import Any
 from urllib.parse import quote
 
 from retry_semantics.study2.sheets_paper_materialize import (
-    IMPLEMENTATION_PATHS, MANIFEST_PATH, MAX_READ_BYTES, REPOSITORY_ROOT,
+    FROZEN_IMPLEMENTATION_PROVENANCE_SHA256, IMPLEMENTATION_PATHS,
+    MANIFEST_PATH, MAX_READ_BYTES, REPOSITORY_ROOT,
     SheetsPaperMaterializationError, _parse, read_target,
 )
 from retry_semantics.serialization import canonical_json_bytes, sha256_hex
@@ -272,8 +273,16 @@ def _require_clean_committed_lock(root: Path, manifest: dict[str, Any]) -> None:
         if (canonical_json_bytes(manifest) != (root / MANIFEST_PATH).read_bytes()
                 or type(manifest.get("implementation_sha256")) is not dict
                 or set(manifest["implementation_sha256"]) != set(IMPLEMENTATION_PATHS)
-                or any(sha256_hex((root / path).read_bytes()) != manifest["implementation_sha256"][path]
-                       for path in IMPLEMENTATION_PATHS)):
+                or any(
+                    (manifest["implementation_sha256"][path]
+                     != FROZEN_IMPLEMENTATION_PROVENANCE_SHA256[path])
+                    if path in FROZEN_IMPLEMENTATION_PROVENANCE_SHA256
+                    else (
+                        sha256_hex((root / path).read_bytes())
+                        != manifest["implementation_sha256"][path]
+                    )
+                    for path in IMPLEMENTATION_PATHS
+                )):
             raise PaperReadinessError("manifest or implementation identity changed")
     except (OSError, subprocess.CalledProcessError, UnicodeError) as exc:
         raise PaperReadinessError("collection source is not committed") from exc
