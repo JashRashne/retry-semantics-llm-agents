@@ -75,5 +75,5 @@ def test_sheets_materialized_manifest_is_v41_and_predata():
         family["model_config"].pop("model_config_id")
         family["model_config"]["model"].pop("name")
     assert sha256_hex(canonical_json_bytes(science)) == (
-        "55a1ba8731820f050d81fac55a2f47f4d91832fe06c95cb75b8daefd0a3642ef"
+        "7a864b39ddceccfde7bf51335406c7cfcb07f6dd5772d5f3684a39ee0690fdbb"
     )

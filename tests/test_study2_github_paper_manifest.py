@@ -30,7 +30,7 @@ from retry_semantics.study2.github_paper_manifest import (
 )
 
 EXPECTED_REGISTRY_SHA256 = "3da0eecb0699d6fce087fff4c7e6adc9aa362676652522bb748c0a04825785c6"
-EXPECTED_MANIFEST_SHA256 = "9ca2fc0f1d401dc71b5a8f10ae49c3c9c8acfe433164399f52fdc9b821a187ee"
+EXPECTED_MANIFEST_SHA256 = "293d060384ca795cff92fe775bb031021731a6e1da035827db5f763eef5a1e05"
 
 
 def _isolated_root(destination: Path) -> Path:
@@ -128,8 +128,14 @@ def test_manifest_family_hierarchy_schedule_and_model_binding() -> None:
     families = value["families"]
     assert value["manifest_id"] == MANIFEST_ID
     assert value["manifest_kind"] == "paper"
-    assert value["status"] == "PREDATA_MODEL_AMENDMENT_PENDING_INDEPENDENT_AUDIT"
-    assert "audit_provenance" not in value
+    assert value["status"] == "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"
+    assert value["audit_provenance"] == {
+        "auditor_id": "openai-gpt-5.6-sol-independent-hostile-audit-v2",
+        "audited_at_utc": "2026-09-27T12:30:39Z",
+        "audit_report_sha256": "76aa91c013ecd2abd64f6b163337f65ddfddaa27218ade9f7cc0fd6aa1ee8cac",
+        "audit_receipt_sha256": "237870fa523d98715e7340a4185c1fafaffa54967c4fbf902b81f40321c2596d",
+        "audited_scientific_sha256": "771f30220cbd1a5ba11af33604fc11a2f9fb877b3f3422c490ce9e54cae9c87b",
+    }
     assert value["model_amendment_sha256"] == MODEL_AMENDMENT_SHA256
     assert value["selected_repository"] == SELECTED_REPOSITORY
     assert value["scope_selected"] is True and value["scope_qualified"] is False

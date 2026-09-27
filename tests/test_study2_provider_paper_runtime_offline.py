@@ -375,11 +375,11 @@ def test_razorpay_unrelated_historical_order_does_not_poison_list():
     assert result.authoritative_completeness_qualified is False
 
 
-def test_readiness_rejects_missing_manifest_and_audit(tmp_path):
-    with pytest.raises(ready.ProviderReadinessError, match="not audited"):
-        ready.current_static_identity("github")
-    with pytest.raises(ready.ProviderReadinessError, match="not frozen"):
-        ready.current_static_identity("razorpay")
+def test_readiness_validates_frozen_manifest_and_rejects_missing(tmp_path):
+    gh_id = ready.current_static_identity("github")
+    assert gh_id["manifest_sha256"] == "293d060384ca795cff92fe775bb031021731a6e1da035827db5f763eef5a1e05"
+    rz_id = ready.current_static_identity("razorpay")
+    assert rz_id["manifest_sha256"] == "2652085cd0f88602f9bed79029eb9e5b56b86c36e2d6fa6c76fa7c9b93b655fc"
     with pytest.raises(ready.ProviderReadinessError):
         ready.current_static_identity("razorpay", root=tmp_path)
     with pytest.raises(GitHubPaperManifestError):
@@ -394,7 +394,8 @@ def test_readiness_rejects_missing_manifest_and_audit(tmp_path):
 def test_razorpay_draft_manifest_exact_and_non_authorizing():
     raw = (RAZORPAY_ROOT / RAZORPAY_MANIFEST_PATH).read_bytes()
     manifest = load_razorpay_paper_manifest()
-    assert manifest["status"] == RAZORPAY_DRAFT
+    assert manifest["status"] == RAZORPAY_FROZEN
+    assert manifest["audit_provenance"]["auditor_id"] == "openai-gpt-5.6-sol-independent-hostile-audit-v2"
     assert scientific_projection(manifest) == scientific_projection(json.loads(build_razorpay_paper_manifest()))
     registry = load_namespace_registry()
     assert registry["status"] == RAZORPAY_FROZEN

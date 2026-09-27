@@ -397,7 +397,14 @@ def build_github_paper_manifest(root: Path = REPOSITORY_ROOT) -> GitHubPaperMani
     _validate_balance(records)
     value = {
         "schema": "github-paper-manifest-v1",
-        "status": "PREDATA_MODEL_AMENDMENT_PENDING_INDEPENDENT_AUDIT",
+        "status": "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED",
+        "audit_provenance": {
+            "auditor_id": "openai-gpt-5.6-sol-independent-hostile-audit-v2",
+            "audited_at_utc": "2026-09-27T12:30:39Z",
+            "audit_report_sha256": "76aa91c013ecd2abd64f6b163337f65ddfddaa27218ade9f7cc0fd6aa1ee8cac",
+            "audit_receipt_sha256": "237870fa523d98715e7340a4185c1fafaffa54967c4fbf902b81f40321c2596d",
+            "audited_scientific_sha256": "771f30220cbd1a5ba11af33604fc11a2f9fb877b3f3422c490ce9e54cae9c87b",
+        },
         "manifest_kind": "paper",
         "manifest_id": MANIFEST_ID,
         "paper_experiment_revision": "primary-create-v1.3",

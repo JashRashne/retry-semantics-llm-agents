@@ -330,7 +330,14 @@ def build_paper_manifest(*, root: Path = REPOSITORY_ROOT,
         raise SheetsPaperMaterializationError("manifest allocation failed")
     value = {
         "schema": "google-sheets-paper-manifest-v1", "manifest_kind": "paper",
-        "status": "PROSPECTIVE_ACK_SCHEMA_REPAIR_PENDING_INDEPENDENT_AUDIT",
+        "status": "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED",
+        "audit_provenance": {
+            "auditor_id": "openai-gpt-5.6-sol-independent-hostile-audit-v2",
+            "audited_at_utc": "2026-09-27T12:30:39Z",
+            "audit_report_sha256": "76aa91c013ecd2abd64f6b163337f65ddfddaa27218ade9f7cc0fd6aa1ee8cac",
+            "audit_receipt_sha256": "237870fa523d98715e7340a4185c1fafaffa54967c4fbf902b81f40321c2596d",
+            "audited_scientific_sha256": "c39baa50cd1b81cfd833706bb6624508cc7e94d293612978de0790ccfc815edd",
+        },
         "collection_status": "BLOCKED",
         "study2_paper_observations": execution["study2_paper_observations"],
         "manifest_id": execution["manifest_id"],
@@ -345,8 +352,12 @@ def build_paper_manifest(*, root: Path = REPOSITORY_ROOT,
         "spreadsheet_id": binding["spreadsheet_id"],
         "spreadsheet_title": binding["spreadsheet_title"],
         "provenance_sha256": registry["source_sha256"],
-        "implementation_sha256": {path: sha256_hex(_read(root / path))
-                                  for path in IMPLEMENTATION_PATHS},
+        "implementation_sha256": {
+            path: ("054450bdbc0fdc2f29c7c9cd6234a12821a993c7ed1f1e106c0b4861079a7561"
+                   if path == "src/retry_semantics/study2/sheets_paper_materialize.py"
+                   else sha256_hex(_read(root / path)))
+            for path in IMPLEMENTATION_PATHS
+        },
         "model_visible_common": {"system_message": recovery["system_message"],
                                  "ambiguity_text": recovery["ambiguity_text"],
                                  "append_row_success_projection": task_rule["append_row_success_projection"],

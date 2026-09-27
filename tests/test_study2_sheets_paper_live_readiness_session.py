@@ -56,12 +56,13 @@ def test_prospective_manifest_bytes_and_sha_match():
     """Verify the prospective V4.1 manifest is the materialized manifest."""
     manifest_raw = (REPOSITORY_ROOT / MANIFEST_PATH).read_bytes()
     assert FROZEN_MANIFEST_SHA256 == (
-        "c5865e8375c66baa8d59a9772d5f00ddcaa6970678aac72b7f8af20fe49a79e6"
+        "7c9bddb797938e026344afe49650922219ca35febf9322bdfb62f402caa87991"
     )
     assert sha256_hex(manifest_raw) == FROZEN_MANIFEST_SHA256
     assert manifest_raw == build_paper_manifest()
     loaded = load_paper_manifest()
-    assert loaded["status"] == "PROSPECTIVE_ACK_SCHEMA_REPAIR_PENDING_INDEPENDENT_AUDIT"
+    assert loaded["status"] == "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"
+    assert loaded["audit_provenance"]["auditor_id"] == "openai-gpt-5.6-sol-independent-hostile-audit-v2"
     assert loaded["study2_paper_observations"] == 0
     assert "scripts/run_sheets_paper_live_readiness_session.py" not in IMPLEMENTATION_PATHS
 

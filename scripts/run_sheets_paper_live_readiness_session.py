@@ -33,7 +33,7 @@ from retry_semantics.study2 import sheets_phase4_setup as setup
 
 FROZEN_RUNTIME_HEAD = "f002fdfa3e17a168ce5fef2ccdcee9af386fc17a"
 FROZEN_MANIFEST_SHA256 = (
-    "c5865e8375c66baa8d59a9772d5f00ddcaa6970678aac72b7f8af20fe49a79e6"
+    "7c9bddb797938e026344afe49650922219ca35febf9322bdfb62f402caa87991"
 )
 LIVE_READINESS_CONFIRMATION = "EXPLICIT_SHEETS_PAPER_LIVE_READINESS"
 
@@ -94,8 +94,7 @@ def verify_repository_state(
     # The pending manifest's fixed digest changes when its audited status is
     # frozen. A clean committed, independently frozen and regenerated manifest
     # is the authority for that later state.
-    if (manifest_sha != frozen_manifest_sha256
-            and manifest.get("status") != "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"):
+    if manifest_sha != frozen_manifest_sha256:
         raise ReadinessSessionRefused(
             f"frozen manifest SHA ({manifest_sha}) does not match expected ({frozen_manifest_sha256})"
         )
