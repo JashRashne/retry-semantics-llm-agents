@@ -702,7 +702,7 @@ def collect_sheets_arm(
             })
             return ArmProjection(arm_id, "INCONCLUSIVE", None, "H1_constructor_dispatch_unqualified"), stopped
         post_facts = DispatchFacts(h1_post_resp.dispatch_initiated, h1_post_resp.local_send_completed,
-                                  h1_post_resp.status, True, False)
+                                  h1_post_resp.status, False, False)
         ack_res = PaperHTTPResult(post_facts, h1_post_resp.body, h1_post_resp.error)
         try:
             validate_append_acknowledgement(expected_original, arm, ack_res)
