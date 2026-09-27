@@ -616,3 +616,598 @@ def test_prepare_final_authorization_offline(tmp_path, monkeypatch):
     assert doc["collection_authorized"] is False
     assert doc["study2_paper_observations_at_authorization"] == 0
     assert out_file.is_file()
+
+
+def test_github_readiness_absent_page_1_present_page_2_pass(tmp_path):
+    """Req A: qualification issue is absent from page 1 but present on page 2 -> PASS."""
+    manifest = load_github_paper_manifest().as_json()
+    from retry_semantics.study2.github_paper_manifest import load_namespace_registry as load_gh_reg
+    registry = load_gh_reg().as_json()
+    identity = {
+        "provider": "github",
+        "manifest_sha256": sha256_hex(canonical_json_bytes(manifest)),
+        "runtime_sha256": {},
+    }
+
+    suffix_posted = False
+
+    def mock_send(req: PaperRequest) -> PaperTransportResult:
+        nonlocal suffix_posted
+        repo_prefix = f"https://api.github.com/repos/{manifest['selected_repository']}"
+        if req.url.endswith("/rate_limit"):
+            body = {"resources": {"core": {"remaining": 5000, "limit": 5000}}}
+        elif req.url.endswith("/user"):
+            body = {"id": 42, "login": "test-operator"}
+        elif req.url.endswith("/issues"):
+            if req.method == "POST":
+                data = json.loads(req.body)
+                if "rs2gh1-00000000000000000000000000000000" in data.get("body", ""):
+                    suffix_posted = True
+                body = {"number": 104, "title": data["title"], "body": data["body"], "state": "open"}
+                return PaperTransportResult(201, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+            body = []
+        elif "/issues?state=" in req.url:
+            if not suffix_posted:
+                body = []
+            else:
+                if req.url.endswith("page=1"):
+                    headers = (
+                        ("x-github-api-version-selected", "2022-11-28"),
+                        ("link", f'<{repo_prefix}/issues?state=all&per_page=100&page=2>; rel="next"'),
+                    )
+                    body = [{"number": 1, "title": "issue 1", "body": "regular issue", "state": "open"}]
+                    return PaperTransportResult(200, headers, canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+                elif req.url.endswith("page=2"):
+                    body = [{"number": 104, "title": "[QUALIFICATION] Suffix roundtrip test",
+                             "body": "Study-2 qualification issue suffix roundtrip verification.\n\n<!-- retry-semantics-study2-gh:v1:rs2gh1-00000000000000000000000000000000 -->",
+                             "state": "open"}]
+                else:
+                    body = []
+        else:
+            body = {"id": 1374277504, "full_name": manifest["selected_repository"]}
+        return PaperTransportResult(200, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+
+    def mock_model_complete(model_name: str, tools: tuple[dict, ...], sampling: dict):
+        return {
+            "id": "mock-comp",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": tools[0]["name"], "arguments": "{}"},
+                    }],
+                },
+                "finish_reason": "tool_calls",
+            }],
+        }
+
+    hashes = capture_github_readiness(
+        manifest=manifest,
+        registry=registry,
+        evidence_dir=tmp_path / "gh_evidence",
+        identity=identity,
+        operator_id="test-operator",
+        api_version="2022-11-28",
+        http_send=mock_send,
+        model_complete=mock_model_complete,
+    )
+    assert len(hashes) == 7
+    assert "suffix_roundtrip_and_collision_scan" in hashes
+
+    ev_doc = json.loads((tmp_path / "gh_evidence" / "suffix_roundtrip_and_collision_scan.json").read_text())
+    qual_read = ev_doc["facts"]["qualification_read"]
+    assert isinstance(qual_read, list)
+    assert len(qual_read) == 2
+    page1_entries = json.loads(bytes.fromhex(qual_read[0]["response"]["body_hex"]))
+    page2_entries = json.loads(bytes.fromhex(qual_read[1]["response"]["body_hex"]))
+    assert not any(e["number"] == 104 for e in page1_entries)
+    assert any(e["number"] == 104 for e in page2_entries)
+
+
+def test_github_readiness_pagination_traversal_incomplete_fail(tmp_path):
+    """Req B: pagination/traversal incomplete -> FAIL closed."""
+    from retry_semantics.study2.github_live_readiness import GitHubReadinessSessionError
+    from retry_semantics.study2.provider_paper_readiness_controls import (
+        ControlEvidenceError,
+        validate_github_control,
+    )
+    manifest = load_github_paper_manifest().as_json()
+    from retry_semantics.study2.github_paper_manifest import load_namespace_registry as load_gh_reg
+    registry = load_gh_reg().as_json()
+    identity = {
+        "provider": "github",
+        "manifest_sha256": sha256_hex(canonical_json_bytes(manifest)),
+        "runtime_sha256": {},
+    }
+
+    suffix_posted = False
+
+    def mock_send_broken_traversal(req: PaperRequest) -> PaperTransportResult:
+        nonlocal suffix_posted
+        repo_prefix = f"https://api.github.com/repos/{manifest['selected_repository']}"
+        if req.url.endswith("/rate_limit"):
+            body = {"resources": {"core": {"remaining": 5000, "limit": 5000}}}
+        elif req.url.endswith("/user"):
+            body = {"id": 42, "login": "test-operator"}
+        elif req.url.endswith("/issues"):
+            if req.method == "POST":
+                data = json.loads(req.body)
+                if "rs2gh1-00000000000000000000000000000000" in data.get("body", ""):
+                    suffix_posted = True
+                body = {"number": 104, "title": data["title"], "body": data["body"], "state": "open"}
+                return PaperTransportResult(201, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+            body = []
+        elif "/issues?state=" in req.url:
+            if not suffix_posted:
+                body = []
+            else:
+                if req.url.endswith("page=1"):
+                    headers = (
+                        ("x-github-api-version-selected", "2022-11-28"),
+                        ("link", f'<{repo_prefix}/issues?state=all&per_page=100&page=2>; rel="next"'),
+                    )
+                    body = [{"number": 1, "title": "t", "body": "b", "state": "open"}]
+                    return PaperTransportResult(200, headers, canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+                else:
+                    return PaperTransportResult(500, (("x-github-api-version-selected", "2022-11-28"),), b"Error", None, True, True, True, 0.0, 0.1)
+        else:
+            body = {"id": 1374277504, "full_name": manifest["selected_repository"]}
+        return PaperTransportResult(200, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+
+    with pytest.raises(GitHubReadinessSessionError, match="qualification readback traversal failed"):
+        capture_github_readiness(
+            manifest=manifest,
+            registry=registry,
+            evidence_dir=tmp_path / "gh_incomplete_evidence",
+            identity=identity,
+            operator_id="test-operator",
+            api_version="2022-11-28",
+            http_send=mock_send_broken_traversal,
+            model_complete=lambda *_: {},
+        )
+
+    qual_marker_suffix = "\n\n<!-- retry-semantics-study2-gh:v1:rs2gh1-00000000000000000000000000000000 -->"
+    create_pair = {
+        "request": {
+            "method": "POST",
+            "url": f"https://api.github.com/repos/{manifest['selected_repository']}/issues",
+            "headers": {"X-GitHub-Api-Version": "2022-11-28", "Accept": "application/vnd.github.raw+json"},
+            "body_hex": canonical_json_bytes({"title": "[QUALIFICATION] Suffix roundtrip test", "body": f"Study-2 qualification issue suffix roundtrip verification.{qual_marker_suffix}"}).hex(),
+            "dispatch_started": True, "attempt_count": 1, "started_monotonic": 10.0,
+        },
+        "response": {
+            "http_status": 201,
+            "headers": {"x-github-api-version-selected": "2022-11-28"},
+            "body_hex": canonical_json_bytes({"number": 104, "title": "[QUALIFICATION] Suffix roundtrip test", "body": f"Study-2 qualification issue suffix roundtrip verification.{qual_marker_suffix}"}).hex(),
+            "transport_complete": True, "redirect_followed": False, "ended_monotonic": 10.1,
+        },
+    }
+    incomplete_page1_only = [{
+        "request": {
+            "method": "GET",
+            "url": f"https://api.github.com/repos/{manifest['selected_repository']}/issues?state=all&per_page=100&page=1",
+            "headers": {"X-GitHub-Api-Version": "2022-11-28", "Accept": "application/vnd.github.raw+json"},
+            "body_hex": "", "dispatch_started": True, "attempt_count": 1, "started_monotonic": 11.0,
+        },
+        "response": {
+            "http_status": 200,
+            "headers": {
+                "x-github-api-version-selected": "2022-11-28",
+                "link": f'<https://api.github.com/repos/{manifest["selected_repository"]}/issues?state=all&per_page=100&page=2>; rel="next"',
+            },
+            "body_hex": canonical_json_bytes([{"number": 104, "title": "t", "body": f"Study-2 qualification issue suffix roundtrip verification.{qual_marker_suffix}"}]).hex(),
+            "transport_complete": True, "redirect_followed": False, "ended_monotonic": 11.1,
+        },
+    }]
+    facts = {
+        "api_version": "2022-11-28",
+        "baseline_pages_sha256": "mock-digest",
+        "qualification_read": incomplete_page1_only,
+    }
+    capture_doc = {
+        "schema": "github-paper-readiness-capture-v1",
+        "source": "provider_http_capture",
+        "synthetic": False,
+        "request_evidence": create_pair["request"],
+        "response_evidence": create_pair["response"],
+        "captured_at_utc": "2026-09-27T00:00:00Z",
+    }
+    context = {
+        "github_api_version": "2022-11-28",
+        "github_baseline": [],
+        "github_baseline_digest": "mock-digest",
+    }
+    with pytest.raises(ControlEvidenceError, match="missing GitHub next page"):
+        validate_github_control("suffix_roundtrip_and_collision_scan", manifest, registry, facts, capture_doc, context)
+
+
+def test_github_readiness_first_traversal_stale_second_traversal_pass(tmp_path):
+    """Req C: first complete traversal stale, second complete traversal sees issue -> PASS."""
+    manifest = load_github_paper_manifest().as_json()
+    from retry_semantics.study2.github_paper_manifest import load_namespace_registry as load_gh_reg
+    registry = load_gh_reg().as_json()
+    identity = {
+        "provider": "github",
+        "manifest_sha256": sha256_hex(canonical_json_bytes(manifest)),
+        "runtime_sha256": {},
+    }
+
+    suffix_posted = False
+    traversal_count = 0
+    sleeps: list[float] = []
+
+    def mock_send(req: PaperRequest) -> PaperTransportResult:
+        nonlocal suffix_posted, traversal_count
+        if req.url.endswith("/rate_limit"):
+            body = {"resources": {"core": {"remaining": 5000, "limit": 5000}}}
+        elif req.url.endswith("/user"):
+            body = {"id": 42, "login": "test-operator"}
+        elif req.url.endswith("/issues"):
+            if req.method == "POST":
+                data = json.loads(req.body)
+                if "rs2gh1-00000000000000000000000000000000" in data.get("body", ""):
+                    suffix_posted = True
+                body = {"number": 104, "title": data["title"], "body": data["body"], "state": "open"}
+                return PaperTransportResult(201, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+            body = []
+        elif "/issues?state=" in req.url:
+            if not suffix_posted:
+                body = []
+            else:
+                traversal_count += 1
+                if traversal_count == 1:
+                    body = []
+                else:
+                    body = [{"number": 104, "title": "[QUALIFICATION] Suffix roundtrip test",
+                             "body": "Study-2 qualification issue suffix roundtrip verification.\n\n<!-- retry-semantics-study2-gh:v1:rs2gh1-00000000000000000000000000000000 -->",
+                             "state": "open"}]
+        else:
+            body = {"id": 1374277504, "full_name": manifest["selected_repository"]}
+        return PaperTransportResult(200, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+
+    def mock_model_complete(model_name: str, tools: tuple[dict, ...], sampling: dict):
+        return {
+            "id": "mock-comp",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": tools[0]["name"], "arguments": "{}"},
+                    }],
+                },
+                "finish_reason": "tool_calls",
+            }],
+        }
+
+    hashes = capture_github_readiness(
+        manifest=manifest,
+        registry=registry,
+        evidence_dir=tmp_path / "gh_evidence",
+        identity=identity,
+        operator_id="test-operator",
+        api_version="2022-11-28",
+        http_send=mock_send,
+        model_complete=mock_model_complete,
+        sleep_fn=sleeps.append,
+    )
+    assert len(hashes) == 7
+    assert "suffix_roundtrip_and_collision_scan" in hashes
+    assert sleeps == [1.0]
+    ev_doc = json.loads((tmp_path / "gh_evidence" / "suffix_roundtrip_and_collision_scan.json").read_text())
+    qual_read = ev_doc["facts"]["qualification_read"]
+    assert isinstance(qual_read, list)
+    read_resp = json.loads(bytes.fromhex(qual_read[0]["response"]["body_hex"]))
+    assert any(entry["number"] == 104 for entry in read_resp)
+
+
+def test_github_readiness_suffix_post_count_remains_exactly_one(tmp_path):
+    """Req D: suffix POST count remains exactly 1 even during multiple complete traversals."""
+    manifest = load_github_paper_manifest().as_json()
+    from retry_semantics.study2.github_paper_manifest import load_namespace_registry as load_gh_reg
+    registry = load_gh_reg().as_json()
+    identity = {
+        "provider": "github",
+        "manifest_sha256": sha256_hex(canonical_json_bytes(manifest)),
+        "runtime_sha256": {},
+    }
+
+    post_calls: list[dict[str, Any]] = []
+    suffix_posted = False
+    traversal_count = 0
+    sleeps: list[float] = []
+
+    def mock_send(req: PaperRequest) -> PaperTransportResult:
+        nonlocal suffix_posted, traversal_count
+        if req.url.endswith("/rate_limit"):
+            body = {"resources": {"core": {"remaining": 5000, "limit": 5000}}}
+        elif req.url.endswith("/user"):
+            body = {"id": 42, "login": "test-operator"}
+        elif req.url.endswith("/issues"):
+            if req.method == "POST":
+                data = json.loads(req.body)
+                post_calls.append(data)
+                if "rs2gh1-00000000000000000000000000000000" in data.get("body", ""):
+                    suffix_posted = True
+                body = {"number": 104, "title": data["title"], "body": data["body"], "state": "open"}
+                return PaperTransportResult(201, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+            body = []
+        elif "/issues?state=" in req.url:
+            if not suffix_posted:
+                body = []
+            else:
+                traversal_count += 1
+                if traversal_count < 4:
+                    body = []
+                else:
+                    body = [{"number": 104, "title": "[QUALIFICATION] Suffix roundtrip test",
+                             "body": "Study-2 qualification issue suffix roundtrip verification.\n\n<!-- retry-semantics-study2-gh:v1:rs2gh1-00000000000000000000000000000000 -->",
+                             "state": "open"}]
+        else:
+            body = {"id": 1374277504, "full_name": manifest["selected_repository"]}
+        return PaperTransportResult(200, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+
+    def mock_model_complete(model_name: str, tools: tuple[dict, ...], sampling: dict):
+        return {
+            "id": "mock-comp",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": tools[0]["name"], "arguments": "{}"},
+                    }],
+                },
+                "finish_reason": "tool_calls",
+            }],
+        }
+
+    hashes = capture_github_readiness(
+        manifest=manifest,
+        registry=registry,
+        evidence_dir=tmp_path / "gh_evidence",
+        identity=identity,
+        operator_id="test-operator",
+        api_version="2022-11-28",
+        http_send=mock_send,
+        model_complete=mock_model_complete,
+        sleep_fn=sleeps.append,
+        max_readback_attempts=5,
+    )
+    assert len(hashes) == 7
+    assert len(sleeps) == 3
+    assert len(post_calls) == 2
+    assert post_calls[0]["title"] == "[QUALIFICATION] Principal write probe"
+    assert post_calls[1]["title"] == "[QUALIFICATION] Suffix roundtrip test"
+    suffix_posts = [p for p in post_calls if "rs2gh1-00000000000000000000000000000000" in p["body"]]
+    assert len(suffix_posts) == 1
+
+
+def test_github_readiness_no_synthetic_timing(tmp_path):
+    """Req 6: no synthetic timing; real monotonic timestamps preserved."""
+    manifest = load_github_paper_manifest().as_json()
+    from retry_semantics.study2.github_paper_manifest import load_namespace_registry as load_gh_reg
+    registry = load_gh_reg().as_json()
+    identity = {
+        "provider": "github",
+        "manifest_sha256": sha256_hex(canonical_json_bytes(manifest)),
+        "runtime_sha256": {},
+    }
+
+    current_time = 12345.0
+    def mock_monotonic() -> float:
+        nonlocal current_time
+        current_time += 0.25
+        return current_time
+
+    suffix_posted = False
+    readback_attempts = 0
+
+    def mock_send(req: PaperRequest) -> PaperTransportResult:
+        nonlocal suffix_posted, readback_attempts
+        if req.url.endswith("/rate_limit"):
+            body = {"resources": {"core": {"remaining": 5000, "limit": 5000}}}
+        elif req.url.endswith("/user"):
+            body = {"id": 42, "login": "test-operator"}
+        elif req.url.endswith("/issues"):
+            if req.method == "POST":
+                data = json.loads(req.body)
+                if "rs2gh1-00000000000000000000000000000000" in data.get("body", ""):
+                    suffix_posted = True
+                body = {"number": 104, "title": data["title"], "body": data["body"], "state": "open"}
+                return PaperTransportResult(201, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+            body = []
+        elif "/issues?state=" in req.url:
+            if not suffix_posted:
+                body = []
+            else:
+                readback_attempts += 1
+                if readback_attempts == 1:
+                    body = []
+                else:
+                    body = [{"number": 104, "title": "[QUALIFICATION] Suffix roundtrip test",
+                             "body": "Study-2 qualification issue suffix roundtrip verification.\n\n<!-- retry-semantics-study2-gh:v1:rs2gh1-00000000000000000000000000000000 -->",
+                             "state": "open"}]
+        else:
+            body = {"id": 1374277504, "full_name": manifest["selected_repository"]}
+        return PaperTransportResult(200, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+
+    def mock_model_complete(model_name: str, tools: tuple[dict, ...], sampling: dict):
+        return {
+            "id": "mock-comp",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": tools[0]["name"], "arguments": "{}"},
+                    }],
+                },
+                "finish_reason": "tool_calls",
+            }],
+        }
+
+    hashes = capture_github_readiness(
+        manifest=manifest,
+        registry=registry,
+        evidence_dir=tmp_path / "gh_evidence",
+        identity=identity,
+        operator_id="test-operator",
+        api_version="2022-11-28",
+        http_send=mock_send,
+        model_complete=mock_model_complete,
+        monotonic_fn=mock_monotonic,
+        sleep_fn=lambda _: None,
+    )
+    assert len(hashes) == 7
+
+    ev_doc = json.loads((tmp_path / "gh_evidence" / "suffix_roundtrip_and_collision_scan.json").read_text())
+    qual_read = ev_doc["facts"]["qualification_read"]
+    assert isinstance(qual_read, list)
+    req_start = qual_read[0]["request"]["started_monotonic"]
+    resp_end = qual_read[0]["response"]["ended_monotonic"]
+
+    assert req_start > 12345.0
+    assert resp_end > req_start
+    assert qual_read[0]["request"]["attempt_count"] == 1
+    assert qual_read[0]["response"]["transport_complete"] is True
+
+
+def test_github_readiness_complete_traversal_required(tmp_path):
+    """Req 7 & 8: complete traversal remains required, collision scan inspects census."""
+    from retry_semantics.study2.github_live_readiness import GitHubReadinessSessionError
+    from retry_semantics.study2.provider_paper_readiness_controls import (
+        ControlEvidenceError,
+        validate_github_control,
+    )
+    manifest = load_github_paper_manifest().as_json()
+    from retry_semantics.study2.github_paper_manifest import load_namespace_registry as load_gh_reg
+    registry = load_gh_reg().as_json()
+    identity = {
+        "provider": "github",
+        "manifest_sha256": sha256_hex(canonical_json_bytes(manifest)),
+        "runtime_sha256": {},
+    }
+
+    def mock_send_incomplete_traversal(req: PaperRequest) -> PaperTransportResult:
+        if req.url.endswith("/rate_limit"):
+            body = {"resources": {"core": {"remaining": 5000, "limit": 5000}}}
+        elif req.url.endswith("/user"):
+            body = {"id": 42, "login": "test-operator"}
+        elif "/issues?state=" in req.url:
+            if req.url.endswith("page=1"):
+                headers = (
+                    ("x-github-api-version-selected", "2022-11-28"),
+                    ("link", f'<https://api.github.com/repos/{manifest["selected_repository"]}/issues?state=all&per_page=100&page=2>; rel="next"'),
+                )
+                body = [{"number": 1, "title": "t", "body": "b", "state": "open"}]
+                return PaperTransportResult(200, headers, canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+            else:
+                return PaperTransportResult(500, (("x-github-api-version-selected", "2022-11-28"),), b"Server Error", None, True, True, True, 0.0, 0.1)
+        else:
+            body = {"id": 1374277504, "full_name": manifest["selected_repository"]}
+        return PaperTransportResult(200, (("x-github-api-version-selected", "2022-11-28"),), canonical_json_bytes(body), None, True, True, True, 0.0, 0.1)
+
+    with pytest.raises(GitHubReadinessSessionError, match="census traversal failed|baseline census incomplete"):
+        capture_github_readiness(
+            manifest=manifest,
+            registry=registry,
+            evidence_dir=tmp_path / "gh_incomplete_evidence",
+            identity=identity,
+            operator_id="test-operator",
+            api_version="2022-11-28",
+            http_send=mock_send_incomplete_traversal,
+            model_complete=lambda *_: {},
+        )
+
+    reserved_suffix = registry["reservations"][0]["suffix"]
+    qual_marker_suffix = "\n\n<!-- retry-semantics-study2-gh:v1:rs2gh1-00000000000000000000000000000000 -->"
+
+    baseline_clean_with_non_paper = [
+        {"number": 3, "title": "[QUALIFICATION] Principal write probe", "body": "Safe qualification probe body for authenticated principal verification."},
+        {"number": 4, "title": "[QUALIFICATION] Suffix roundtrip test", "body": f"Study-2 qualification issue suffix roundtrip verification.{qual_marker_suffix}"},
+    ]
+
+    create_pair = {
+        "request": {
+            "method": "POST",
+            "url": f"https://api.github.com/repos/{manifest['selected_repository']}/issues",
+            "headers": {"X-GitHub-Api-Version": "2022-11-28", "Accept": "application/vnd.github.raw+json"},
+            "body_hex": canonical_json_bytes({"title": "[QUALIFICATION] Suffix roundtrip test", "body": f"Study-2 qualification issue suffix roundtrip verification.{qual_marker_suffix}"}).hex(),
+            "dispatch_started": True,
+            "attempt_count": 1,
+            "started_monotonic": 10.0,
+        },
+        "response": {
+            "http_status": 201,
+            "headers": {"x-github-api-version-selected": "2022-11-28"},
+            "body_hex": canonical_json_bytes({"number": 10, "title": "[QUALIFICATION] Suffix roundtrip test", "body": f"Study-2 qualification issue suffix roundtrip verification.{qual_marker_suffix}"}).hex(),
+            "transport_complete": True,
+            "redirect_followed": False,
+            "ended_monotonic": 10.1,
+        },
+    }
+
+    read_pair = [{
+        "request": {
+            "method": "GET",
+            "url": f"https://api.github.com/repos/{manifest['selected_repository']}/issues?state=all&per_page=100&page=1",
+            "headers": {"X-GitHub-Api-Version": "2022-11-28", "Accept": "application/vnd.github.raw+json"},
+            "body_hex": "",
+            "dispatch_started": True,
+            "attempt_count": 1,
+            "started_monotonic": 11.0,
+        },
+        "response": {
+            "http_status": 200,
+            "headers": {"x-github-api-version-selected": "2022-11-28"},
+            "body_hex": canonical_json_bytes([{"number": 10, "title": "[QUALIFICATION] Suffix roundtrip test", "body": f"Study-2 qualification issue suffix roundtrip verification.{qual_marker_suffix}"}]).hex(),
+            "transport_complete": True,
+            "redirect_followed": False,
+            "ended_monotonic": 11.1,
+        },
+    }]
+
+    capture_doc = {
+        "schema": "github-paper-readiness-capture-v1",
+        "source": "provider_http_capture",
+        "synthetic": False,
+        "request_evidence": create_pair["request"],
+        "response_evidence": create_pair["response"],
+        "captured_at_utc": "2026-09-27T00:00:00Z",
+    }
+
+    context = {
+        "github_api_version": "2022-11-28",
+        "github_baseline": baseline_clean_with_non_paper,
+        "github_baseline_digest": "mock-digest",
+    }
+
+    facts = {
+        "api_version": "2022-11-28",
+        "baseline_pages_sha256": "mock-digest",
+        "qualification_read": read_pair,
+    }
+
+    validate_github_control("suffix_roundtrip_and_collision_scan", manifest, registry, facts, capture_doc, context)
+
+    context_colliding = {
+        "github_api_version": "2022-11-28",
+        "github_baseline": baseline_clean_with_non_paper + [{"number": 99, "title": "collision", "body": f"colliding{reserved_suffix}"}],
+        "github_baseline_digest": "mock-digest",
+    }
+    with pytest.raises(ControlEvidenceError, match="frozen paper suffix collision in baseline"):
+        validate_github_control("suffix_roundtrip_and_collision_scan", manifest, registry, facts, capture_doc, context_colliding)

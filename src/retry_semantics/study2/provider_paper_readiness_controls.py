@@ -325,16 +325,39 @@ def validate_github_control(control: str, manifest: dict[str, Any],
               and created.get("body") == sent["body"]
               and type(created.get("number")) is int,
               "GitHub paper suffix round-trip not proven")
-        _, read = _http_pair(facts["qualification_read"], method="GET",
-                              url=issue_url + "?state=all&per_page=100&page=1",
-                              api_version=version)
-        entries = _raw_json(read)
-        _need(type(entries) is list
-              and any(type(entry) is dict
-                      and entry.get("number") == created["number"]
-                      and entry.get("body") == sent["body"]
-                      for entry in entries),
-              "GitHub raw LIST did not preserve suffix")
+        if type(facts["qualification_read"]) is dict:
+            qual_pages = [facts["qualification_read"]]
+        elif type(facts["qualification_read"]) is list:
+            qual_pages = facts["qualification_read"]
+        else:
+            raise ControlEvidenceError("qualification_read must be a raw HTTP pair or list of pairs")
+        _need(1 <= len(qual_pages) <= 16, "qualification traversal page count invalid")
+
+        all_entries: list[dict[str, Any]] = []
+        expected_url = issue_url + "?state=all&per_page=100&page=1"
+        for idx, page_pair in enumerate(qual_pages):
+            _, resp_dict = _http_pair(page_pair, method="GET", url=expected_url, api_version=version)
+            page_entries = _raw_json(resp_dict)
+            _need(type(page_entries) is list, "GitHub page is not a list")
+            all_entries.extend(page_entries)
+
+            link_header = next((v for k, v in resp_dict.get("headers", {}).items() if k.lower() == "link"), None)
+            if link_header:
+                match = re.search(r'<([^<>]+)>;\s*rel="?next"?', link_header)
+                expected_url = match.group(1) if match else None
+            else:
+                expected_url = None
+
+            if idx < len(qual_pages) - 1:
+                _need(expected_url is not None, "qualification traversal contains unused pages after terminal page")
+            else:
+                _need(expected_url is None, "missing GitHub next page")
+
+        _need(any(type(entry) is dict
+                  and entry.get("number") == created["number"]
+                  and entry.get("body") == sent["body"]
+                  for entry in all_entries),
+              "GitHub raw traversal did not preserve suffix")
     elif control == "bounded_raw_traversal_authority":
         _need(set(facts) == {"api_version", "baseline_pages_sha256",
                               "pages", "page_cap", "request_timeout_seconds",

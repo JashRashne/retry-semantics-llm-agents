@@ -97,6 +97,9 @@ def capture_github_readiness(
     model_complete: Callable[[str, tuple[dict[str, Any], ...], dict[str, Any]], Any] | None = None,
     now_fn: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     monotonic_fn: Callable[[], float] = time.monotonic,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    max_readback_attempts: int = 5,
+    readback_interval_seconds: float = 1.0,
     valid_duration: timedelta = timedelta(days=7),
 ) -> dict[str, str]:
     """Capture and verify all 7 GitHub readiness controls."""
@@ -305,15 +308,58 @@ def capture_github_readiness(
     if resp_suffix_post.status != 201:
         raise GitHubReadinessSessionError(f"suffix roundtrip post failed: {resp_suffix_post.status}")
 
-    # Read back to verify suffix preservation in raw LIST
-    resp_suffix_read, pair_suffix_read = send_recorded(req_read_probe)
-    if resp_suffix_read.status != 200:
-        raise GitHubReadinessSessionError("suffix roundtrip readback failed")
+    try:
+        created_issue = json.loads(resp_suffix_post.body)
+        created_number = created_issue.get("number")
+    except Exception as exc:
+        raise GitHubReadinessSessionError("suffix roundtrip post response malformed") from exc
+    if not isinstance(created_number, int) or created_number <= 0:
+        raise GitHubReadinessSessionError("suffix roundtrip post did not return valid issue number")
+
+    expected_body = suffix_body_obj["body"]
+
+    # Read back to verify suffix preservation with complete bounded traversal and bounded retry for replica lag
+    def readback_traversal() -> tuple[gh.Census, list[dict[str, Any]]]:
+        traversal_pages: list[dict[str, Any]] = []
+
+        def traversal_fetch(target: str) -> HTTPResponse:
+            req = PaperRequest(
+                "GET", target,
+                (("Accept", "application/vnd.github.raw+json"), ("X-GitHub-Api-Version", api_version)),
+                b"",
+            )
+            resp, pair = send_recorded(req)
+            if resp.status != 200:
+                raise GitHubReadinessSessionError(f"qualification readback traversal failed: {resp.status}")
+            traversal_pages.append(pair)
+            return HTTPResponse(resp.status, resp.headers, resp.body)
+
+        census = gh.bounded_census(
+            manifest, arm_0, api_version=api_version,
+            fetch=traversal_fetch, elapsed=lambda: 0,
+        )
+        if not census.complete or census.raw_entries > 860:
+            raise GitHubReadinessSessionError("qualification readback traversal incomplete or exceeded 860 entries")
+        return census, traversal_pages
+
+    successful_traversal_pages: list[dict[str, Any]] | None = None
+    for attempt in range(max_readback_attempts):
+        if attempt > 0:
+            sleep_fn(readback_interval_seconds)
+        census, traversal_pages = readback_traversal()
+        if any(num == created_number and body == expected_body for num, title, body in census.issues):
+            successful_traversal_pages = traversal_pages
+            break
+
+    if successful_traversal_pages is None:
+        raise GitHubReadinessSessionError(
+            "qualification suffix not visible in raw LIST after bounded retries"
+        )
 
     c4_facts = {
         "api_version": api_version,
         "baseline_pages_sha256": validation_context["github_baseline_digest"],
-        "qualification_read": pair_suffix_read,
+        "qualification_read": successful_traversal_pages,
     }
     c4_capture = {
         "schema": "github-paper-readiness-capture-v1",
