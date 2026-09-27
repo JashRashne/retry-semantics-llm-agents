@@ -1,0 +1,17 @@
+\begin{table*}[t]
+\centering
+\small
+\caption{Study 1 Primary Experimental Results: State Correctness in 160 Matched Ticket CREATE Families}
+\label{tab:study1-results}
+\begin{tabular}{lcccccc}
+\hline
+\textbf{Hidden Execution World} & \textbf{N Matched} & \textbf{Exact Replay} & \textbf{LLM Regeneration} & $\Delta$ (Replay - Regen) & \textbf{Paired 95\% CI (Method 10)} & \textbf{McNemar $p$} \\
+\hline
+$H_0$ (NOT\_EXECUTED) & 160 & 160/160 (100.0\%) & 160/160 (100.0\%) & 0.000 (0.0 pp) & [-2.345\%, +2.345\%] & $1.000$ \\
+$H_1$ (EXECUTED\_ACK\_LOST) & 160 & 0/160 (0.0\%) & 151/160 (94.375\%) & -0.94375 (-94.375 pp) & [-97.013\%, -89.106\%] & $7.006 \times 10^{-46}$ \\
+\hline
+\multicolumn{7}{l}{\textbf{Prespecified Interaction:} $\Delta_{H1} - \Delta_{H0} = -94.375$ percentage points (10,000-replicate bootstrap 95\% CI: [-97.5\%, -90.625\%])} \\
+\multicolumn{7}{l}{\textbf{Holm-Adjusted $p$-values:} $H_0: p = 1.000$; $H_1: p = 1.401 \times 10^{-45}$} \\
+\hline
+\end{tabular}
+\end{table*}
