@@ -153,7 +153,7 @@ def test_serialization_and_csv_export(tmp_path: Path):
     assert "razorpay,H1,," in content
 
 
-def _mock_run(tmp_path: Path):
+def _mock_run(tmp_path: Path, provider: str = "github", success_reason: str = "CORRECT"):
     run_dir = tmp_path / "mock_run"
     run_dir.mkdir()
     manifest = {"families": [{"family_id": "FAM-001", "arms": []}]}
@@ -170,11 +170,11 @@ def _mock_run(tmp_path: Path):
         arm_dir.mkdir()
         path = arm_dir / "arm-projection.json"
         path.write_text(json.dumps({"arm_id": arm_id, "projection": {
-            "status": "SUCCESS", "state_correct": 1, "reason": "CORRECT",
+            "status": "SUCCESS", "state_correct": 1, "reason": success_reason,
         }}))
         paths.append(path)
     (run_dir / "run-authorization.json").write_text(json.dumps({
-        "provider": "github", "study2_paper_observations_before_run": 0,
+        "provider": provider, "study2_paper_observations_before_run": 0,
         "manifest_sha256": sha256_hex(canonical_json_bytes(manifest)),
         "runtime_sha256": {},
     }))
@@ -186,6 +186,39 @@ def test_load_run_projections_from_disk(tmp_path: Path):
     arms = load_run_projections(run_dir, manifest, "github")
     assert len(arms) == 4
     assert {a.arm_id for a in arms} == {a["arm_id"] for a in manifest["families"][0]["arms"]}
+
+
+@pytest.mark.parametrize("provider,good,bad", [
+    ("github", "CORRECT", "EXACTLY_ONE"),
+    ("razorpay", "CORRECT", "EXACTLY_ONE"),
+    ("sheets", "EXACTLY_ONE", "CORRECT"),
+])
+def test_provider_specific_success_reason(tmp_path, provider, good, bad):
+    run_dir, manifest, paths = _mock_run(tmp_path, provider, good)
+    assert len(load_run_projections(run_dir, manifest, provider)) == 4
+    value = json.loads(paths[0].read_text())
+    value["projection"]["reason"] = bad
+    paths[0].write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="projection reason"):
+        load_run_projections(run_dir, manifest, provider)
+
+
+@pytest.mark.parametrize("provider,good,bad", [
+    ("github", "DUPLICATE_EFFECT", "DUPLICATE"),
+    ("razorpay", "DUPLICATE_EFFECT", "DUPLICATE"),
+    ("sheets", "DUPLICATE", "DUPLICATE_EFFECT"),
+])
+def test_provider_specific_failure_reason(tmp_path, provider, good, bad):
+    success = "EXACTLY_ONE" if provider == "sheets" else "CORRECT"
+    run_dir, manifest, paths = _mock_run(tmp_path, provider, success)
+    value = json.loads(paths[0].read_text())
+    value["projection"] = {"status": "FAILURE", "state_correct": 0, "reason": good}
+    paths[0].write_text(json.dumps(value))
+    assert len(load_run_projections(run_dir, manifest, provider)) == 4
+    value["projection"]["reason"] = bad
+    paths[0].write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="projection reason"):
+        load_run_projections(run_dir, manifest, provider)
 
 
 @pytest.mark.parametrize("corruption,match", [
@@ -241,12 +274,12 @@ def test_load_run_rejects_corrupt_or_incomplete_evidence(tmp_path: Path, corrupt
         load_run_projections(run_dir, manifest, "github")
 
 
-def test_stopped_run_and_unsupported_sheets_ingestion_fail_closed(tmp_path: Path):
+def test_stopped_run_and_sheets_ingestion_fail_closed(tmp_path: Path):
     run_dir, manifest, _ = _mock_run(tmp_path)
     (run_dir / "run-stopped-test.json").write_text("{}")
     with pytest.raises(ValueError, match="stopped or aborted"):
         load_run_projections(run_dir, manifest, "github")
-    with pytest.raises(ValueError, match="no frozen Google Sheets"):
+    with pytest.raises(ValueError, match="stopped or aborted"):
         load_run_projections(run_dir, manifest, "sheets")
 
 
@@ -306,9 +339,13 @@ def test_taxonomy_uses_exact_frozen_reason_tokens():
     from retry_semantics.study2.provider_paper_analysis import extract_arm_result_from_dict
     arm = {"arm_id": "A", "hidden_world": "H1", "policy": "EXACT_REPLAY"}
     for reason, expected in (("DUPLICATE_EFFECT", (1, 0, 0)),
-                             ("MISSING_EFFECT,WRONG_MUTATION", (0, 1, 1)),
-                             ("not_a_duplicate_effect", (0, 0, 0))):
+                             ("MISSING_EFFECT,WRONG_MUTATION", (0, 1, 1))):
         result = extract_arm_result_from_dict("github", arm, {"projection": {
             "status": "FAILURE", "state_correct": 0, "reason": reason,
         }}, "F")
         assert (result.duplicate_count, result.missing_count, result.unintended_count) == expected
+    with pytest.raises(ValueError, match="foreign defect"):
+        extract_arm_result_from_dict("github", arm, {"projection": {
+            "status": "FAILURE", "state_correct": 0,
+            "reason": "not_a_duplicate_effect",
+        }}, "F")

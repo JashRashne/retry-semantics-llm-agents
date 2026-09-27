@@ -145,11 +145,16 @@ def extract_arm_result_from_dict(
     recovery_terminal = projection_data.get("recovery_terminal")
 
     # Counts
-    # Frozen GitHub/Razorpay evaluators emit exact defect tokens, sometimes comma joined.
+    # Frozen evaluators emit exact defect tokens, sometimes comma joined.
     defects = set(reason.split(",")) if status == "FAILURE" else set()
-    dup = int("DUPLICATE_EFFECT" in defects)
-    missing = int("MISSING_EFFECT" in defects)
-    unintended = int("WRONG_MUTATION" in defects)
+    vocabulary = ({"DUPLICATE_EFFECT", "MISSING_EFFECT", "WRONG_MUTATION"}
+                  if provider in ("github", "razorpay") else
+                  {"DUPLICATE", "MISSING", "EXTRA_UNINTENDED_MUTATION"})
+    if status == "FAILURE" and not defects <= vocabulary:
+        raise ValueError("provider projection uses foreign defect token")
+    dup = int(bool(defects & vocabulary & {"DUPLICATE_EFFECT", "DUPLICATE"}))
+    missing = int(bool(defects & vocabulary & {"MISSING_EFFECT", "MISSING"}))
+    unintended = int(bool(defects & vocabulary & {"WRONG_MUTATION", "EXTRA_UNINTENDED_MUTATION"}))
 
     return ArmResult(
         provider=provider,
@@ -180,8 +185,6 @@ def load_run_projections(
     """Load a complete scheduled run; reject partial or corrupt publication evidence."""
     if provider not in PROVIDERS:
         raise ValueError(f"unknown provider: {provider}")
-    if provider == "sheets":
-        raise ValueError("no frozen Google Sheets arm-projection run schema exists for publication ingestion")
     if not run_dir.is_dir():
         raise ValueError(f"missing run directory: {run_dir}")
     if list(run_dir.glob("run-stopped-*.json")) or list(run_dir.rglob("run-abort.json")):
@@ -259,10 +262,14 @@ def load_run_projections(
                 or (status in ("INCONCLUSIVE", "INFRASTRUCTURE_FAILURE")) != (correct is None)):
             raise ValueError(f"contradictory/invalid projection verdict: {arm_id}")
         defect_tokens = reason.split(",")
-        if ((status == "SUCCESS" and reason != "CORRECT")
+        success_reason = "EXACTLY_ONE" if provider == "sheets" else "CORRECT"
+        failure_reasons = ({"DUPLICATE", "MISSING", "EXTRA_UNINTENDED_MUTATION"}
+                           if provider == "sheets" else
+                           {"DUPLICATE_EFFECT", "MISSING_EFFECT", "WRONG_MUTATION"})
+        if ((status == "SUCCESS" and reason != success_reason)
                 or (status == "FAILURE" and (
                     not defect_tokens or len(defect_tokens) != len(set(defect_tokens))
-                    or not set(defect_tokens) <= {"DUPLICATE_EFFECT", "MISSING_EFFECT", "WRONG_MUTATION"}))):
+                    or not set(defect_tokens) <= failure_reasons))):
             raise ValueError(f"unknown or contradictory frozen projection reason: {arm_id}")
         arm, family_id = scheduled[arm_id]
         seen.add(arm_id)

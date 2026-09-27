@@ -8,6 +8,7 @@ observation or collection authorization is produced here.
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 from datetime import datetime, timezone
@@ -31,6 +32,14 @@ from retry_semantics.study2.provider_paper_readiness_controls import (
     ControlEvidenceError, validate_github_control, validate_razorpay_control,
 )
 from retry_semantics.study2.sheets_paper_materialize import load_paper_manifest as load_sheets_paper_manifest
+from retry_semantics.study2.sheets_paper_materialize import (
+    IMPLEMENTATION_PATHS as SHEETS_IMPLEMENTATION_PATHS,
+    REGISTRY_PATH as SHEETS_REGISTRY_PATH,
+)
+from retry_semantics.study2.sheets_paper_readiness import (
+    READINESS_LOCK_PATH as SHEETS_READINESS_LOCK_PATH,
+    PaperReadinessError, qualify_readiness, readiness_requirements,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 RAZORPAY_MANIFEST_PATH = Path("research/study2/razorpay/RAZORPAY_PAPER_MANIFEST_V1.json")
@@ -46,7 +55,9 @@ RUNTIME_FILES = {
                "src/retry_semantics/study2/provider_paper_collection.py",
                "src/retry_semantics/study2/github_adapter.py",
                "src/retry_semantics/study2/provider_paper_readiness_controls.py",
-               "src/retry_semantics/study2/provider_paper_readiness.py"),
+               "src/retry_semantics/study2/provider_paper_readiness.py",
+               "src/retry_semantics/study2/github_live_readiness.py",
+               "scripts/qualify_study2_github_readiness.py"),
     "razorpay": ("src/retry_semantics/study2/razorpay_paper_runtime.py",
                 "src/retry_semantics/study2/razorpay_paper_manifest.py",
                 "src/retry_semantics/study2/razorpay_adapter.py",
@@ -58,7 +69,22 @@ RUNTIME_FILES = {
                 "src/retry_semantics/study2/provider_paper_model.py",
                 "src/retry_semantics/study2/provider_paper_collection.py",
                 "src/retry_semantics/study2/provider_paper_readiness_controls.py",
-                "src/retry_semantics/study2/provider_paper_readiness.py"),
+                "src/retry_semantics/study2/provider_paper_readiness.py",
+                "src/retry_semantics/study2/razorpay_live_readiness.py",
+                "scripts/qualify_study2_razorpay_readiness.py"),
+    "sheets": (*SHEETS_IMPLEMENTATION_PATHS,
+               "src/retry_semantics/study2/provider_paper_io.py",
+               "src/retry_semantics/study2/provider_paper_model.py",
+               "src/retry_semantics/study2/provider_paper_collection.py",
+               "src/retry_semantics/study2/provider_paper_readiness.py",
+               "src/retry_semantics/study2/provider_paper_analysis.py",
+               "src/retry_semantics/serialization.py",
+               "src/retry_semantics/models/fireworks.py",
+               "src/retry_semantics/study2/sheets_phase3_credentials.py",
+               "src/retry_semantics/study2/sheets_live_preparation.py",
+               "scripts/run_sheets_paper_live_readiness_session.py",
+               "scripts/materialize_sheets_paper_readiness_controls.py",
+               "scripts/prepare_sheets_paper_readiness_lock.py"),
 }
 PROVIDER_CONTROLS = {
     "github": (
@@ -72,12 +98,28 @@ PROVIDER_CONTROLS = {
         "marker_reservation_and_collision_scan", "bounded_fetch_all_capture",
         "closed_ledger_transport", "timing_headroom", "model_capability",
     ),
+    "sheets": (
+        "same_app_and_principal_access", "no_scripts_or_external_writers",
+        "writer_exclusion", "marker_round_trip_and_collision_refusal",
+        "append_placement_and_duplicate_preservation", "post_write_visibility",
+        "observer_authority", "quota_and_timing_feasibility", "token_lifetime",
+        "no_formula_protection_or_structural_edit",
+    ),
 }
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class ProviderReadinessError(ValueError):
     """Missing, stale, or unaudited precollection evidence."""
+
+
+def readiness_artifact_paths(provider: str, lock_path: Path) -> tuple[Path, Path, Path]:
+    if provider not in PROVIDER_CONTROLS:
+        raise ProviderReadinessError("unknown provider")
+    stem = ("GOOGLE_SHEETS" if provider == "sheets" else provider.upper())
+    return (lock_path.parent / "readiness_control_evidence",
+            lock_path.parent / f"{stem}_PAPER_READINESS_AUDIT_RECEIPT_V1.json",
+            lock_path.parent / f"{stem}_PAPER_READINESS_AUDIT_REPORT_V1.json")
 
 
 def _read_canonical(path: Path) -> tuple[dict[str, Any], str]:
@@ -115,6 +157,8 @@ def _when(value: Any) -> datetime:
 def _check_capture_shape(provider: str, source: str,
                          request: dict[str, Any], response: dict[str, Any]) -> None:
     """Require recorded bytes and transport facts, never a verdict string."""
+    if provider == "sheets":
+        raise ProviderReadinessError("Sheets captures require frozen Sheets readiness verifier")
     if source == "provider_http_capture":
         origin = ("https://api.github.com" if provider == "github"
                   else "https://api.razorpay.com")
@@ -194,6 +238,23 @@ def current_static_identity(provider: str, *, root: Path = ROOT) -> dict[str, An
     """Hash actual committed-intended bytes; no live qualification is inferred."""
     if provider not in PROVIDER_CONTROLS:
         raise ProviderReadinessError("unknown provider")
+    if provider == "sheets":
+        try:
+            sheets_manifest = load_sheets_paper_manifest(root=root)
+            materialized, sheets_manifest_hash = _read_canonical(root / SHEETS_MANIFEST_PATH)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise ProviderReadinessError("Sheets manifest cannot be regenerated") from exc
+        if materialized != sheets_manifest:
+            raise ProviderReadinessError("Sheets manifest differs from frozen inputs")
+        if (materialized.get("status") != "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"
+                or materialized.get("study2_paper_observations") != 0):
+            raise ProviderReadinessError("Sheets paper manifest is not audited for collection")
+        return {
+            "provider": "sheets",
+            "manifest_sha256": sheets_manifest_hash,
+            "runtime_sha256": {relative: sha256_hex((root / relative).read_bytes())
+                               for relative in RUNTIME_FILES["sheets"]},
+        }
     path = (GITHUB_MANIFEST_PATH if provider == "github"
             else RAZORPAY_MANIFEST_PATH)
     if provider == "github":
@@ -239,6 +300,7 @@ def _require_committed(root: Path, paths: tuple[Path, ...]) -> None:
                 or git("status", "--porcelain", "--ignore-submodules=all")):
             raise ProviderReadinessError("readiness repository is not clean")
         for path in paths:
+            path = path if path.is_absolute() else root / path
             relative = path.relative_to(root)
             if path.is_symlink() or path.read_bytes() != git("show", "HEAD:" + str(relative)):
                 raise ProviderReadinessError("readiness bytes differ from reviewed commit")
@@ -249,19 +311,106 @@ def _require_committed(root: Path, paths: tuple[Path, ...]) -> None:
 def check_readiness_lock(provider: str, lock_path: Path, *,
                          evidence_dir: Path, audit_receipt_path: Path,
                          audit_report_path: Path, root: Path = ROOT,
-                         now: datetime | None = None) -> dict[str, Any]:
+                         now: datetime | None = None,
+                         _candidate_uncommitted: bool = False) -> dict[str, Any]:
     """Accept only exact, fresh, audit-bound evidence and current code bytes."""
+    lock_path = lock_path if lock_path.is_absolute() else root / lock_path
+    evidence_dir = evidence_dir if evidence_dir.is_absolute() else root / evidence_dir
+    audit_receipt_path = (audit_receipt_path if audit_receipt_path.is_absolute()
+                          else root / audit_receipt_path)
+    audit_report_path = (audit_report_path if audit_report_path.is_absolute()
+                         else root / audit_report_path)
     identity = current_static_identity(provider, root=root)
     instant = now or datetime.now(timezone.utc)
     if instant.tzinfo is None:
         raise ProviderReadinessError("current time lacks zone")
+    if provider == "sheets":
+        if lock_path.resolve() != (root / SHEETS_READINESS_LOCK_PATH).resolve():
+            raise ProviderReadinessError("Sheets readiness lock must use committed path")
+        _require_committed(root, (root / SHEETS_MANIFEST_PATH,
+                                  root / SHEETS_REGISTRY_PATH, lock_path,
+                                  *(root / path for path in RUNTIME_FILES["sheets"])))
+        lock, _ = _read_canonical(lock_path)
+        if (set(lock) != {"schema", "receipt_sha256", "independent_audit",
+                          "manifest_sha256", "spreadsheet_id", "topology_sha256",
+                          "baseline_sha256", "control_sha256"}
+                or lock.get("schema") != "sheets-paper-readiness-lock-v1"
+                or lock.get("manifest_sha256") != identity["manifest_sha256"]
+                or type(lock.get("control_sha256")) is not dict
+                or set(lock["control_sha256"]) != set(readiness_requirements())):
+            raise ProviderReadinessError("Sheets readiness lock identity differs")
+        from scripts import materialize_sheets_paper_readiness_controls as controls
+        from scripts.prepare_sheets_paper_readiness_lock import _validate_refs
+        records = {}
+        index = {}
+        for name in readiness_requirements():
+            filename = name + ".json"
+            record, digest = _read_canonical(evidence_dir / filename)
+            records[name] = record
+            index[name] = {"file": filename, "sha256": digest}
+            _validate_refs(record.get("facts"))
+        try:
+            controls.validate_control_provenance(records, allow_late_evidence=True)
+            token_facts = records["token_lifetime"]["facts"]
+            token_expiry = token_facts["token_expiry"].get("expires_at")
+            uncertainty = token_facts["token_expiry"].get("clock_uncertainty_seconds")
+            planned_run_end = token_facts["planned_run_end"].get("epoch_seconds")
+            if (type(token_expiry) not in (int, float) or not math.isfinite(token_expiry)
+                    or type(uncertainty) not in (int, float) or not math.isfinite(uncertainty)
+                    or uncertainty < 0
+                    or type(planned_run_end) not in (int, float)
+                    or not math.isfinite(planned_run_end)
+                    or type(token_facts["token_expiry"].get("bearer_sha256")) is not str
+                    or _HASH.fullmatch(token_facts["token_expiry"]["bearer_sha256"]) is None
+                    or planned_run_end <= instant.timestamp() + 40
+                    or token_expiry <= planned_run_end + uncertainty):
+                raise ProviderReadinessError("Sheets token lifetime cannot cover primary")
+            capture_dir = Path(records["observer_authority"]["facts"]
+                               ["complete_grid_read"]["paper_source"]["capture_directory"])
+            capture = controls._capture(load_sheets_paper_manifest(root=root), capture_dir)
+            sheets_receipt, _ = _read_canonical(audit_receipt_path)
+            audit = sheets_receipt["independent_audit"]
+            if audit_receipt_path.parent / audit["audit_report_file"] != audit_report_path:
+                raise ProviderReadinessError("Sheets audit report path differs")
+            sheets_report, _ = _read_canonical(audit_report_path)
+            if (set(sheets_report) != {"schema", "subject", "independent_auditor",
+                                       "result", "findings"}
+                    or sheets_report["schema"] != "sheets-paper-readiness-audit-report-v1"
+                    or sheets_report["subject"] != {
+                        "manifest_sha256": identity["manifest_sha256"],
+                        "spreadsheet_id": load_sheets_paper_manifest(root=root)["spreadsheet_id"],
+                        "topology_sha256": lock["topology_sha256"],
+                        "baseline_sha256": lock["baseline_sha256"],
+                        "control_sha256": lock["control_sha256"]}
+                    or sheets_report["independent_auditor"] != audit["auditor_id"]
+                    or sheets_report["result"] != "PASS"
+                    or sheets_report["findings"] != []
+                    or _when(audit["audited_at_utc"]) > instant):
+                raise ProviderReadinessError("Sheets independent audit report not passing")
+            arms = [arm for family in load_sheets_paper_manifest(root=root)["families"]
+                    for arm in family["arms"]]
+            topology = (200, (capture_dir / "topology.response.json").read_bytes())
+            baselines = {arm["arm_id"]: ("GET", arm["read_target"], 200,
+                         (capture_dir / f"baseline-{i:03d}.response.json").read_bytes())
+                         for i, arm in enumerate(arms)}
+            qualify_readiness(load_sheets_paper_manifest(root=root),
+                              topology_response=topology, baseline_responses=baselines,
+                              control_evidence=index, evidence_root=evidence_dir,
+                              audit_receipt=audit_receipt_path, root=root)
+        except (PaperReadinessError, OSError, ValueError, KeyError, TypeError) as exc:
+            raise ProviderReadinessError("Sheets frozen readiness verification failed") from exc
+        if (lock["topology_sha256"] != capture["topology_sha256"]
+                or lock["baseline_sha256"] != capture["baseline_sha256"]):
+            raise ProviderReadinessError("Sheets capture differs from lock")
+        return identity
     manifest_path = (GITHUB_MANIFEST_PATH if provider == "github"
                      else RAZORPAY_MANIFEST_PATH)
     registry_path = (GITHUB_REGISTRY_PATH if provider == "github"
                      else RAZORPAY_REGISTRY_PATH)
-    _require_committed(root, (root / manifest_path, root / registry_path, lock_path,
-                              root / "src/retry_semantics/study2/provider_paper_readiness.py",
-                              *(root / p for p in RUNTIME_FILES[provider])))
+    if not _candidate_uncommitted:
+        _require_committed(root, (root / manifest_path, root / registry_path, lock_path,
+                                  root / "src/retry_semantics/study2/provider_paper_readiness.py",
+                                  *(root / p for p in RUNTIME_FILES[provider])))
     lock, _ = _read_canonical(lock_path)
     receipt, receipt_hash = _read_canonical(audit_receipt_path)
     report, report_hash = _read_canonical(audit_report_path)
@@ -373,6 +522,14 @@ def check_final_collection_authorization(*, provider: str,
             or type(readiness_lock_paths) is not dict
             or set(readiness_lock_paths) != {"github", "razorpay", "sheets"}):
         raise ProviderReadinessError("all provider readiness locks are required")
+    readiness_lock_paths = {name: path if path.is_absolute() else root / path
+                            for name, path in readiness_lock_paths.items()}
+    authorization_path = (authorization_path if authorization_path.is_absolute()
+                          else root / authorization_path)
+    audit_receipt_path = (audit_receipt_path if audit_receipt_path.is_absolute()
+                          else root / audit_receipt_path)
+    audit_report_path = (audit_report_path if audit_report_path.is_absolute()
+                         else root / audit_report_path)
     instant = now or datetime.now(timezone.utc)
     if instant.tzinfo is None:
         raise ProviderReadinessError("authorization time lacks zone")
@@ -398,33 +555,16 @@ def check_final_collection_authorization(*, provider: str,
             or authorization["study2_paper_observations_at_authorization"] != 0
             or _when(authorization["authorized_at_utc"]) > instant):
         raise ProviderReadinessError("final collection authorization missing or stale")
-    for p in ("github", "razorpay"):
+    for p in ("github", "razorpay", "sheets"):
         if identities.get(p) != current_static_identity(p, root=root):
             raise ProviderReadinessError(f"current static identity of {p} differs from authorization")
     for name, path in readiness_lock_paths.items():
-        lock, _ = _read_canonical(path)
-        if name == "sheets":
-            try:
-                sheets_manifest_hash = sha256_hex(
-                    canonical_json_bytes(load_sheets_paper_manifest(root=root)))
-            except Exception:
-                _, sheets_manifest_hash = _read_canonical(root / SHEETS_MANIFEST_PATH)
-            if (lock.get("schema") != "sheets-paper-readiness-lock-v1"
-                    or lock.get("manifest_sha256") != sheets_manifest_hash
-                    or identities[name] != {
-                        "manifest_sha256": lock.get("manifest_sha256"),
-                        "control_sha256": lock.get("control_sha256")}
-                    or any(type(lock.get(key)) is not str or
-                           _HASH.fullmatch(lock[key]) is None
-                           for key in ("manifest_sha256", "receipt_sha256"))
-                    or type(lock.get("control_sha256")) is not dict
-                    or not lock["control_sha256"]
-                    or any(type(digest) is not str or _HASH.fullmatch(digest) is None
-                           for digest in lock["control_sha256"].values())):
-                raise ProviderReadinessError("Sheets readiness lock identity differs")
-        elif (lock.get("schema") != f"{name}-paper-readiness-lock-v1"
-              or lock.get("static_identity") != identities[name]
-              or lock.get("collection_authorized") is not False):
+        evidence_dir, provider_receipt, provider_report = readiness_artifact_paths(name, path)
+        checked = check_readiness_lock(
+            name, path, evidence_dir=evidence_dir,
+            audit_receipt_path=provider_receipt,
+            audit_report_path=provider_report, root=root, now=instant)
+        if checked != identities[name]:
             raise ProviderReadinessError("provider readiness lock identity differs")
     if (set(receipt) != {"schema", "authorization_sha256",
                          "audit_report_sha256", "auditor_id", "audited_at_utc"}
@@ -433,6 +573,7 @@ def check_final_collection_authorization(*, provider: str,
             or receipt["audit_report_sha256"] != report_hash
             or type(receipt["auditor_id"]) is not str
             or not receipt["auditor_id"]
+            or _when(receipt["audited_at_utc"]) > instant
             or _when(receipt["audited_at_utc"]) >
                 _when(authorization["authorized_at_utc"])):
         raise ProviderReadinessError("independent final authorization receipt missing")

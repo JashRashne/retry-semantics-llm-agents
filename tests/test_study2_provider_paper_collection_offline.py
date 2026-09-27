@@ -559,11 +559,36 @@ def _valid_authorization_gate(tmp_path, now=None):
     }
 
 
+def _mock_deep_readiness(monkeypatch, gate):
+    identities = {"github": gate["gh_identity"], "razorpay": gate["rz_identity"],
+                  "sheets": gate["authorization"]["provider_static_identities"]["sheets"]}
+    monkeypatch.setattr(readiness, "current_static_identity",
+                        lambda p, root=None: identities[p])
+
+    def deep_check(provider, lock_path, **_kwargs):
+        lock, _ = readiness._read_canonical(lock_path)
+        identity = identities[provider]
+        if provider == "sheets":
+            if (lock.get("schema") != "sheets-paper-readiness-lock-v1"
+                    or lock.get("manifest_sha256") != identity["manifest_sha256"]
+                    or lock.get("control_sha256") !=
+                       gate["authorization"]["provider_static_identities"]["sheets"]["control_sha256"]
+                    or type(lock.get("receipt_sha256")) is not str
+                    or len(lock["receipt_sha256"]) != 64):
+                raise ProviderReadinessError("Sheets readiness lock identity differs")
+        elif (lock.get("schema") != f"{provider}-paper-readiness-lock-v1"
+              or lock.get("static_identity") != identity
+              or lock.get("collection_authorized") is not False):
+            raise ProviderReadinessError("provider readiness lock identity differs")
+        return identity
+
+    monkeypatch.setattr(readiness, "check_readiness_lock", deep_check)
+
+
 def test_final_collection_authorization_binds_all_providers_and_audits(tmp_path, monkeypatch):
     gate = _valid_authorization_gate(tmp_path)
     monkeypatch.setattr(readiness, "_require_committed", lambda root, paths: None)
-    monkeypatch.setattr(readiness, "current_static_identity",
-                        lambda p, root=None: gate["gh_identity"] if p == "github" else gate["rz_identity"])
+    _mock_deep_readiness(monkeypatch, gate)
 
     for prov, ident in (("github", gate["gh_identity"]), ("razorpay", gate["rz_identity"])):
         auth_hash = readiness.check_final_collection_authorization(
@@ -579,11 +604,35 @@ def test_final_collection_authorization_binds_all_providers_and_audits(tmp_path,
         assert auth_hash == gate["auth_hash"]
 
 
+def test_github_launch_rejects_fake_other_provider_readiness(tmp_path, monkeypatch):
+    gate = _valid_authorization_gate(tmp_path)
+    monkeypatch.setattr(readiness, "_require_committed", lambda root, paths: None)
+    _mock_deep_readiness(monkeypatch, gate)
+    checked = []
+    actual = readiness.check_readiness_lock
+
+    def deep_check(provider, *args, **kwargs):
+        checked.append(provider)
+        if provider == "razorpay":
+            raise ProviderReadinessError("fake Razorpay readiness")
+        return actual(provider, *args, **kwargs)
+
+    monkeypatch.setattr(readiness, "check_readiness_lock", deep_check)
+    with pytest.raises(ProviderReadinessError, match="fake Razorpay"):
+        readiness.check_final_collection_authorization(
+            provider="github", provider_identity=gate["gh_identity"],
+            readiness_lock_paths=gate["readiness_locks"],
+            authorization_path=gate["auth_path"],
+            audit_receipt_path=gate["receipt_path"],
+            audit_report_path=gate["report_path"],
+            root=readiness.ROOT, now=gate["now"])
+    assert checked == ["github", "razorpay"]
+
+
 def test_final_collection_authorization_rejects_missing_or_incomplete_provider_gates(tmp_path, monkeypatch):
     gate = _valid_authorization_gate(tmp_path)
     monkeypatch.setattr(readiness, "_require_committed", lambda root, paths: None)
-    monkeypatch.setattr(readiness, "current_static_identity",
-                        lambda p, root=None: gate["gh_identity"] if p == "github" else gate["rz_identity"])
+    _mock_deep_readiness(monkeypatch, gate)
 
     # Missing provider lock in mapping
     for missing_name in ("sheets", "github", "razorpay"):
@@ -631,8 +680,7 @@ def test_final_collection_authorization_rejects_missing_or_incomplete_provider_g
 def test_final_collection_authorization_rejects_identity_and_lock_state_mismatches(tmp_path, monkeypatch):
     gate = _valid_authorization_gate(tmp_path)
     monkeypatch.setattr(readiness, "_require_committed", lambda root, paths: None)
-    monkeypatch.setattr(readiness, "current_static_identity",
-                        lambda p, root=None: gate["gh_identity"] if p == "github" else gate["rz_identity"])
+    _mock_deep_readiness(monkeypatch, gate)
 
     # Caller identity differs from authorization
     wrong_caller_identity = dict(gate["gh_identity"], manifest_sha256="0" * 64)
@@ -673,8 +721,7 @@ def test_final_collection_authorization_rejects_identity_and_lock_state_mismatch
 def test_final_collection_authorization_rejects_sheets_lock_tampering(tmp_path, monkeypatch):
     gate = _valid_authorization_gate(tmp_path)
     monkeypatch.setattr(readiness, "_require_committed", lambda root, paths: None)
-    monkeypatch.setattr(readiness, "current_static_identity",
-                        lambda p, root=None: gate["gh_identity"] if p == "github" else gate["rz_identity"])
+    _mock_deep_readiness(monkeypatch, gate)
 
     original_sheets = json.loads(gate["readiness_locks"]["sheets"].read_bytes())
 
@@ -709,8 +756,7 @@ def test_final_collection_authorization_rejects_sheets_lock_tampering(tmp_path, 
 def test_final_collection_authorization_rejects_stale_or_unauthorized_state(tmp_path, monkeypatch):
     gate = _valid_authorization_gate(tmp_path)
     monkeypatch.setattr(readiness, "_require_committed", lambda root, paths: None)
-    monkeypatch.setattr(readiness, "current_static_identity",
-                        lambda p, root=None: gate["gh_identity"] if p == "github" else gate["rz_identity"])
+    _mock_deep_readiness(monkeypatch, gate)
 
     for field, bad_val in (
         ("collection_authorized", False),
@@ -736,8 +782,7 @@ def test_final_collection_authorization_rejects_stale_or_unauthorized_state(tmp_
 def test_final_collection_authorization_rejects_independent_audit_failures(tmp_path, monkeypatch):
     gate = _valid_authorization_gate(tmp_path)
     monkeypatch.setattr(readiness, "_require_committed", lambda root, paths: None)
-    monkeypatch.setattr(readiness, "current_static_identity",
-                        lambda p, root=None: gate["gh_identity"] if p == "github" else gate["rz_identity"])
+    _mock_deep_readiness(monkeypatch, gate)
 
     # 1. Receipt schema mismatch
     bad_receipt = {**gate["receipt"], "schema": "wrong-receipt-schema"}

@@ -278,13 +278,13 @@ def test_github_suffix_collision_and_quota_refused(gh_inputs):
 def test_github_quota_timing_requires_measured_complete_traversal(gh_inputs):
     manifest, registry = gh_inputs
     baseline_facts, baseline_capture = gh_baseline(manifest)
+    page = baseline_facts["baseline_pages"][0]
+    page["request"]["started_monotonic"] = 10.0
+    page["response"]["ended_monotonic"] = 15.0
     context = {}
     validate_github_control("repository_identity_and_full_baseline",
                             manifest, registry, baseline_facts,
                             baseline_capture, context)
-    page = baseline_facts["baseline_pages"][0]
-    page["request"]["started_monotonic"] = 10.0
-    page["response"]["ended_monotonic"] = 15.0
     quota = pair("GET", "https://api.github.com/rate_limit",
                  {"resources": {"core": {"remaining": 1000, "limit": 5000}}},
                  version=VERSION)
@@ -297,6 +297,15 @@ def test_github_quota_timing_requires_measured_complete_traversal(gh_inputs):
              "observed_traversal_seconds": 5.0}
     validate_github_control("quota_and_timing_headroom", manifest, registry,
                             facts, capture(quota), context)
+    fabricated = json.loads(json.dumps(page))
+    fabricated["request"]["started_monotonic"] = 12.0
+    fabricated["response"]["ended_monotonic"] = 13.0
+    with pytest.raises(ControlEvidenceError, match="timing pages differ"):
+        validate_github_control("quota_and_timing_headroom", manifest, registry,
+                                dict(facts, timed_pages=[fabricated],
+                                     observed_max_request_seconds=1.0,
+                                     observed_traversal_seconds=1.0),
+                                capture(quota), context)
     # Hostile: magic 32 is rejected
     with pytest.raises(ControlEvidenceError):
         validate_github_control("quota_and_timing_headroom", manifest, registry,
@@ -512,9 +521,19 @@ def test_razorpay_timing_requires_measured_fetch_all_round(rz_inputs):
              "observed_max_round_seconds": 5.0,
              "timed_pages": [page]}
     context = {"razorpay_scope": scope, "razorpay_t0": t0,
-               "razorpay_marker": marker}
+               "razorpay_marker": marker,
+               "razorpay_baseline_sha": sha256_hex(canonical_json_bytes([page]))}
     validate_razorpay_control("timing_headroom", manifest, registry,
                               facts, capture(page), context)
+    fabricated = json.loads(json.dumps(page))
+    fabricated["request"]["started_monotonic"] = 12.0
+    fabricated["response"]["ended_monotonic"] = 13.0
+    with pytest.raises(ControlEvidenceError):
+        validate_razorpay_control("timing_headroom", manifest, registry,
+                                  dict(facts, timed_pages=[fabricated],
+                                       observed_max_request_seconds=1.0,
+                                       observed_max_round_seconds=1.0),
+                                  capture(page), context)
     page["response"]["ended_monotonic"] = 45.0
     with pytest.raises(ControlEvidenceError):
         validate_razorpay_control("timing_headroom", manifest, registry,

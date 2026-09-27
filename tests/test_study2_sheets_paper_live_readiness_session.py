@@ -69,6 +69,9 @@ def test_prospective_manifest_bytes_and_sha_match():
 def test_resident_bearer_reaches_capture_and_never_persisted_or_printed(tmp_path, monkeypatch, capsys):
     """Test resident bearer passes to run_capture in memory and is never written or printed."""
     monkeypatch.setattr(session_mod, "_git", _clean_git)
+    monkeypatch.setattr(session_mod, "load_paper_manifest", lambda **kw:
+                        dict(load_paper_manifest(**kw),
+                             status="FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"))
 
     secret_bearer = "secret-resident-bearer-sample-xyz987"
     now = time.time()
@@ -156,6 +159,10 @@ def test_resident_bearer_reaches_capture_and_never_persisted_or_printed(tmp_path
 def test_expired_or_short_lived_token_refuses_before_capture(tmp_path, monkeypatch):
     """Test that a token unable to cover the fixed readiness schedule is refused."""
     monkeypatch.setattr(session_mod, "_git", _clean_git)
+    monkeypatch.setattr(session_mod, "load_paper_manifest", lambda **kw:
+                        dict(load_paper_manifest(**kw),
+                             status="FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"))
+
 
     # Token expires in 10 seconds (cannot cover ~600s schedule)
     short_token = PreparedToken(

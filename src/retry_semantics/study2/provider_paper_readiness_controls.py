@@ -376,6 +376,9 @@ def validate_github_control(control: str, manifest: dict[str, Any],
               and core["limit"] >= facts["peak_requests_per_hour"],
               "GitHub rate-limit headroom insufficient")
         _gh_pages(facts["timed_pages"], manifest, version)
+        _need(sha256_hex(canonical_json_bytes(facts["timed_pages"])) ==
+              context.get("github_baseline_digest"),
+              "GitHub timing pages differ from captured traversal")
         spans = [_pair_elapsed(pair) for pair in facts["timed_pages"]]
         _need(all(spans[index][0] >= spans[index - 1][1]
                   for index in range(1, len(spans)))
@@ -552,6 +555,9 @@ def validate_razorpay_control(control: str, manifest: dict[str, Any],
         _http_pair(primary, method="GET", url=target)
         _rz_pages(facts["timed_pages"], context["razorpay_marker"],
                   facts["t0"], capture)
+        _need(sha256_hex(canonical_json_bytes(facts["timed_pages"])) ==
+              context.get("razorpay_baseline_sha"),
+              "Razorpay timing pages differ from captured traversal")
         spans = [_pair_elapsed(pair) for pair in facts["timed_pages"]]
         _need(all(spans[index][0] >= spans[index - 1][1]
                   for index in range(1, len(spans)))

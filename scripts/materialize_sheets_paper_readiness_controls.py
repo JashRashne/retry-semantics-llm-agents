@@ -31,7 +31,6 @@ ORIGINAL_DIR = incident.ORIGINAL_EVIDENCE_DIR
 CONTINUATION_DIR = BASE / (ORIGINAL_DIR.name + "-continuation")
 CLIENT_REVIEW = BASE / "sheets-phase4-first-read/client-review.json"
 OUTPUT_DIR = Path("research/study2/sheets/readiness_control_evidence")
-OLD_MANIFEST_SHA256 = "c9184255d5788fc00da3e7dd43afbe332a4dadcbc3f1534e95db320aeed8de4c"
 SECOND_VISIBILITY_SECONDS = 0.6371620419959072
 
 
@@ -59,8 +58,9 @@ def _ref(path: Path) -> dict[str, str]:
 def _capture(manifest: dict[str, Any], directory: Path) -> dict[str, Any]:
     plan = _json(directory / "capture-plan.json")
     state = _json(directory / "capture-state.json")
-    if (plan.get("manifest_sha256") != OLD_MANIFEST_SHA256
-            or state.get("manifest_sha256") != OLD_MANIFEST_SHA256
+    manifest_sha256 = sha256_hex(canonical_json_bytes(manifest))
+    if (plan.get("manifest_sha256") != manifest_sha256
+            or state.get("manifest_sha256") != manifest_sha256
             or state.get("state") != "READINESS_CAPTURED_PENDING_INDEPENDENT_AUDIT"
             or plan.get("read_count") != 257
             or plan.get("interval_seconds") != 2.0
@@ -358,9 +358,11 @@ def validate_control_provenance(records: dict[str, dict[str, Any]], *,
         raise ControlEvidenceError("future app or token lifetime proof absent")
 
 
-def materialize(*, output_dir: Path = OUTPUT_DIR) -> dict[str, str]:
+def materialize(*, output_dir: Path = OUTPUT_DIR,
+                capture_dir: Path = CAPTURE_DIR,
+                replace_verified: bool = False) -> dict[str, str]:
     manifest = load_paper_manifest()
-    records = build_records(manifest=manifest)
+    records = build_records(manifest=manifest, capture_dir=capture_dir)
     validate_control_provenance(records)
     output_dir.mkdir(parents=True, exist_ok=True)
     hashes = {}
@@ -368,8 +370,12 @@ def materialize(*, output_dir: Path = OUTPUT_DIR) -> dict[str, str]:
         path = output_dir / f"{name}.json"
         raw = canonical_json_bytes(record)
         if path.exists():
-            if path.is_symlink() or path.read_bytes() != raw:
+            if path.is_symlink():
+                raise ControlEvidenceError(f"symlinked control destination: {name}")
+            if path.read_bytes() != raw and not replace_verified:
                 raise ControlEvidenceError(f"existing control differs: {name}")
+            if path.read_bytes() != raw:
+                path.write_bytes(raw)
         else:
             with path.open("xb") as file:
                 file.write(raw)
@@ -380,10 +386,15 @@ def materialize(*, output_dir: Path = OUTPUT_DIR) -> dict[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--materialize-offline", action="store_true", required=True)
+    parser.add_argument("--capture-dir", type=Path, default=CAPTURE_DIR)
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    parser.add_argument("--replace-verified", action="store_true",
+                        help="Replace stale controls only after recomputing from raw evidence")
     args = parser.parse_args()
     if args.materialize_offline:
-        hashes = materialize()
-        print(f"{len(hashes)} canonical controls; {sum(_json(OUTPUT_DIR / (n + '.json'))['qualified'] for n in hashes)} qualified")
+        hashes = materialize(output_dir=args.output_dir, capture_dir=args.capture_dir,
+                             replace_verified=args.replace_verified)
+        print(f"{len(hashes)} canonical controls; {sum(_json(args.output_dir / (n + '.json'))['qualified'] for n in hashes)} qualified")
     return 0
 
 

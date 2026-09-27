@@ -155,9 +155,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--independent-audit-receipt", required=True, type=Path)
     parser.add_argument("--prepare-lock-offline", action="store_true", required=True)
+    parser.add_argument("--capture-dir", type=Path, default=controls.CAPTURE_DIR)
     args = parser.parse_args()
     try:
-        raw = prepare_lock(audit_receipt=args.independent_audit_receipt)
+        raw = prepare_lock(audit_receipt=args.independent_audit_receipt,
+                           capture_dir=args.capture_dir)
         target = REPOSITORY_ROOT / READINESS_LOCK_PATH
         with target.open("xb") as file:
             file.write(raw)

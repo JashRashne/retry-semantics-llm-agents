@@ -77,7 +77,7 @@ class PaperModelSession:
     def __init__(self, *, provider: str, family: dict, common: dict,
                  complete: Callable[[dict], dict],
                  evidence: DurablePaperEvidence):
-        if provider not in ("github", "razorpay"):
+        if provider not in ("github", "razorpay", "sheets"):
             raise PaperModelError("unknown paper provider")
         self.provider = provider
         self.family = family
@@ -168,7 +168,9 @@ class PaperModelSession:
         if len(calls) != 1:
             raise PaperModelError("original must select exactly one tool")
         call = calls[0]
-        expected = ("create_issue" if self.provider == "github" else "create_order")
+        expected = ("create_issue" if self.provider == "github"
+                    else "append_row" if self.provider == "sheets"
+                    else "create_order")
         try:
             args = json.loads(call["function"]["arguments"])
         except (ValueError, TypeError) as exc:

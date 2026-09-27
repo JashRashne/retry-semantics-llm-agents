@@ -7,6 +7,7 @@ lock before any model or provider action. No import-time provider activity.
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 from dataclasses import asdict, dataclass, replace
@@ -30,10 +31,57 @@ from retry_semantics.study2.provider_paper_readiness import (
 )
 from retry_semantics.study2.razorpay_paper_manifest import load_razorpay_paper_manifest
 from retry_semantics.study2.razorpay_adapter import RazorpayCredentials
+from retry_semantics.study2.sheets_paper_materialize import (
+    load_paper_manifest as load_sheets_paper_manifest,
+)
+from retry_semantics.study2.sheets_paper_adapter import (
+    DispatchFacts, classify_experimental_get, evaluate_observation,
+    prepare_paper_append, project_list_rows, replay_request,
+)
+from retry_semantics.study2.sheets_paper_readiness import check_grid
+from retry_semantics.study2.sheets_paper_runner import (
+    H1ConstructorCertification, ModelDecision, RecoveryAction, RecoveryContext,
+    RecoveryResult, certify_h1_constructor, dispatch_stage, load_original,
+    run_recovery, store_original, validate_append_acknowledgement,
+)
+from retry_semantics.study2.sheets_offline import FrozenMutation
+from retry_semantics.study2.sheets_paper_http import PaperHTTPResult
 
 
 class PaperCollectionError(ValueError):
     """A required collection boundary was not established."""
+
+
+def validate_run_directory(run_dir: Path, *, root: Path | None = None) -> Path:
+    """Require a new directory outside the checkout, resolving parent symlinks."""
+    repository = (root or Path(__file__).resolve().parents[3]).resolve()
+    target = run_dir.resolve(strict=False)
+    if target == repository or repository in target.parents:
+        raise PaperCollectionError("run directory must be outside repository")
+    if run_dir.exists() or run_dir.is_symlink():
+        raise PaperCollectionError("Run directory already exists; cannot resume (resume prohibited)")
+    return target
+
+
+def _check_sheets_token_lifetime(evidence_dir: Path, *, credential: str, now: float,
+                                 arm_count: int) -> float:
+    """Require a real bearer to cover the audited prospective run plan."""
+    token_record = json.loads((evidence_dir / "token_lifetime.json").read_bytes())
+    facts = token_record["facts"]
+    expiry = facts["token_expiry"].get("expires_at")
+    bearer_sha256 = facts["token_expiry"].get("bearer_sha256")
+    uncertainty = facts["token_expiry"].get("clock_uncertainty_seconds")
+    planned_end = facts["planned_run_end"].get("epoch_seconds")
+    if (token_record.get("qualified") is not True
+            or type(expiry) not in (int, float) or not math.isfinite(expiry)
+            or bearer_sha256 != sha256_hex(credential.encode("utf-8"))
+            or type(uncertainty) not in (int, float) or not math.isfinite(uncertainty)
+            or uncertainty < 0 or type(arm_count) is not int or arm_count != 256
+            or type(planned_end) not in (int, float) or not math.isfinite(planned_end)
+            or planned_end <= now + 40
+            or expiry <= planned_end + uncertainty):
+        raise PaperCollectionError("Sheets token lifetime cannot cover prospective run plan")
+    return planned_end
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +169,8 @@ def collect_github_arm(*, manifest: dict, family: dict, arm: dict,
 
     def recorded(operation: str, request: PaperRequest) -> HTTPResponse:
         nonlocal stopped, provider_prohibition
+        if stopped and request.method == "POST":
+            raise PaperCollectionError("provider run stopped before mutation")
         if request.method == "GET":
             parsed = urlsplit(request.url)
             if (parsed.scheme != "https" or parsed.netloc != "api.github.com"
@@ -131,11 +181,11 @@ def collect_github_arm(*, manifest: dict, family: dict, arm: dict,
         if operation == "create_issue":
             mutation_transports.append(result)
         headers = dict((k.lower(), v) for k, v in result.headers)
-        if (result.status in (403, 429)
+        if (result.status in (401, 403, 429)
                 or "secondary rate limit" in result.body.lower().decode(
                     "utf-8", errors="ignore")):
             stopped = True
-            provider_prohibition = (provider_prohibition or
+            provider_prohibition = (provider_prohibition or result.status == 401 or
                                     "retry-after" in headers or
                                     b"do not retry" in result.body.lower())
             evidence.event(f"run-stop-{evidence.index}", {
@@ -328,6 +378,8 @@ def collect_razorpay_arm(*, manifest: dict, family: dict, arm: dict,
 
     def recorded(operation: str, request: PaperRequest) -> rz.RawResponse:
         nonlocal stopped
+        if stopped and request.method == "POST":
+            raise PaperCollectionError("provider run stopped before mutation")
         parsed = urlsplit(request.url)
         if (parsed.scheme != "https" or parsed.netloc != "api.razorpay.com"
                 or not (parsed.path == "/v1/orders" or
@@ -338,7 +390,7 @@ def collect_razorpay_arm(*, manifest: dict, family: dict, arm: dict,
             mutation_transports.append(result)
         if result.status in (401, 403, 429):
             stopped = True
-            provider_prohibition[0] = (provider_prohibition[0] or any(
+            provider_prohibition[0] = (provider_prohibition[0] or result.status == 401 or any(
                 key.lower() == "retry-after" for key, _ in result.headers))
             evidence.event(f"run-stop-{evidence.index}", {
                 "provider": "razorpay", "arm_id": arm["arm_id"],
@@ -561,6 +613,308 @@ def collect_razorpay_arm(*, manifest: dict, family: dict, arm: dict,
                          verdict["state_correct"], verdict["reason"]), stopped
 
 
+def _sheets_request(manifest: dict, arm: dict, mutation: FrozenMutation) -> PaperRequest:
+    return PaperRequest(
+        mutation.method,
+        f"https://sheets.googleapis.com{mutation.uri}",
+        mutation.headers,
+        mutation.body,
+    )
+
+
+def collect_sheets_arm(
+    *, manifest: dict, family: dict, arm: dict,
+    evidence: DurablePaperEvidence,
+    send: Callable[[PaperRequest], PaperTransportResult],
+    model: PaperModelSession | None,
+    clock: Callable[[], float],
+    wait_until: Callable[[float], None],
+) -> tuple[ArmProjection, bool]:
+    """Execute exactly one Google Sheets arm under frozen OBS-1 timing."""
+    arm_id = arm["arm_id"]
+    semantic = family["target_semantic_m"]
+    item, detail = semantic["item"], semantic["detail"]
+    expected_original = prepare_paper_append(arm, item, detail)
+    stored_original_request = _sheets_request(manifest, arm, expected_original)
+    _durably_freeze_w(evidence, stored_original_request)
+    stored_original_path = evidence.directory / "stored-original.json"
+    store_original(stored_original_path, expected_original)
+
+    # Pre-policy baseline check: tab must be blank
+    baseline_req = PaperRequest("GET", f"https://sheets.googleapis.com{arm['read_target']}", (), b"")
+    baseline_resp = evidence.record("sheets_read", baseline_req, send)
+    stopped = baseline_resp.status in (401, 403, 429)
+    if baseline_resp.status != 200:
+        evidence.event("arm-projection", {
+            "provider": "sheets", "family_id": family["family_id"],
+            "arm_id": arm_id, "hidden_world": arm["hidden_world"],
+            "policy": arm["policy"], "recovery_terminal": "PRE_POLICY_BASE_FAILED",
+            "recovery_actions": [], "tool_action_attempt_count": 0,
+            "recovery_tool_calls_attempted": 0, "model_calls": 0,
+            "observation_rounds": [0], "evaluator_verdict": "INCONCLUSIVE",
+            "projection": {"status": "INCONCLUSIVE", "state_correct": None,
+                           "reason": "pre_policy_baseline_or_run_stop"},
+        })
+        return ArmProjection(arm_id, "INCONCLUSIVE", None, "pre_policy_baseline_or_run_stop"), stopped
+    try:
+        obs = check_grid(manifest, arm, baseline_resp.status, baseline_resp.body)
+        if obs.entered_rows or obs.marker_rows or obs.unexpected_rows:
+            evidence.event("arm-projection", {
+                "provider": "sheets", "family_id": family["family_id"],
+                "arm_id": arm_id, "hidden_world": arm["hidden_world"],
+                "policy": arm["policy"], "recovery_terminal": "PRE_POLICY_BASE_NOT_BLANK",
+                "recovery_actions": [], "tool_action_attempt_count": 0,
+                "recovery_tool_calls_attempted": 0, "model_calls": 0,
+                "observation_rounds": [0], "evaluator_verdict": "INCONCLUSIVE",
+                "projection": {"status": "INCONCLUSIVE", "state_correct": None,
+                               "reason": "pre_policy_baseline_or_run_stop"},
+            })
+            return ArmProjection(arm_id, "INCONCLUSIVE", None, "pre_policy_baseline_or_run_stop"), stopped
+    except Exception:
+        evidence.event("arm-projection", {
+            "provider": "sheets", "family_id": family["family_id"],
+            "arm_id": arm_id, "hidden_world": arm["hidden_world"],
+            "policy": arm["policy"], "recovery_terminal": "PRE_POLICY_BASE_PARSE_ERROR",
+            "recovery_actions": [], "tool_action_attempt_count": 0,
+            "recovery_tool_calls_attempted": 0, "model_calls": 0,
+            "observation_rounds": [0], "evaluator_verdict": "INCONCLUSIVE",
+            "projection": {"status": "INCONCLUSIVE", "state_correct": None,
+                           "reason": "pre_policy_baseline_or_run_stop"},
+        })
+        return ArmProjection(arm_id, "INCONCLUSIVE", None, "pre_policy_baseline_or_run_stop"), stopped
+    evidence.event("constructor-baseline", {"arm_id": arm_id, "baseline_clear": True})
+
+    # H1 construction
+    initial_world_facts: DispatchFacts | H1ConstructorCertification
+    if arm["hidden_world"] == "H1":
+        h1_post_resp = evidence.record("append_cells", stored_original_request, send)
+        stopped = stopped or (h1_post_resp.status in (401, 403, 429))
+        if h1_post_resp.status != 200:
+            evidence.event("arm-projection", {
+                "provider": "sheets", "family_id": family["family_id"],
+                "arm_id": arm_id, "hidden_world": arm["hidden_world"],
+                "policy": arm["policy"], "recovery_terminal": "H1_CONSTRUCTOR_POST_FAILED",
+                "recovery_actions": [], "tool_action_attempt_count": 0,
+                "recovery_tool_calls_attempted": 0, "model_calls": 0,
+                "observation_rounds": [0], "evaluator_verdict": "INCONCLUSIVE",
+                "projection": {"status": "INCONCLUSIVE", "state_correct": None,
+                               "reason": "H1_constructor_dispatch_unqualified"},
+            })
+            return ArmProjection(arm_id, "INCONCLUSIVE", None, "H1_constructor_dispatch_unqualified"), stopped
+        post_facts = DispatchFacts(h1_post_resp.dispatch_initiated, h1_post_resp.local_send_completed,
+                                  h1_post_resp.status, True, False)
+        ack_res = PaperHTTPResult(post_facts, h1_post_resp.body, h1_post_resp.error)
+        try:
+            validate_append_acknowledgement(expected_original, arm, ack_res)
+        except Exception:
+            evidence.event("arm-projection", {
+                "provider": "sheets", "family_id": family["family_id"],
+                "arm_id": arm_id, "hidden_world": arm["hidden_world"],
+                "policy": arm["policy"], "recovery_terminal": "H1_CONSTRUCTOR_ACK_INVALID",
+                "recovery_actions": [], "tool_action_attempt_count": 0,
+                "recovery_tool_calls_attempted": 0, "model_calls": 0,
+                "observation_rounds": [0], "evaluator_verdict": "INCONCLUSIVE",
+                "projection": {"status": "INCONCLUSIVE", "state_correct": None,
+                               "reason": "H1_constructor_dispatch_unqualified"},
+            })
+            return ArmProjection(arm_id, "INCONCLUSIVE", None, "H1_constructor_dispatch_unqualified"), stopped
+
+        h1_get_resp = evidence.record("sheets_read", baseline_req, send)
+        stopped = stopped or (h1_get_resp.status in (401, 403, 429))
+        try:
+            cert = certify_h1_constructor(
+                manifest, family, arm, expected_original, ack_res,
+                ("GET", arm["read_target"], h1_get_resp.status, h1_get_resp.body))
+        except Exception:
+            evidence.event("arm-projection", {
+                "provider": "sheets", "family_id": family["family_id"],
+                "arm_id": arm_id, "hidden_world": arm["hidden_world"],
+                "policy": arm["policy"], "recovery_terminal": "H1_CONSTRUCTOR_CERT_FAILED",
+                "recovery_actions": [], "tool_action_attempt_count": 0,
+                "recovery_tool_calls_attempted": 0, "model_calls": 0,
+                "observation_rounds": [0], "evaluator_verdict": "INCONCLUSIVE",
+                "projection": {"status": "INCONCLUSIVE", "state_correct": None,
+                               "reason": "H1_constructor_not_certified"},
+            })
+            return ArmProjection(arm_id, "INCONCLUSIVE", None, "H1_constructor_not_certified"), stopped
+        evidence.event("h1-constructor", {
+            "arm_id": arm_id, "certified": True,
+            "original_identity_sha256": cert.original_identity_sha256,
+            "manifest_sha256": cert.manifest_sha256,
+            "acknowledgement_status": h1_post_resp.status,
+            "acknowledgement_body_hex": h1_post_resp.body.hex(),
+            "read_target": arm["read_target"],
+            "read_status": h1_get_resp.status,
+            "read_body_hex": h1_get_resp.body.hex(),
+        })
+        initial_world_facts = cert
+    else:
+        initial_world_facts = DispatchFacts()
+
+    evidence.event("policy-entry", {
+        "arm_id": arm_id, "hidden_world": arm["hidden_world"],
+        "policy": arm["policy"],
+    })
+
+    recovery_tool_calls_attempted = 0
+
+    def dispatch(mutation: FrozenMutation) -> PaperHTTPResult:
+        nonlocal stopped, recovery_tool_calls_attempted
+        if stopped:
+            raise PaperCollectionError("provider run stopped before dispatch")
+        response = evidence.record("append_cells", _sheets_request(manifest, arm, mutation), send)
+        recovery_tool_calls_attempted += 1
+        stopped = response.status in (401, 403, 429)
+        facts = DispatchFacts(
+            response.dispatch_initiated, bool(response.local_send_completed),
+            response.status, False, False)
+        return PaperHTTPResult(facts, response.body, response.error)
+
+    def list_rows(_arm: dict) -> dict | str:
+        nonlocal stopped
+        if stopped:
+            raise PaperCollectionError("provider run stopped before read")
+        response = evidence.record("sheets_read", baseline_req, send)
+        stopped = response.status in (401, 403, 429)
+        if stopped:
+            raise PaperCollectionError("provider run stopped after read")
+        try:
+            observed = check_grid(manifest, arm, response.status, response.body)
+            return project_list_rows(observed, authority_qualified=True)
+        except ValueError:
+            return "ToolError: Row observation incomplete."
+
+    def model_continue(context: RecoveryContext) -> ModelDecision:
+        if stopped:
+            raise PaperCollectionError("provider run stopped before model continuation")
+        if model is None:
+            raise PaperCollectionError("missing model for regeneration")
+        actions = model.next_actions({
+            "model_call_index": context.model_call_index,
+            "seed": context.seed,
+            "previous_tool_result": context.previous_tool_result,
+        })
+        if not actions:
+            return ModelDecision("finish")
+        if len(actions) != 1:
+            raise PaperCollectionError("frozen Sheets runner accepts one action per call")
+        action, args = actions[0]
+        if action == "append_row":
+            return ModelDecision(action, args.get("item"), args.get("detail"))
+        return ModelDecision(action)
+
+    original_message = (canonical_json_bytes(model.original)
+                        if model is not None and model.original is not None
+                        else canonical_json_bytes({"frozen_original": expected_original.identity_hash}))
+    try:
+        recovery = run_recovery(
+            manifest=manifest, family=family, arm=arm,
+            original_path=stored_original_path,
+            initial_world_facts=initial_world_facts,
+            original_model_message=original_message,
+            model_visible_common=manifest["model_visible_common"],
+            dispatch=dispatch,
+            model_continue=model_continue if arm["policy"] == "LLM_REGENERATION" else None,
+            list_rows=list_rows,
+        )
+    except Exception:
+        if not stopped:
+            raise
+        evidence.event("arm-projection", {
+            "provider": "sheets", "family_id": family["family_id"],
+            "arm_id": arm_id, "hidden_world": arm["hidden_world"],
+            "policy": arm["policy"], "recovery_terminal": "PROVIDER_RUN_STOP",
+            "recovery_actions": [], "tool_action_attempt_count": 0,
+            "recovery_tool_calls_attempted": recovery_tool_calls_attempted,
+            "model_calls": 0, "observation_rounds": [],
+            "evaluator_verdict": "INCONCLUSIVE",
+            "projection": {"status": "INCONCLUSIVE", "state_correct": None,
+                           "reason": "provider_run_stop"},
+        })
+        return ArmProjection(arm_id, "INCONCLUSIVE", None, "provider_run_stop"), True
+    recovery_actions = recovery.actions
+    model_calls = recovery.model_calls
+    recovery_terminal = recovery.terminal_reason
+    if stopped:
+        evidence.event("arm-projection", {
+            "provider": "sheets", "family_id": family["family_id"],
+            "arm_id": arm_id, "hidden_world": arm["hidden_world"],
+            "policy": arm["policy"], "recovery_terminal": recovery_terminal,
+            "recovery_actions": [asdict(a) for a in recovery_actions],
+            "tool_action_attempt_count": len(recovery_actions),
+            "recovery_tool_calls_attempted": recovery_tool_calls_attempted,
+            "model_calls": model_calls, "observation_rounds": [],
+            "evaluator_verdict": "INCONCLUSIVE",
+            "projection": {"status": "INCONCLUSIVE", "state_correct": None,
+                           "reason": "provider_run_stop"},
+        })
+        return ArmProjection(arm_id, "INCONCLUSIVE", None, "provider_run_stop"), True
+
+    r0 = clock()
+    evidence.event("sheets-observation-anchor", {
+        "arm_id": arm_id, "r0_monotonic": r0,
+        "scheduled_offset_seconds": 0, "budget_seconds": 40,
+    })
+    # OBS-1 scheduled observation at r0 + 0, finish by r0 + 40
+    if clock() < r0:
+        wait_until(r0)
+    obs_req = PaperRequest("GET", f"https://sheets.googleapis.com{arm['read_target']}", (), b"")
+    obs_started = clock()
+    obs_resp = evidence.record("sheets_read", obs_req, send)
+    obs_finished = clock()
+    evidence.event("sheets-obs-1-timing", {
+        "arm_id": arm_id, "r0_monotonic": r0,
+        "started_monotonic": obs_started, "finished_monotonic": obs_finished,
+        "transport_started_monotonic": obs_resp.started_monotonic,
+        "transport_ended_monotonic": obs_resp.ended_monotonic,
+    })
+    stopped = stopped or (obs_resp.status in (401, 403, 429))
+
+    if obs_finished - r0 > 40.0 or stopped:
+        verdict = "INCOMPLETE"
+    else:
+        verdict = classify_experimental_get(
+            manifest, arm, obs_resp.status, obs_resp.body,
+            intended=(item, detail), authority_qualified=True
+        )
+
+    if recovery_terminal == "MODEL_INFRASTRUCTURE_FAILURE":
+        status, state_correct, reason = "INCONCLUSIVE", None, "model_infrastructure_failure"
+    elif verdict == "EXACTLY_ONE":
+        status, state_correct, reason = "SUCCESS", 1, "EXACTLY_ONE"
+    elif verdict == "MISSING":
+        status, state_correct, reason = "FAILURE", 0, "MISSING"
+    elif verdict == "DUPLICATE":
+        status, state_correct, reason = "FAILURE", 0, "DUPLICATE"
+    elif verdict == "EXTRA_UNINTENDED_MUTATION":
+        status, state_correct, reason = "FAILURE", 0, "EXTRA_UNINTENDED_MUTATION"
+    elif verdict == "INCOMPLETE":
+        status, state_correct, reason = "INCONCLUSIVE", None, "INCOMPLETE"
+    else:
+        status, state_correct, reason = "INCONCLUSIVE", None, "INCONCLUSIVE"
+
+    evidence.event("arm-projection", {
+        "provider": "sheets",
+        "family_id": family["family_id"],
+        "arm_id": arm["arm_id"],
+        "hidden_world": arm["hidden_world"],
+        "policy": arm["policy"],
+        "recovery_terminal": recovery_terminal,
+        "recovery_actions": [asdict(a) for a in recovery_actions],
+        "tool_action_attempt_count": len(recovery_actions),
+        "recovery_tool_calls_attempted": recovery_tool_calls_attempted,
+        "model_calls": model_calls,
+        "observation_rounds": [1],
+        "evaluator_verdict": verdict,
+        "projection": {
+            "status": status,
+            "state_correct": state_correct,
+            "reason": reason,
+        },
+    })
+    return ArmProjection(arm_id, status, state_correct, reason), stopped
+
+
 def _schedule(manifest: dict) -> list[tuple[dict, dict]]:
     return [(family, arm) for family in sorted(
         manifest["families"], key=lambda x: x["scheduled_attempt_index"])
@@ -597,6 +951,7 @@ def collect_provider_run(*, provider: str, run_dir: Path,
                          api_version: str | None = None,
                          ) -> tuple[ArmProjection, ...]:
     """Readiness-gated, serial primary run; an existing run directory refuses resume."""
+    run_dir = validate_run_directory(run_dir)
     identity = check_readiness_lock(
         provider, lock_path, evidence_dir=evidence_dir,
         audit_receipt_path=audit_receipt_path,
@@ -610,8 +965,14 @@ def collect_provider_run(*, provider: str, run_dir: Path,
         authorization_path=collection_authorization_path,
         audit_receipt_path=collection_audit_receipt_path,
         audit_report_path=collection_audit_report_path)
-    manifest = (load_github_paper_manifest().as_json() if provider == "github"
-                else load_razorpay_paper_manifest())
+    if provider == "github":
+        manifest = load_github_paper_manifest().as_json()
+    elif provider == "razorpay":
+        manifest = load_razorpay_paper_manifest()
+    elif provider == "sheets":
+        manifest = load_sheets_paper_manifest()
+    else:
+        raise PaperCollectionError(f"unknown provider: {provider}")
     if type(credential) is not str or not credential:
         raise PaperCollectionError("missing provider credential")
     if provider == "github":
@@ -622,14 +983,18 @@ def collect_provider_run(*, provider: str, run_dir: Path,
         if (not api_version or api_version !=
                 baseline_control["facts"]["api_version"]):
             raise PaperCollectionError("GitHub API version differs from audited readiness")
-    else:
+    elif provider == "razorpay":
         key_id, separator, key_secret = credential.partition(":")
         if (not separator or RazorpayCredentials(key_id, key_secret).scope_fingerprint
                 != manifest["credential_scope_fingerprint"]):
             raise PaperCollectionError("Razorpay credential scope differs from audited manifest")
+    elif provider == "sheets":
+        if re.fullmatch(r"[!-~]+", credential) is None:
+            raise PaperCollectionError("invalid Google Sheets credential syntax")
+        sheets_planned_end = _check_sheets_token_lifetime(
+            evidence_dir, credential=credential, now=time.time(),
+            arm_count=len(_schedule(manifest)))
     model_complete = live_fireworks_completion(model_api_key)
-    if run_dir.exists():
-        raise PaperCollectionError("frozen primary run cannot resume")
     run_dir.mkdir(parents=True, exist_ok=False)
     run_evidence = DurablePaperEvidence(
         run_dir, provider=provider, family_id="RUN", arm_id="RUN",
@@ -642,7 +1007,10 @@ def collect_provider_run(*, provider: str, run_dir: Path,
         "runtime_sha256": identity["runtime_sha256"],
         "study2_paper_observations_before_run": 0,
     })
-    actual_send = lambda request: one_shot_http(request, credential=credential)
+    def actual_send(request):
+        if provider == "sheets" and time.time() + 40 >= sheets_planned_end:
+            raise PaperCollectionError("Sheets prospective run plan exhausted before dispatch")
+        return one_shot_http(request, credential=credential)
     clock = time.monotonic
 
     def wait_until(target: float) -> None:
@@ -656,6 +1024,10 @@ def collect_provider_run(*, provider: str, run_dir: Path,
     family_originals: dict[str, dict] = {}
     invalid_family: str | None = None
     for position, (family, arm) in enumerate(schedule):
+        if provider == "sheets" and time.time() + 40 >= sheets_planned_end:
+            _stop_remaining(run_dir, provider, schedule[position:],
+                            "prospective_run_plan_exhausted_no_resume", identity)
+            raise PaperCollectionError("Sheets prospective run plan exhausted")
         if invalid_family == family["family_id"]:
             _stop_remaining(run_dir, provider, [(family, arm)],
                             "family_invalidated_before_policy", identity)
@@ -700,7 +1072,7 @@ def collect_provider_run(*, provider: str, run_dir: Path,
                     manifest=manifest, family=family, arm=arm, evidence=evidence,
                     send=actual_send, model=model, api_version=api_version or "",
                     clock=clock, wait_until=wait_until)
-            else:
+            elif provider == "razorpay":
                 result, stopped = collect_razorpay_arm(
                     manifest=manifest, family=family, arm=arm, evidence=evidence,
                     send=actual_send, model=model,
@@ -708,6 +1080,13 @@ def collect_provider_run(*, provider: str, run_dir: Path,
                     writer_exclusion_audit_sha256=sha256_hex((
                         evidence_dir / "writer_exclusion.json").read_bytes()),
                     clock=clock, wait_until=wait_until, wall_time=wall_time)
+            elif provider == "sheets":
+                result, stopped = collect_sheets_arm(
+                    manifest=manifest, family=family, arm=arm, evidence=evidence,
+                    send=actual_send, model=model,
+                    clock=clock, wait_until=wait_until)
+            else:
+                raise PaperCollectionError(f"unknown provider: {provider}")
         except Exception as exc:
             evidence.event("run-abort", {
                 "provider": provider, "arm_id": arm["arm_id"],
@@ -719,6 +1098,10 @@ def collect_provider_run(*, provider: str, run_dir: Path,
                             "collector_abort_no_resume", identity)
             raise
         results.append(result)
+        if provider == "sheets" and time.time() > sheets_planned_end:
+            _stop_remaining(run_dir, provider, schedule[position + 1:],
+                            "prospective_run_plan_exhausted_no_resume", identity)
+            raise PaperCollectionError("Sheets prospective run plan exhausted")
         if stopped:
             _stop_remaining(run_dir, provider, schedule[position + 1:],
                             "provider_run_stop", identity)

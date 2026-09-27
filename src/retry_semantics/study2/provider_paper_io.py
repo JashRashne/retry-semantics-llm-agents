@@ -35,9 +35,11 @@ class PaperRequest:
     def __post_init__(self) -> None:
         parsed = urlsplit(self.url)
         allowed = ({"accept", "x-github-api-version", "content-type", "user-agent"}
-                   if parsed.hostname == "api.github.com" else {"content-type"})
+                   if parsed.hostname == "api.github.com"
+                   else {"content-type", "accept"} if parsed.hostname == "sheets.googleapis.com"
+                   else {"content-type"})
         if (self.method not in ("GET", "POST") or parsed.scheme != "https"
-                or parsed.hostname not in ("api.github.com", "api.razorpay.com")
+                or parsed.hostname not in ("api.github.com", "api.razorpay.com", "sheets.googleapis.com")
                 or parsed.port is not None or parsed.username or parsed.password
                 or parsed.fragment or type(self.body) is not bytes
                 or len(self.url) > 2048 or len(self.body) > 1_000_000
@@ -93,7 +95,7 @@ def one_shot_http(request: PaperRequest, *, credential: str,
             or threading.current_thread() is not threading.main_thread()):
         raise PaperIOError("invalid one-shot transport configuration")
     host = urlsplit(request.url).hostname
-    auth = ("Bearer " + credential if host == "api.github.com" else
+    auth = ("Bearer " + credential if host in ("api.github.com", "sheets.googleapis.com") else
             "Basic " + base64.b64encode(credential.encode("utf-8")).decode("ascii"))
     headers = dict(request.headers)
     headers["Authorization"] = auth
@@ -155,7 +157,7 @@ class DurablePaperEvidence:
     def __init__(self, directory: Path, *, provider: str, family_id: str,
                  arm_id: str, manifest_sha256: str,
                  runtime_sha256: dict[str, str]):
-        if provider not in ("github", "razorpay"):
+        if provider not in ("github", "razorpay", "sheets"):
             raise PaperIOError("unknown provider")
         self.directory = directory
         self.provider = provider
