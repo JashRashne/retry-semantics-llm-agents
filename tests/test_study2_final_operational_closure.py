@@ -48,6 +48,8 @@ def _dynamic_fixture(tmp_path, monkeypatch):
         record["subject"] = {
             "spreadsheet_id": load_paper_manifest()["spreadsheet_id"],
             "manifest_sha256": sha256_hex(canonical_json_bytes(load_paper_manifest()))}
+        if name in ("same_app_and_principal_access", "token_lifetime"):
+            record["qualified"] = False  # Start from the pre-finalization fixture state.
         _write(output / f"{name}.json", record)
     monkeypatch.setattr(dynamic.controls, "_capture", lambda *_args, **_kw: {})
     original = controls._json(output / "same_app_and_principal_access.json")

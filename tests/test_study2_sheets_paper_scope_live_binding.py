@@ -111,11 +111,12 @@ def invoke(body=b'{"x":  1}'):
     return live.transport(paper.HOST, paper.PORT, paper.METHOD, paper.TARGET, body, SENTINEL)
 
 
-def test_frozen_and_engineering_hashes_independently_match_disk():
-    for path, digest in operator.PINNED.items():
-        assert hashlib.sha256((operator.ROOT / path).read_bytes()).hexdigest() == digest
-    assert paper.EVIDENCE_ROOT.name == "sheets-paper-scope-v1-76b0af67d7eece50cb12167e7ec374b9"
-    assert not paper.EVIDENCE_ROOT.exists()
+def test_historical_scope_operator_has_stale_pins_and_remains_closed():
+    mismatches = [path for path, digest in operator.PINNED.items()
+                  if hashlib.sha256((operator.ROOT / path).read_bytes()).hexdigest() != digest]
+    assert "src/retry_semantics/study2/sheets_paper_scope_provisioning.py" in mismatches
+    with pytest.raises(operator.PaperOperatorRefused):
+        operator.source_projection("a" * 40)
 
 
 @pytest.mark.parametrize("change", ["host", "port", "method", "target"])
@@ -286,7 +287,19 @@ def test_source_pin_rejects_dirty_or_uncommitted_before_acquisition(monkeypatch)
     assert "EVIDENCE_ROOT" not in inspect.signature(operator.provision_session).parameters
 
 
-def test_altered_dependency_and_request_pin_fail(monkeypatch):
+def test_altered_dependency_and_request_pin_fail(monkeypatch, tmp_path):
+    # A self-contained prospectively pinned fixture, not today's evolved checkout.
+    for name in (*operator.PINNED, operator.DOC, operator.TRANSPORT, operator.OPERATOR):
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((operator.ROOT / name).read_bytes())
+    pins = {name: hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
+            for name in operator.PINNED}
+    doc = tmp_path / operator.DOC
+    doc.write_text("\n".join(f"| `{name}` | `{hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()}` |"
+                             for name in (operator.TRANSPORT, operator.OPERATOR)))
+    monkeypatch.setattr(operator, "ROOT", tmp_path)
+    monkeypatch.setattr(operator, "PINNED", pins)
     def committed(*args):
         if args == ("rev-parse", "HEAD"):
             return ("a" * 40 + "\n").encode()
@@ -389,6 +402,8 @@ def test_resident_fake_session_one_acquisition_one_gate(monkeypatch, tmp_path, c
 
 def test_frozen_gate_sentinel_evidence_and_no_second_create(monkeypatch, tmp_path):
     monkeypatch.setattr(paper, "EVIDENCE_ROOT", tmp_path)
+    binding = operator.ROOT / "research/study2/sheets/GOOGLE_SHEETS_PAPER_SCOPE_BINDING_V1.json"
+    before = binding.read_bytes()
     calls = []
     def once(*_args):
         calls.append(1)
@@ -404,4 +419,4 @@ def test_frozen_gate_sentinel_evidence_and_no_second_create(monkeypatch, tmp_pat
     assert SENTINEL.encode() not in evidence
     assert hashlib.sha256(SENTINEL.encode()).hexdigest().encode() not in evidence
     assert SENTINEL not in repr(first)
-    assert not (operator.ROOT / "research/study2/sheets/GOOGLE_SHEETS_PAPER_SCOPE_BINDING_V1.json").exists()
+    assert binding.read_bytes() == before  # Refusal never rewrites the historical binding.

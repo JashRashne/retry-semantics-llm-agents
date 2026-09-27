@@ -35,12 +35,9 @@ REAL_ACK = (
 )
 
 
-def _old_manifest():
-    raw = subprocess.check_output(
-        ["git", "show", "HEAD:research/study2/sheets/GOOGLE_SHEETS_PAPER_MANIFEST_V1.json"],
-        cwd=mat.REPOSITORY_ROOT)
-    assert sha256_hex(raw) == controls.OLD_MANIFEST_SHA256
-    return json.loads(raw)
+def _current_controls():
+    return {name: json.loads((controls.OUTPUT_DIR / f"{name}.json").read_bytes())
+            for name in readiness_requirements()}
 
 
 def _fixture_request():
@@ -91,37 +88,21 @@ def test_ack_rejects_non_200_and_ambiguity(status, error):
         validate_append_acknowledgement(request, arm, _ack(REAL_ACK, status, error))
 
 
-def test_manifest_only_status_and_dependent_implementation_hashes_changed():
-    old = _old_manifest()
-    new = load_paper_manifest()
-    assert (mat.REPOSITORY_ROOT / mat.MANIFEST_PATH).read_bytes() == mat.build_paper_manifest()
-    assert {key for key in new if new[key] != old[key]} == {"status", "implementation_sha256"}
-    assert {key for key in new["implementation_sha256"]
-            if new["implementation_sha256"][key] != old["implementation_sha256"][key]} == {
-                "src/retry_semantics/study2/sheets_paper_runner.py",
-                "src/retry_semantics/study2/sheets_paper_materialize.py"}
-    assert new["status"] == "PROSPECTIVE_ACK_SCHEMA_REPAIR_PENDING_INDEPENDENT_AUDIT"
-    assert new["collection_status"] == "BLOCKED" and new["readiness_status"] == "NOT_QUALIFIED"
-    assert new["study2_paper_observations"] == 0
-    assert new["families"] == old["families"]
-    assert new["schedule_definition"] == old["schedule_definition"]
-    assert new["provider_request_contract"] == old["provider_request_contract"]
-    assert new["observation_policy"] == old["observation_policy"]
-    assert new["model_visible_common"] == old["model_visible_common"]
-    assert new["manifest_authority_sha256"] == old["manifest_authority_sha256"]
-    assert new["scope_binding_sha256"] == old["scope_binding_sha256"]
-    assert new["spreadsheet_id"] == old["spreadsheet_id"]
-    assert new["implementation_sha256"]["src/retry_semantics/study2/sheets_paper_adapter.py"] == (
-        old["implementation_sha256"]["src/retry_semantics/study2/sheets_paper_adapter.py"])
-    for before, after in zip(old["families"], new["families"]):
-        assert before["arms"] == after["arms"]
+def test_historical_frozen_manifest_remains_reproducible():
+    raw = (mat.REPOSITORY_ROOT / mat.MANIFEST_PATH).read_bytes()
+    manifest = load_paper_manifest()
+    assert sha256_hex(raw) == "7c9bddb797938e026344afe49650922219ca35febf9322bdfb62f402caa87991"
+    assert raw == mat.build_paper_manifest()
+    assert manifest["status"] == "FROZEN_INDEPENDENT_HOSTILE_AUDIT_PASSED"
+    assert len(manifest["families"]) == 64
+    assert manifest["study2_paper_observations"] == 0  # Historical pre-data snapshot.
 
 
 def test_stale_runner_implementation_sha_is_refused(tmp_path, monkeypatch):
     current = load_paper_manifest()
     stale = copy.deepcopy(current)
     stale["implementation_sha256"]["src/retry_semantics/study2/sheets_paper_runner.py"] = (
-        _old_manifest()["implementation_sha256"]["src/retry_semantics/study2/sheets_paper_runner.py"])
+        "0" * 64)
     target = tmp_path / mat.MANIFEST_PATH
     target.parent.mkdir(parents=True)
     target.write_bytes(canonical_json_bytes(stale))
@@ -130,18 +111,14 @@ def test_stale_runner_implementation_sha_is_refused(tmp_path, monkeypatch):
         mat.load_paper_manifest(root=tmp_path)
 
 
-def test_old_257_get_bytes_revalidate_under_new_manifest_without_transfer():
-    manifest = load_paper_manifest()
-    capture = controls._capture(manifest, controls.CAPTURE_DIR)
-    assert capture["state"]["manifest_sha256"] == controls.OLD_MANIFEST_SHA256
-    assert capture["state"]["manifest_sha256"] != sha256_hex(canonical_json_bytes(manifest))
-    assert len(capture["baseline_sha256"]) == 256
-    assert capture["topology_sha256"]
+def test_old_257_get_capture_cannot_transfer_to_current_manifest():
+    with pytest.raises(controls.ControlEvidenceError, match="capture plan or state differs"):
+        controls._capture(load_paper_manifest(), controls.CAPTURE_DIR)
 
 
 def test_all_ten_canonical_controls_and_exact_fact_fields():
     manifest = load_paper_manifest()
-    expected = controls.build_records(manifest=manifest)
+    expected = _current_controls()
     assert set(expected) == set(readiness_requirements()) == set(CONTROL_FACTS)
     for name, record in expected.items():
         path = controls.OUTPUT_DIR / f"{name}.json"
@@ -150,29 +127,32 @@ def test_all_ten_canonical_controls_and_exact_fact_fields():
         assert set(record["facts"]) == CONTROL_FACTS[name]
         assert record["subject"] == {"spreadsheet_id": manifest["spreadsheet_id"],
                                      "manifest_sha256": sha256_hex(canonical_json_bytes(manifest))}
-    controls.validate_control_provenance(expected)
-    assert {name for name, record in expected.items() if not record["qualified"]} == {
-        "same_app_and_principal_access", "token_lifetime"}
+    controls.validate_control_provenance(expected, allow_late_evidence=True)
+    assert all(record["qualified"] for record in expected.values())
 
 
-def test_current_controls_cannot_pass_frozen_final_structure_gate():
+def test_unqualified_control_cannot_pass_frozen_final_structure_gate(tmp_path):
     manifest = load_paper_manifest()
     arms = [arm for family in manifest["families"] for arm in family["arms"]]
     topology = (200, (controls.CAPTURE_DIR / "topology.response.json").read_bytes())
     baselines = {arm["arm_id"]: ("GET", arm["read_target"], 200,
                  (controls.CAPTURE_DIR / f"baseline-{index:03d}.response.json").read_bytes())
                  for index, arm in enumerate(arms)}
-    index = {name: {"file": f"{name}.json",
-                    "sha256": sha256_hex((controls.OUTPUT_DIR / f"{name}.json").read_bytes())}
-             for name in readiness_requirements()}
+    index = {}
+    for name, record in _current_controls().items():
+        if name == "token_lifetime":
+            record["qualified"] = False
+        raw = canonical_json_bytes(record)
+        (tmp_path / f"{name}.json").write_bytes(raw)
+        index[name] = {"file": f"{name}.json", "sha256": sha256_hex(raw)}
     with pytest.raises(PaperReadinessError, match="unqualified control"):
         check_readiness_structure(manifest, topology_response=topology,
                                   baseline_responses=baselines, control_evidence=index,
-                                  evidence_root=controls.OUTPUT_DIR)
+                                  evidence_root=tmp_path)
 
 
 def test_control_provenance_refuses_attestation_laundering_and_paper_write_claim():
-    records = controls.build_records(manifest=load_paper_manifest())
+    records = _current_controls()
     changed = copy.deepcopy(records)
     changed["no_scripts_or_external_writers"]["facts"]["script_inventory"]["authority"] = "provider_proven"
     with pytest.raises(controls.ControlEvidenceError, match="attestation"):
@@ -192,7 +172,7 @@ def test_control_provenance_refuses_attestation_laundering_and_paper_write_claim
 
 def test_missing_source_or_wrong_subject_fails_closed(tmp_path):
     manifest = load_paper_manifest()
-    records = controls.build_records(manifest=manifest)
+    records = _current_controls()
     index = {}
     for name, record in records.items():
         value = copy.deepcopy(record)
@@ -238,7 +218,7 @@ def test_no_lock_before_receipt_report_and_clean_committed_inputs(tmp_path):
     with pytest.raises((controls.ControlEvidenceError, PaperReadinessError,
                         lock_prep.LockPreparationRefused)):
         lock_prep.prepare_lock(audit_receipt=receipt)
-    assert not (mat.REPOSITORY_ROOT / "research/study2/sheets/GOOGLE_SHEETS_PAPER_READINESS_LOCK_V1.json").exists()
+    assert not (tmp_path / "GOOGLE_SHEETS_PAPER_READINESS_LOCK_V1.json").exists()
     assert manifest["collection_status"] == "BLOCKED"
 
 

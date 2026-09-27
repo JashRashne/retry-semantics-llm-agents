@@ -3,7 +3,7 @@
 Enforces:
 - Clean, committed git working tree.
 - External, non-existent run directory (no resume / write-once).
-- Verified readiness lock and cross-provider collection authorization.
+- Verified readiness locks and audited post-Sheets continuation authorization.
 - Valid Test Mode scope credentials matching audited manifest.
 - Explicit --execute-primary flag.
 """
@@ -57,19 +57,16 @@ def main() -> int:
     parser.add_argument("--audit-report-path", type=Path,
                         default=Path("research/study2/razorpay/RAZORPAY_PAPER_READINESS_AUDIT_REPORT_V1.json"))
 
-    # Cross-provider locks
+    # Unstarted provider locks
     parser.add_argument("--github-lock-path", type=Path,
                         default=Path("research/study2/github/GITHUB_PAPER_READINESS_LOCK_V1.json"))
-    parser.add_argument("--sheets-lock-path", type=Path,
-                        default=Path("research/study2/sheets/GOOGLE_SHEETS_PAPER_READINESS_LOCK_V1.json"))
-
-    # Cross-provider authorization
+    # Post-Sheets continuation authorization
     parser.add_argument("--collection-authorization-path", type=Path,
-                        default=Path("research/study2/STUDY2_FINAL_COLLECTION_AUTHORIZATION_V1.json"))
+                        default=Path("research/study2/STUDY2_POST_SHEETS_CONTINUATION_AUTHORIZATION_V1.json"))
     parser.add_argument("--collection-audit-receipt-path", type=Path,
-                        default=Path("research/study2/STUDY2_FINAL_AUTHORIZATION_AUDIT_RECEIPT_V1.json"))
+                        default=Path("research/study2/STUDY2_POST_SHEETS_CONTINUATION_AUDIT_RECEIPT_V1.json"))
     parser.add_argument("--collection-audit-report-path", type=Path,
-                        default=Path("research/study2/STUDY2_FINAL_AUTHORIZATION_AUDIT_REPORT_V1.json"))
+                        default=Path("research/study2/STUDY2_POST_SHEETS_CONTINUATION_AUDIT_REPORT_V1.json"))
 
     args = parser.parse_args()
 
@@ -90,7 +87,6 @@ def main() -> int:
     all_locks = {
         "github": args.github_lock_path,
         "razorpay": args.lock_path,
-        "sheets": args.sheets_lock_path,
     }
 
     print(f"[*] Starting Study-2 Razorpay primary collection into {args.run_dir.resolve()}")

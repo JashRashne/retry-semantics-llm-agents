@@ -35,6 +35,7 @@ def _check_clean_git(root: Path) -> None:
 
 
 def main() -> int:
+    raise SystemExit("Sheets primary permanently closed after observed run stop")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execute-primary", action="store_true", required=True,
                         help="Explicit operator authorization to execute primary paper collection")

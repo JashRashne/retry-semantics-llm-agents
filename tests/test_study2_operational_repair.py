@@ -16,7 +16,8 @@ from retry_semantics.study2 import provider_paper_collection as collection
 from retry_semantics.study2 import provider_paper_readiness as readiness
 from retry_semantics.study2.provider_paper_io import PaperRequest, PaperTransportResult
 from retry_semantics.study2.provider_paper_collection import (
-    PaperCollectionError, collect_provider_run, validate_run_directory,
+    PaperCollectionError, _collect_provider_run_mechanics as collect_provider_run,
+    validate_run_directory,
 )
 from retry_semantics.study2.sheets_paper_materialize import load_paper_manifest
 from retry_semantics.study2.razorpay_live_readiness import capture_razorpay_readiness

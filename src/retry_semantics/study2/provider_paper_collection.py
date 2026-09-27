@@ -10,6 +10,7 @@ import json
 import math
 import re
 import time
+import jsonschema
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Callable
@@ -29,6 +30,7 @@ from retry_semantics.study2.provider_paper_model import (
 from retry_semantics.study2.provider_paper_readiness import (
     check_final_collection_authorization, check_readiness_lock,
 )
+from retry_semantics.study2.post_sheets_continuation import check_continuation_authorization
 from retry_semantics.study2.razorpay_paper_manifest import load_razorpay_paper_manifest
 from retry_semantics.study2.razorpay_adapter import RazorpayCredentials
 from retry_semantics.study2.sheets_paper_materialize import (
@@ -39,11 +41,13 @@ from retry_semantics.study2.sheets_paper_adapter import (
     prepare_paper_append, project_list_rows, replay_request,
 )
 from retry_semantics.study2.sheets_paper_readiness import check_grid
+from retry_semantics.study2.sheets_paper_blank_readiness import check_precollection_blank
 from retry_semantics.study2.sheets_paper_runner import (
     H1ConstructorCertification, ModelDecision, RecoveryAction, RecoveryContext,
     RecoveryResult, certify_h1_constructor, dispatch_stage, load_original,
-    run_recovery, store_original, validate_append_acknowledgement,
+    store_original, validate_append_acknowledgement,
 )
+from retry_semantics.study2.sheets_replication_recovery import run_recovery
 from retry_semantics.study2.sheets_offline import FrozenMutation
 from retry_semantics.study2.sheets_paper_http import PaperHTTPResult
 
@@ -644,7 +648,7 @@ def collect_sheets_arm(
     baseline_req = PaperRequest("GET", f"https://sheets.googleapis.com{arm['read_target']}", (), b"")
     baseline_resp = evidence.record("sheets_read", baseline_req, send)
     stopped = baseline_resp.status in (401, 403, 429)
-    if baseline_resp.status != 200:
+    if baseline_resp.status != 200 or baseline_resp.error is not None:
         evidence.event("arm-projection", {
             "provider": "sheets", "family_id": family["family_id"],
             "arm_id": arm_id, "hidden_world": arm["hidden_world"],
@@ -657,19 +661,8 @@ def collect_sheets_arm(
         })
         return ArmProjection(arm_id, "INCONCLUSIVE", None, "pre_policy_baseline_or_run_stop"), stopped
     try:
-        obs = check_grid(manifest, arm, baseline_resp.status, baseline_resp.body)
-        if obs.entered_rows or obs.marker_rows or obs.unexpected_rows:
-            evidence.event("arm-projection", {
-                "provider": "sheets", "family_id": family["family_id"],
-                "arm_id": arm_id, "hidden_world": arm["hidden_world"],
-                "policy": arm["policy"], "recovery_terminal": "PRE_POLICY_BASE_NOT_BLANK",
-                "recovery_actions": [], "tool_action_attempt_count": 0,
-                "recovery_tool_calls_attempted": 0, "model_calls": 0,
-                "observation_rounds": [0], "evaluator_verdict": "INCONCLUSIVE",
-                "projection": {"status": "INCONCLUSIVE", "state_correct": None,
-                               "reason": "pre_policy_baseline_or_run_stop"},
-            })
-            return ArmProjection(arm_id, "INCONCLUSIVE", None, "pre_policy_baseline_or_run_stop"), stopped
+        check_precollection_blank(manifest, arm, method="GET", target=arm["read_target"],
+                                  status=baseline_resp.status, raw=baseline_resp.body)
     except Exception:
         evidence.event("arm-projection", {
             "provider": "sheets", "family_id": family["family_id"],
@@ -701,7 +694,7 @@ def collect_sheets_arm(
                                "reason": "H1_constructor_dispatch_unqualified"},
             })
             return ArmProjection(arm_id, "INCONCLUSIVE", None, "H1_constructor_dispatch_unqualified"), stopped
-        post_facts = DispatchFacts(h1_post_resp.dispatch_initiated, h1_post_resp.local_send_completed,
+        post_facts = DispatchFacts(h1_post_resp.dispatch_initiated, bool(h1_post_resp.local_send_completed),
                                   h1_post_resp.status, False, False)
         ack_res = PaperHTTPResult(post_facts, h1_post_resp.body, h1_post_resp.error)
         try:
@@ -722,6 +715,8 @@ def collect_sheets_arm(
         h1_get_resp = evidence.record("sheets_read", baseline_req, send)
         stopped = stopped or (h1_get_resp.status in (401, 403, 429))
         try:
+            if h1_get_resp.error is not None:
+                raise PaperCollectionError("incomplete H1 read transport")
             cert = certify_h1_constructor(
                 manifest, family, arm, expected_original, ack_res,
                 ("GET", arm["read_target"], h1_get_resp.status, h1_get_resp.body))
@@ -757,9 +752,11 @@ def collect_sheets_arm(
     })
 
     recovery_tool_calls_attempted = 0
+    acknowledged_recovery_mutations = 0
+    known_row_floor = 1 if arm["hidden_world"] == "H1" else 0
 
     def dispatch(mutation: FrozenMutation) -> PaperHTTPResult:
-        nonlocal stopped, recovery_tool_calls_attempted
+        nonlocal stopped, recovery_tool_calls_attempted, acknowledged_recovery_mutations
         if stopped:
             raise PaperCollectionError("provider run stopped before dispatch")
         response = evidence.record("append_cells", _sheets_request(manifest, arm, mutation), send)
@@ -768,10 +765,17 @@ def collect_sheets_arm(
         facts = DispatchFacts(
             response.dispatch_initiated, bool(response.local_send_completed),
             response.status, False, False)
-        return PaperHTTPResult(facts, response.body, response.error)
+        result = PaperHTTPResult(facts, response.body, response.error)
+        try:
+            validate_append_acknowledgement(mutation, arm, result)
+        except ValueError:
+            pass
+        else:
+            acknowledged_recovery_mutations += 1
+        return result
 
     def list_rows(_arm: dict) -> dict | str:
-        nonlocal stopped
+        nonlocal stopped, known_row_floor
         if stopped:
             raise PaperCollectionError("provider run stopped before read")
         response = evidence.record("sheets_read", baseline_req, send)
@@ -779,7 +783,10 @@ def collect_sheets_arm(
         if stopped:
             raise PaperCollectionError("provider run stopped after read")
         try:
+            if response.error is not None:
+                return "ToolError: Row observation incomplete."
             observed = check_grid(manifest, arm, response.status, response.body)
+            known_row_floor = max(known_row_floor, len(observed.entered_rows))
             return project_list_rows(observed, authority_qualified=True)
         except ValueError:
             return "ToolError: Row observation incomplete."
@@ -789,16 +796,27 @@ def collect_sheets_arm(
             raise PaperCollectionError("provider run stopped before model continuation")
         if model is None:
             raise PaperCollectionError("missing model for regeneration")
-        actions = model.next_actions({
-            "model_call_index": context.model_call_index,
-            "seed": context.seed,
-            "previous_tool_result": context.previous_tool_result,
-        })
+        try:
+            actions = model.next_actions({
+                "model_call_index": context.model_call_index,
+                "seed": context.seed,
+                "previous_tool_result": context.previous_tool_result,
+            })
+        except PaperModelError:
+            return ModelDecision("model_infrastructure_failure")
         if not actions:
             return ModelDecision("finish")
         if len(actions) != 1:
-            raise PaperCollectionError("frozen Sheets runner accepts one action per call")
+            return ModelDecision("invalid_output")
         action, args = actions[0]
+        tool = next((t for t in manifest["model_visible_common"]["tools"]
+                     if t["name"] == action), None)
+        if tool is None:
+            return ModelDecision(action if action == "invalid_output" else "invalid_action")
+        try:
+            jsonschema.validate(args, tool["parameters"])
+        except jsonschema.ValidationError:
+            return ModelDecision("invalid_action")
         if action == "append_row":
             return ModelDecision(action, args.get("item"), args.get("detail"))
         return ModelDecision(action)
@@ -870,7 +888,7 @@ def collect_sheets_arm(
     })
     stopped = stopped or (obs_resp.status in (401, 403, 429))
 
-    if obs_finished - r0 > 40.0 or stopped:
+    if obs_finished - r0 > 40.0 or stopped or obs_resp.error is not None:
         verdict = "INCOMPLETE"
     else:
         verdict = classify_experimental_get(
@@ -878,8 +896,21 @@ def collect_sheets_arm(
             intended=(item, detail), authority_qualified=True
         )
 
+    # Append-only scopes cannot lose a certified/acknowledged row. Such a
+    # contradiction is an infrastructure/isolation problem, not model behavior.
+    minimum_rows = max(known_row_floor, acknowledged_recovery_mutations +
+                       (1 if arm["hidden_world"] == "H1" else 0))
+    causal_contradiction = False
+    if verdict not in ("INCOMPLETE", "INCONCLUSIVE"):
+        final_grid = check_grid(manifest, arm, obs_resp.status, obs_resp.body)
+        causal_contradiction = len(final_grid.entered_rows) < minimum_rows
+    if causal_contradiction:
+        verdict = "INCONCLUSIVE"
+
     if recovery_terminal == "MODEL_INFRASTRUCTURE_FAILURE":
         status, state_correct, reason = "INCONCLUSIVE", None, "model_infrastructure_failure"
+    elif causal_contradiction:
+        status, state_correct, reason = "INCONCLUSIVE", None, "causal_ledger_contradiction"
     elif verdict == "EXACTLY_ONE":
         status, state_correct, reason = "SUCCESS", 1, "EXACTLY_ONE"
     elif verdict == "MISSING":
@@ -906,6 +937,7 @@ def collect_sheets_arm(
         "model_calls": model_calls,
         "observation_rounds": [1],
         "evaluator_verdict": verdict,
+        "minimum_rows_from_causal_evidence": minimum_rows,
         "projection": {
             "status": status,
             "state_correct": state_correct,
@@ -940,7 +972,14 @@ def _stop_remaining(run_dir: Path, provider: str,
                                   "runtime_sha256": identity["runtime_sha256"]})
 
 
-def collect_provider_run(*, provider: str, run_dir: Path,
+def collect_provider_run(*, provider: str, **kwargs) -> tuple[ArmProjection, ...]:
+    """Production primary gateway. Sheets primary is permanently closed."""
+    if provider == "sheets":
+        raise PaperCollectionError("Sheets primary permanently closed after observed run stop")
+    return _collect_provider_run_mechanics(provider=provider, **kwargs)
+
+
+def _collect_provider_run_mechanics(*, provider: str, run_dir: Path,
                          lock_path: Path, evidence_dir: Path,
                          audit_receipt_path: Path, audit_report_path: Path,
                          credential: str, model_api_key: str,
@@ -959,12 +998,21 @@ def collect_provider_run(*, provider: str, run_dir: Path,
     if (type(all_provider_readiness_lock_paths) is not dict
             or all_provider_readiness_lock_paths.get(provider) != lock_path):
         raise PaperCollectionError("provider readiness lock path differs")
-    authorization_sha256 = check_final_collection_authorization(
-        provider=provider, provider_identity=identity,
-        readiness_lock_paths=all_provider_readiness_lock_paths,
-        authorization_path=collection_authorization_path,
-        audit_receipt_path=collection_audit_receipt_path,
-        audit_report_path=collection_audit_report_path)
+    authorization_path = collection_authorization_path
+    if authorization_path.name == "STUDY2_POST_SHEETS_CONTINUATION_AUTHORIZATION_V1.json":
+        authorization_sha256 = check_continuation_authorization(
+            provider=provider, provider_identity=identity,
+            readiness_lock_paths=all_provider_readiness_lock_paths,
+            authorization_path=authorization_path,
+            audit_receipt_path=collection_audit_receipt_path,
+            audit_report_path=collection_audit_report_path)
+    else:
+        authorization_sha256 = check_final_collection_authorization(
+            provider=provider, provider_identity=identity,
+            readiness_lock_paths=all_provider_readiness_lock_paths,
+            authorization_path=authorization_path,
+            audit_receipt_path=collection_audit_receipt_path,
+            audit_report_path=collection_audit_report_path)
     if provider == "github":
         manifest = load_github_paper_manifest().as_json()
     elif provider == "razorpay":

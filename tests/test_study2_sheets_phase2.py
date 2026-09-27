@@ -270,10 +270,11 @@ def test_corrupt_reservation_closed(registry, fixture, corruption):
     {"capability": phase1.Capability.CLEAN_MUTATION_GO},
     {"capability": phase1.Capability.AMBIGUITY_ENGINEERING_GO},
     {"fixture_manifest_sha256": "c" * 64}, {"runtime_pin_sha256": "c" * 64},
-    {"connector_source_sha256": "c" * 64}, {"expires_at": time.time() - 1},
-    {"authorized_at": time.time() + 100}])
+    {"connector_source_sha256": "c" * 64}, {"expires_at": lambda: time.time() - 1},
+    {"authorized_at": lambda: time.time() + 100}])
 def test_auth_prechecks_no_handoff(registry, fixture, configuration, token, provenance,
                                   authorization, change, monkeypatch):
+    change = {key: value() if callable(value) else value for key, value in change.items()}
     monkeypatch.setattr(read, "_construct", lambda *a: pytest.fail("no handoff"))
     with pytest.raises(frozen.QualificationError):
         read._precheck(fixture, configuration, token, provenance, replace(authorization, **change),
@@ -304,8 +305,9 @@ def test_default_closed_no_constructor_io(tmp_path, fixture, configuration, toke
 
 
 @pytest.mark.parametrize("change", [{"account_alias": "another"}, {"public_config_sha256": "c" * 64},
-                                  {"prepared_at": time.time() + 10}])
+                                  {"prepared_at": lambda: time.time() + 10}])
 def test_credential_provenance_mismatch(fixture, configuration, token, provenance, authorization, change):
+    change = {key: value() if callable(value) else value for key, value in change.items()}
     with pytest.raises(frozen.QualificationError):
         read._precheck(fixture, configuration, token, replace(provenance, **change), authorization,
                        now=time.time(), offline=True)
