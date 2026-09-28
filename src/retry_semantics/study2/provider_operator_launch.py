@@ -53,7 +53,20 @@ def manifest_for(provider: str) -> dict:
 
 
 def host_identity() -> str:
-    return sha256_hex(f"{platform.node()}:{uuid.getnode()}".encode())
+    if platform.system() == "Linux":
+        # getnode() can silently generate a different random node in each
+        # process on minimal VMs. Bind to the OS installation instead.
+        try:
+            machine_id = Path("/etc/machine-id").read_text().strip().lower()
+        except OSError as exc:
+            raise PaperCollectionError("Cannot read stable Linux machine identity") from exc
+        if re.fullmatch(r"[0-9a-f]{32}", machine_id) is None or machine_id == "0" * 32:
+            raise PaperCollectionError("Invalid stable Linux machine identity")
+        return sha256_hex(f"linux-machine-id:{machine_id}".encode())
+    node = uuid.getnode()
+    if node & (1 << 40):
+        raise PaperCollectionError("Stable host identity unavailable; UUID supplied a random node")
+    return sha256_hex(f"{platform.node()}:{node}".encode())
 
 
 def build_plan(provider: str, operator: str) -> dict:

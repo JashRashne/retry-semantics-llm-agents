@@ -1,6 +1,7 @@
 """Offline host/consumption checks and real 256-arm schedules against stateful APIs."""
 import json
 import socket
+from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit
@@ -22,6 +23,31 @@ def offline(monkeypatch):
         raise AssertionError("unexpected network")
     monkeypatch.setattr(socket.socket, "connect", deny)
     monkeypatch.setattr(socket, "create_connection", deny)
+
+
+def test_linux_host_identity_ignores_random_uuid_fallback(monkeypatch):
+    monkeypatch.setattr(launch.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(Path, "read_text", lambda *a, **kw: "a" * 32 + "\n")
+    monkeypatch.setattr(launch.uuid, "getnode", lambda: pytest.fail("unstable UUID fallback used"))
+    first = launch.host_identity()
+    assert first == launch.host_identity()
+    monkeypatch.setattr(Path, "read_text", lambda *a, **kw: "b" * 32 + "\n")
+    assert launch.host_identity() != first
+
+
+@pytest.mark.parametrize("value", ["", "0" * 32, "invalid", "a" * 31])
+def test_linux_host_identity_rejects_invalid_machine_id(monkeypatch, value):
+    monkeypatch.setattr(launch.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(Path, "read_text", lambda *a, **kw: value)
+    with pytest.raises(collection.PaperCollectionError, match="Invalid stable Linux"):
+        launch.host_identity()
+
+
+def test_non_linux_random_host_identity_is_refused(monkeypatch):
+    monkeypatch.setattr(launch.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(launch.uuid, "getnode", lambda: 1 << 40)
+    with pytest.raises(collection.PaperCollectionError, match="random node"):
+        launch.host_identity()
 
 
 @pytest.mark.parametrize("error,status,received", [(None, 200, True), ("ReadError", 200, True),

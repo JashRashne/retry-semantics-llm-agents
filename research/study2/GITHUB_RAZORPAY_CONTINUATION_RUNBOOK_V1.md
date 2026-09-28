@@ -137,10 +137,13 @@ cd "$HOME/retry_semantics"
 git rev-parse HEAD
 chmod 600 "$HOME/.config/retry-semantics/credentials.env"
 "$HOME/uv-tools/bin/uv" sync --frozen --extra dev --python 3.11
-.venv/bin/python -m pytest -q tests/test_study2_provider_operator_launch.py tests/test_study2_provider_paper_collection_offline.py tests/test_study2_operational_repair.py
+.venv/bin/python -m pytest -q tests/test_study2_provider_operator_launch.py tests/test_study2_provider_paper_collection_offline.py tests/test_study2_operational_repair.py::test_run_directory_containment_and_resume tests/test_study2_operational_repair.py::test_razorpay_readiness_inspects_page_two
 ```
 
 The printed HEAD must equal the Mac's. Do not copy a macOS `.venv` to Linux.
+The portable preflight intentionally excludes historical Sheets tests that need
+the Mac's external scope evidence. Linux host binding uses `/etc/machine-id`,
+because Python's MAC-address lookup can fall back to random values on minimal VMs.
 `uv sync --frozen` uses the committed dependency lock. The plan captures the Python
 version actually installed on this host. Tests are offline and consume no arms.
 
