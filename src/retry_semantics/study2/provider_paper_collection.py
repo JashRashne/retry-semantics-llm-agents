@@ -189,7 +189,7 @@ def collect_github_arm(*, manifest: dict, family: dict, arm: dict,
                 or "secondary rate limit" in result.body.lower().decode(
                     "utf-8", errors="ignore")):
             stopped = True
-            provider_prohibition = (provider_prohibition or result.status == 401 or
+            provider_prohibition = (provider_prohibition or result.status in (401, 403, 429) or
                                     "retry-after" in headers or
                                     b"do not retry" in result.body.lower())
             evidence.event(f"run-stop-{evidence.index}", {
@@ -218,7 +218,7 @@ def collect_github_arm(*, manifest: dict, family: dict, arm: dict,
     baseline = gh.bounded_census(manifest, arm, api_version=api_version,
                                  fetch=fetch,
                                  elapsed=lambda: clock() - read_anchor[0])
-    if (not baseline.complete or baseline.raw_entries > 860
+    if (not baseline.complete
             or any(body.endswith(arm["suffix"])
                    for _, _, body in baseline.issues) or stopped):
         evidence.event("arm-projection", {
@@ -394,8 +394,7 @@ def collect_razorpay_arm(*, manifest: dict, family: dict, arm: dict,
             mutation_transports.append(result)
         if result.status in (401, 403, 429):
             stopped = True
-            provider_prohibition[0] = (provider_prohibition[0] or result.status == 401 or any(
-                key.lower() == "retry-after" for key, _ in result.headers))
+            provider_prohibition[0] = True
             evidence.event(f"run-stop-{evidence.index}", {
                 "provider": "razorpay", "arm_id": arm["arm_id"],
                 "reason": "provider_access_or_rate_stop", "policy_entered": policy_entered,
@@ -1042,6 +1041,22 @@ def _collect_provider_run_mechanics(*, provider: str, run_dir: Path,
         sheets_planned_end = _check_sheets_token_lifetime(
             evidence_dir, credential=credential, now=time.time(),
             arm_count=len(_schedule(manifest)))
+    return _execute_provider_schedule(
+        provider=provider, run_dir=run_dir, manifest=manifest, identity=identity,
+        lock_path=lock_path, evidence_dir=evidence_dir, credential=credential,
+        model_api_key=model_api_key, api_version=api_version,
+        authorization_sha256=authorization_sha256,
+        sheets_planned_end=sheets_planned_end if provider == "sheets" else None)
+
+
+def _execute_provider_schedule(*, provider: str, run_dir: Path, manifest: dict,
+                               identity: dict, lock_path: Path, evidence_dir: Path,
+                               credential: str, model_api_key: str,
+                               api_version: str | None, authorization_sha256: str,
+                               sheets_planned_end: float | None = None,
+                               authorization_basis: str = "independently-audited-primary",
+                               progress=None, http_send=None) -> tuple[ArmProjection, ...]:
+    """Shared serial mechanics, invoked only after a launcher's authorization gate."""
     model_complete = live_fireworks_completion(model_api_key)
     run_dir.mkdir(parents=True, exist_ok=False)
     run_evidence = DurablePaperEvidence(
@@ -1050,6 +1065,7 @@ def _collect_provider_run_mechanics(*, provider: str, run_dir: Path,
         runtime_sha256=identity["runtime_sha256"])
     run_evidence.event("run-authorization", {
         "provider": provider, "authorization_sha256": authorization_sha256,
+        "authorization_basis": authorization_basis,
         "provider_readiness_lock_sha256": sha256_hex(lock_path.read_bytes()),
         "manifest_sha256": identity["manifest_sha256"],
         "runtime_sha256": identity["runtime_sha256"],
@@ -1058,7 +1074,8 @@ def _collect_provider_run_mechanics(*, provider: str, run_dir: Path,
     def actual_send(request):
         if provider == "sheets" and time.time() + 40 >= sheets_planned_end:
             raise PaperCollectionError("Sheets prospective run plan exhausted before dispatch")
-        return one_shot_http(request, credential=credential)
+        return (http_send(request) if http_send is not None
+                else one_shot_http(request, credential=credential))
     clock = time.monotonic
 
     def wait_until(target: float) -> None:
@@ -1072,6 +1089,9 @@ def _collect_provider_run_mechanics(*, provider: str, run_dir: Path,
     family_originals: dict[str, dict] = {}
     invalid_family: str | None = None
     for position, (family, arm) in enumerate(schedule):
+        if progress is not None:
+            progress(f"{provider}: starting arm {position + 1}/{len(schedule)} "
+                     f"{arm['arm_id']}", flush=True)
         if provider == "sheets" and time.time() + 40 >= sheets_planned_end:
             _stop_remaining(run_dir, provider, schedule[position:],
                             "prospective_run_plan_exhausted_no_resume", identity)
@@ -1146,11 +1166,17 @@ def _collect_provider_run_mechanics(*, provider: str, run_dir: Path,
                             "collector_abort_no_resume", identity)
             raise
         results.append(result)
+        if progress is not None:
+            progress(f"{provider}: finished arm {position + 1}/{len(schedule)} "
+                     f"{result.status}: {result.reason}", flush=True)
         if provider == "sheets" and time.time() > sheets_planned_end:
             _stop_remaining(run_dir, provider, schedule[position + 1:],
                             "prospective_run_plan_exhausted_no_resume", identity)
             raise PaperCollectionError("Sheets prospective run plan exhausted")
         if stopped:
+            if position + 1 == len(schedule):
+                run_evidence.event("run-stopped-final", {"provider": provider,
+                    "arm_id": arm["arm_id"], "reason": "provider_run_stop"})
             _stop_remaining(run_dir, provider, schedule[position + 1:],
                             "provider_run_stop", identity)
             break

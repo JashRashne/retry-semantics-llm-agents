@@ -143,10 +143,13 @@ def test_capabilities_have_no_implicit_escalation(fixture, authorization, clean_
 
 @pytest.mark.parametrize("change", [
     {"fixture_manifest_sha256": "b" * 64}, {"runtime_pin_sha256": "b" * 64},
-    {"connector_source_sha256": "b" * 64}, {"expires_at": time.time() - 1},
-    {"authorized_at": time.time() + 100},
+    {"connector_source_sha256": "b" * 64}, {"expires_at": lambda: time.time() - 1},
+    {"authorized_at": lambda: time.time() + 100},
 ])
 def test_hash_and_time_mismatch_preconstruction(fixture, authorization, monkeypatch, change):
+    # Evaluate relative times at execution, not collection: a long suite can
+    # otherwise turn the intended future authorization into a valid past one.
+    change = {key: value() if callable(value) else value for key, value in change.items()}
     monkeypatch.setattr(phase.ssl, "create_default_context", lambda **kw: pytest.fail("no SSL setup"))
     with pytest.raises(frozen.QualificationError): construct(fixture, replace(authorization, **change))
 

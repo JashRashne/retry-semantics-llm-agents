@@ -30,7 +30,7 @@ from retry_semantics.study2.github_paper_manifest import (
     load_github_paper_manifest,
     load_namespace_registry as load_github_namespace_registry,
 )
-from retry_semantics.study2.provider_paper_io import PaperRequest, PaperTransportResult, one_shot_http
+from retry_semantics.study2.provider_paper_io import DurablePaperEvidence, PaperRequest, PaperTransportResult, one_shot_http
 from retry_semantics.study2.provider_paper_readiness import (
     PROVIDER_CONTROLS,
     ProviderReadinessError,
@@ -60,10 +60,6 @@ def _pair_dict(
 ) -> dict[str, Any]:
     req_headers = dict(request.headers)
     resp_headers = dict(response.headers)
-    if api_version is not None:
-        req_headers["X-GitHub-Api-Version"] = api_version
-        req_headers["Accept"] = "application/vnd.github.raw+json"
-        resp_headers["x-github-api-version-selected"] = api_version
     return {
         "request": {
             "method": request.method,
@@ -78,7 +74,9 @@ def _pair_dict(
             "http_status": response.status,
             "headers": resp_headers,
             "body_hex": response.body.hex(),
-            "transport_complete": bool(response.local_send_completed and response.status > 0),
+            "transport_complete": bool(response.dispatch_initiated and response.local_send_completed
+                                       and response.response_received and response.error is None
+                                       and isinstance(response.status, int) and response.status > 0),
             "redirect_followed": False,
             "ended_monotonic": ended_mono,
         },
@@ -122,10 +120,15 @@ def capture_github_readiness(
     records: dict[str, dict[str, Any]] = {}
     captures: dict[str, dict[str, Any]] = {}
     validation_context: dict[str, Any] = {}
+    journal = DurablePaperEvidence(
+        evidence_dir / "operations", provider="github",
+        family_id="QUALIFICATION", arm_id="QUALIFICATION",
+        manifest_sha256=identity["manifest_sha256"],
+        runtime_sha256=identity["runtime_sha256"])
 
     def send_recorded(req: PaperRequest) -> tuple[PaperTransportResult, dict[str, Any]]:
         t0 = monotonic_fn()
-        resp = http_send(req)
+        resp = journal.record("readiness_" + req.method.lower(), req, http_send)
         t1 = monotonic_fn()
         p = _pair_dict(req, resp, started_mono=t0, ended_mono=t1, api_version=api_version)
         return resp, p
@@ -164,11 +167,12 @@ def capture_github_readiness(
         if resp.status != 200:
             raise GitHubReadinessSessionError(f"census traversal failed: {resp.status}")
         baseline_pages.append(pair)
-        return HTTPResponse(resp.status, resp.headers, resp.body)
+        return HTTPResponse(resp.status or 0, resp.headers, resp.body, resp.error)
 
+    baseline_started = monotonic_fn()
     census_result = gh.bounded_census(
         manifest, arm_0, api_version=api_version,
-        fetch=census_fetch, elapsed=lambda: 0,
+        fetch=census_fetch, elapsed=lambda: monotonic_fn() - baseline_started,
     )
     if not census_result.complete or census_result.raw_entries > 860:
         raise GitHubReadinessSessionError("baseline census incomplete or exceeded 860 entries")
@@ -332,11 +336,12 @@ def capture_github_readiness(
             if resp.status != 200:
                 raise GitHubReadinessSessionError(f"qualification readback traversal failed: {resp.status}")
             traversal_pages.append(pair)
-            return HTTPResponse(resp.status, resp.headers, resp.body)
+            return HTTPResponse(resp.status or 0, resp.headers, resp.body, resp.error)
 
+        traversal_started = monotonic_fn()
         census = gh.bounded_census(
             manifest, arm_0, api_version=api_version,
-            fetch=traversal_fetch, elapsed=lambda: 0,
+            fetch=traversal_fetch, elapsed=lambda: monotonic_fn() - traversal_started,
         )
         if not census.complete or census.raw_entries > 860:
             raise GitHubReadinessSessionError("qualification readback traversal incomplete or exceeded 860 entries")

@@ -104,14 +104,21 @@ def main() -> int:
         api_version=args.api_version,
     )
 
+    from retry_semantics.study2.provider_paper_analysis import load_run_projections
+    from retry_semantics.study2.github_paper_manifest import load_github_paper_manifest
+    complete = True
+    try:
+        load_run_projections(args.run_dir, load_github_paper_manifest().as_json(), "github", expected_families=64)
+    except ValueError:
+        complete = False
     success_count = sum(1 for r in results if r.status == "SUCCESS")
     failure_count = sum(1 for r in results if r.status == "FAILURE")
     inconclusive_count = sum(1 for r in results if r.status == "INCONCLUSIVE")
-    print(f"[+] GitHub primary collection completed: {len(results)} arms evaluated")
+    print(f"[+] GitHub primary collection {'COMPLETED' if complete else 'STOPPED/INCOMPLETE'}: {len(results)} arms evaluated")
     print(f"  - SUCCESS: {success_count}")
     print(f"  - FAILURE: {failure_count}")
     print(f"  - INCONCLUSIVE: {inconclusive_count}")
-    return 0
+    return 0 if complete else 2
 
 
 if __name__ == "__main__":

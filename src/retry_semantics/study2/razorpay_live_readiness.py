@@ -31,7 +31,7 @@ from retry_semantics.study2.razorpay_paper_manifest import (
     load_namespace_registry as load_razorpay_namespace_registry,
     scientific_sha256 as razorpay_scientific_sha256,
 )
-from retry_semantics.study2.provider_paper_io import PaperRequest, PaperTransportResult, one_shot_http
+from retry_semantics.study2.provider_paper_io import DurablePaperEvidence, PaperRequest, PaperTransportResult, one_shot_http
 from retry_semantics.study2.provider_paper_readiness import (
     PROVIDER_CONTROLS,
     ProviderReadinessError,
@@ -77,7 +77,9 @@ def _pair_dict(
             "http_status": response.status,
             "headers": dict(response.headers),
             "body_hex": response.body.hex(),
-            "transport_complete": bool(response.local_send_completed and response.status > 0),
+            "transport_complete": bool(response.dispatch_initiated and response.local_send_completed
+                                       and response.response_received and response.error is None
+                                       and isinstance(response.status, int) and response.status > 0),
             "redirect_followed": False,
             "ended_monotonic": ended_mono,
         },
@@ -117,10 +119,15 @@ def capture_razorpay_readiness(
     records: dict[str, dict[str, Any]] = {}
     captures: dict[str, dict[str, Any]] = {}
     validation_context: dict[str, Any] = {}
+    journal = DurablePaperEvidence(
+        evidence_dir / "operations", provider="razorpay",
+        family_id="QUALIFICATION", arm_id="QUALIFICATION",
+        manifest_sha256=identity["manifest_sha256"],
+        runtime_sha256=identity["runtime_sha256"])
 
     def send_recorded(req: PaperRequest) -> tuple[PaperTransportResult, dict[str, Any]]:
         t_start = monotonic_fn()
-        resp = http_send(req)
+        resp = journal.record("readiness_" + req.method.lower(), req, http_send)
         t_end = monotonic_fn()
         p = _pair_dict(req, resp, scope=scope, started_mono=t_start, ended_mono=t_end)
         return resp, p
