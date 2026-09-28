@@ -183,29 +183,41 @@ def run(plan_path: Path, *, confirm_no_external_writers: bool,
     require_unconsumed(plan_path, provider)
     credential, model_key = credentials(provider)
     transport = ProviderTransport(provider, credential)
-    run_dir = validate_run_directory(plan_path.parent / f"{provider}-run")
     manifest = manifest_for(provider)
+    registry = github_registry().as_json() if provider == "github" else razorpay_registry()
+    return _run_prepared(plan_path, plan=plan, manifest=manifest, registry=registry,
+        credential=credential, model_key=model_key, transport=transport,
+        global_claim=claim_path(provider), role=ROLE,
+        basis="operator-reviewed-continuation",
+        attestations={"provider_never_started_attested": True}, progress=progress)
+
+
+def _run_prepared(plan_path: Path, *, plan: dict, manifest: dict, registry: dict,
+                  credential: str, model_key: str, transport, global_claim: Path,
+                  role: str, basis: str, attestations: dict, progress=print) -> dict:
+    """Collect only after the calling governance path has validated its plan."""
+    provider = plan["provider"]
+    run_dir = validate_run_directory(plan_path.parent / f"{provider}-run")
     identity = plan["static_identity"]
     plan_sha = sha256_hex(canonical_json_bytes(plan))
     started = {"plan_sha256": plan_sha, "run_dir": str(run_dir),
                "started_at_utc": datetime.now(timezone.utc).isoformat(),
                "state": "CONSUMED_NO_RESUME", "operator": plan["operator"],
-               "exclusive_writer_attested": True, "provider_never_started_attested": True}
-    global_claim = claim_path(provider)
+               "exclusive_writer_attested": True, **attestations}
     global_claim.parent.mkdir(parents=True, exist_ok=True)
     write_once(global_claim, started)
     write_once(plan_path.with_suffix(".started.json"), started)
     run_dir.mkdir(parents=True, exist_ok=False)
     write_once(run_dir / "plan.json", plan)
     write_once(run_dir / "manifest.json", manifest)
+    write_once(run_dir / "namespace-registry.json", registry)
     write_once(run_dir / "operator-attestation.json", started)
-    summary = {"provider": provider, "dataset_role": ROLE, "state": "STOPPED", "phase": "readiness",
+    summary = {"provider": provider, "dataset_role": role, "state": "STOPPED", "phase": "readiness",
                "scheduled_arms": 256, "evaluated_arms": 0, "independent_audit_claimed": False}
     try:
         progress(f"{provider}: qualifying all seven readiness controls", flush=True)
         evidence_dir = run_dir / "readiness"
         capture = capture_github_readiness if provider == "github" else capture_razorpay_readiness
-        registry = github_registry().as_json() if provider == "github" else razorpay_registry()
         kwargs = {"api_version": plan["api_version"]} if provider == "github" else {}
         hashes = capture(manifest=manifest, registry=registry, evidence_dir=evidence_dir,
             identity=identity, operator_id=plan["operator"],
@@ -218,7 +230,7 @@ def run(plan_path: Path, *, confirm_no_external_writers: bool,
         lock = run_dir / "operator-readiness.json"
         write_once(lock, {"provider": provider, "static_identity": identity,
                          "control_sha256": hashes, "independent_audit_claimed": False,
-                         "authorization_basis": "operator-reviewed-continuation",
+                         "authorization_basis": basis,
                          "operator_attestation_sha256": sha256_hex(canonical_json_bytes(started))})
         progress(f"{provider}: readiness PASS; beginning 256 serial arms", flush=True)
         summary["phase"] = "collection"
@@ -226,9 +238,13 @@ def run(plan_path: Path, *, confirm_no_external_writers: bool,
             provider=provider, run_dir=run_dir / "collection", manifest=manifest,
             identity=identity, lock_path=lock, evidence_dir=evidence_dir,
             credential=credential, model_api_key=model_key, api_version=plan["api_version"],
-            authorization_sha256=plan_sha, authorization_basis="operator-reviewed-continuation",
+            authorization_sha256=plan_sha, authorization_basis=basis,
             progress=progress, http_send=transport)
         summary.update(evaluated_arms=len(results), verdicts=dict(Counter(r.status for r in results)))
+        stops = list((run_dir / "collection").glob("run-stopped-*.json"))
+        if stops:
+            reason = json.loads(stops[0].read_bytes()).get("reason", "collection_stopped")
+            raise PaperCollectionError(f"Collection stopped: {reason}; no resume or refill")
         load_run_projections(run_dir / "collection", manifest, provider, expected_families=64)
         summary["state"] = "COMPLETED"
     except Exception as exc:
@@ -247,7 +263,7 @@ def run(plan_path: Path, *, confirm_no_external_writers: bool,
     return summary
 
 
-def verify(run_dir: Path) -> dict:
+def verify(run_dir: Path, *, authorization_basis="operator-reviewed-continuation") -> dict:
     expected = json.loads((run_dir / "inventory.json").read_bytes())
     if expected != inventory(run_dir):
         raise PaperCollectionError("Evidence inventory changed or is incomplete")
@@ -260,7 +276,7 @@ def verify(run_dir: Path) -> dict:
         raise PaperCollectionError("Manifest differs from prospective plan")
     authorization = json.loads((run_dir / "collection/run-authorization.json").read_bytes())
     if (authorization.get("authorization_sha256") != sha256_hex(canonical_json_bytes(plan))
-            or authorization.get("authorization_basis") != "operator-reviewed-continuation"
+            or authorization.get("authorization_basis") != authorization_basis
             or authorization.get("runtime_sha256") != plan["static_identity"]["runtime_sha256"]):
         raise PaperCollectionError("Collection authorization differs from prospective plan")
     rows = load_run_projections(run_dir / "collection", manifest, plan["provider"], expected_families=64)
