@@ -174,6 +174,21 @@ def inventory(directory: Path) -> dict:
             for p in sorted(directory.rglob("*")) if p.is_file() and p != directory / "inventory.json"}
 
 
+def provider_stops(directory: Path) -> list[dict]:
+    """Expose the actual access/rate response without printing credentials/bodies."""
+    stops = []
+    for path in sorted(directory.rglob("*.result.json")):
+        record = json.loads(path.read_bytes())
+        if record.get("http_status") in (401, 403, 429):
+            headers = {k.lower(): v for k, v in record.get("response_headers", [])}
+            stops.append({"arm_id": record.get("arm_id"),
+                          "operation": record.get("operation_type"),
+                          "http_status": record["http_status"],
+                          "retry_after": headers.get("retry-after"),
+                          "result_file": str(path.relative_to(directory))})
+    return stops
+
+
 def run(plan_path: Path, *, confirm_no_external_writers: bool,
         confirm_provider_never_started: bool, progress=print) -> dict:
     if not (confirm_no_external_writers and confirm_provider_never_started):
@@ -257,6 +272,7 @@ def _run_prepared(plan_path: Path, *, plan: dict, manifest: dict, registry: dict
         summary.update(evaluated_arms=len(projections),
                        verdicts=dict(Counter(p["status"] for p in projections)))
     summary["ended_at_utc"] = datetime.now(timezone.utc).isoformat()
+    summary["provider_stop_responses"] = provider_stops(run_dir)
     summary["run_dir"] = str(run_dir)
     write_once(run_dir / "summary.json", summary)
     write_once(run_dir / "inventory.json", inventory(run_dir))

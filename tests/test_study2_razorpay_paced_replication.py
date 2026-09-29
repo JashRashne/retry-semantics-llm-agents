@@ -139,6 +139,8 @@ def test_full_paced_readiness_and_schedule(tmp_path, monkeypatch, stopped, stop)
     if stop:
         assert summary["state"] == "STOPPED" and summary["evaluated_arms"] < 256, summary
         assert "provider_run_stop" in summary["failure_reason"]
+        assert summary["provider_stop_responses"][0]["http_status"] == 429
+        assert summary["provider_stop_responses"][0]["retry_after"] == "2"
         assert stopped_at
         with pytest.raises(base.PaperCollectionError, match="stopped"):
             replication.verify(tmp_path / "razorpay-run")
