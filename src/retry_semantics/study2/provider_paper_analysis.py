@@ -181,6 +181,7 @@ def load_run_projections(
     provider: str,
     *,
     expected_families: int | None = None,
+    expected_arm_ids: tuple[str, ...] | None = None,
 ) -> list[ArmResult]:
     """Load a complete scheduled run; reject partial or corrupt publication evidence."""
     if provider not in PROVIDERS:
@@ -232,6 +233,15 @@ def load_run_projections(
         if cells != expected_cells:
             raise ValueError(f"incomplete manifest family: {family_id}")
 
+    if expected_arm_ids is not None:
+        if (authorization.get("authorization_basis") != "operator-authorized-github-remaining-v1"
+                or provider != "github" or not expected_arm_ids
+                or len(set(expected_arm_ids)) != len(expected_arm_ids)
+                or not set(expected_arm_ids) <= set(scheduled)
+                or authorization.get("selected_arm_ids") != list(expected_arm_ids)
+                or authorization.get("segment_only") is not True):
+            raise ValueError("invalid remaining-arm segment authorization")
+        scheduled = {k: v for k, v in scheduled.items() if k in expected_arm_ids}
     results: list[ArmResult] = []
     seen: set[str] = set()
     arm_dirs = sorted(p for p in run_dir.iterdir() if p.is_dir())

@@ -237,13 +237,13 @@ def _next_url(link: str | None, current_page: int, canonical_path: str | None,
                 raise GitHubPaperError("malformed terminal Link header")
             other_url, relation = terminal.groups()
             parsed_other = urlsplit(other_url)
-            query_other = parse_qsl(parsed_other.query, strict_parsing=True)
+            query_other = parse_qsl(parsed_other.query, strict_parsing=True, keep_blank_values=True)
             other_page = dict(query_other).get("page")
+            _pagination_query(query_other, relation)
             if (relation in seen_relations or parsed_other.scheme != "https"
                     or parsed_other.netloc != "api.github.com"
                     or parsed_other.path != (canonical_path or initial_path)
-                    or parsed_other.fragment or len(query_other) != 3
-                    or set(dict(query_other)) != {"state", "per_page", "page"}
+                    or parsed_other.fragment
                     or dict(query_other)["state"] != "all"
                     or dict(query_other)["per_page"] != "100"
                     or not other_page or not other_page.isdecimal()
@@ -270,12 +270,26 @@ def _next_url(link: str | None, current_page: int, canonical_path: str | None,
         r"/repositories/[1-9][0-9]*/issues", parsed.path))
     if not allowed or (canonical_path is not None and parsed.path != canonical_path):
         raise GitHubPaperError("pagination path changed")
-    query = parse_qsl(parsed.query, strict_parsing=True)
-    if (len(query) != 3 or dict(query).keys() != {"state", "per_page", "page"}
-            or dict(query)["state"] != "all" or dict(query)["per_page"] != "100"
-            or dict(query)["page"] != str(current_page + 1)):
+    query = parse_qsl(parsed.query, strict_parsing=True, keep_blank_values=True)
+    _pagination_query(query, "next")
+    if dict(query)["page"] != str(current_page + 1):
         raise GitHubPaperError("pagination query changed")
     return url, parsed.path
+
+
+def _pagination_query(query: list[tuple[str, str]], relation: str) -> None:
+    """Preserve GitHub's opaque cursor, without relaxing the frozen query/scope."""
+    values = dict(query)
+    cursor = "after" if relation in ("next", "last") else "before"
+    required = {"state", "per_page", "page"}
+    if (len(query) != len(values) or set(values) not in (required, required | {cursor})
+            or values.get("state") != "all" or values.get("per_page") != "100"
+            or not values.get("page", "").isascii() or not values.get("page", "").isdecimal()
+            or int(values["page"]) < 1):
+        raise GitHubPaperError("pagination query changed")
+    if cursor in values and (not 1 <= len(values[cursor]) <= 4096
+                            or any(not 33 <= ord(c) <= 126 for c in values[cursor])):
+        raise GitHubPaperError("invalid pagination cursor")
 
 
 def bounded_census(manifest: dict[str, Any], arm: dict[str, Any], *,

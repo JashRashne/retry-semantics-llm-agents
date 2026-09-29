@@ -1055,8 +1055,22 @@ def _execute_provider_schedule(*, provider: str, run_dir: Path, manifest: dict,
                                api_version: str | None, authorization_sha256: str,
                                sheets_planned_end: float | None = None,
                                authorization_basis: str = "independently-audited-primary",
-                               progress=None, http_send=None) -> tuple[ArmProjection, ...]:
+                               progress=None, http_send=None,
+                               selected_arm_ids: tuple[str, ...] | None = None,
+                               frozen_family_originals: dict | None = None) -> tuple[ArmProjection, ...]:
     """Shared serial mechanics, invoked only after a launcher's authorization gate."""
+    full_schedule = _schedule(manifest)
+    schedule = full_schedule
+    if selected_arm_ids is not None:
+        if (provider != "github" or authorization_basis != "operator-authorized-github-remaining-v1"
+                or not selected_arm_ids or len(set(selected_arm_ids)) != len(selected_arm_ids)):
+            raise PaperCollectionError("Invalid separately authorized remaining-arm selection")
+        schedule = [(f, a) for f, a in full_schedule if a["arm_id"] in selected_arm_ids]
+        if (tuple(a["arm_id"] for f, a in schedule) != selected_arm_ids
+                or set(frozen_family_originals or {}) != {f["family_id"] for f, a in schedule}):
+            raise PaperCollectionError("Remaining schedule/original bindings differ")
+    elif frozen_family_originals is not None:
+        raise PaperCollectionError("Frozen originals require a remaining-arm authorization")
     model_complete = live_fireworks_completion(model_api_key)
     run_dir.mkdir(parents=True, exist_ok=False)
     run_evidence = DurablePaperEvidence(
@@ -1070,6 +1084,8 @@ def _execute_provider_schedule(*, provider: str, run_dir: Path, manifest: dict,
         "manifest_sha256": identity["manifest_sha256"],
         "runtime_sha256": identity["runtime_sha256"],
         "study2_paper_observations_before_run": 0,
+        **({"selected_arm_ids": list(selected_arm_ids), "segment_only": True}
+           if selected_arm_ids is not None else {}),
     })
     def actual_send(request):
         if provider == "sheets" and time.time() + 40 >= sheets_planned_end:
@@ -1084,9 +1100,8 @@ def _execute_provider_schedule(*, provider: str, run_dir: Path, manifest: dict,
             time.sleep(remaining)
 
     wall_time = lambda: int(time.time())
-    schedule = _schedule(manifest)
     results: list[ArmProjection] = []
-    family_originals: dict[str, dict] = {}
+    family_originals: dict[str, dict] = dict(frozen_family_originals or {})
     invalid_family: str | None = None
     for position, (family, arm) in enumerate(schedule):
         if progress is not None:
