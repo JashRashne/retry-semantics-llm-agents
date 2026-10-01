@@ -1,0 +1,18 @@
+{
+  "status": "PASS",
+  "pdf": "/Users/jashrashne/Desktop/retry_semantics/paper/build/main.pdf",
+  "pdf_sha256": "8f76d06eb11997aeff7789d0320070fe07d57a609b65e46f921110ff9a9f61e4",
+  "pages": 14,
+  "tex_sha256": "73377d12dd5d9d27dccafb43339f30cd9b59d5575cb6ee5ab24919444023e730",
+  "visual_review": "All 14 latest pages rendered with Poppler at 110 DPI and inspected in four contact sheets; no clipping, overlaps, missing glyphs or unreadable table/figure sizing.",
+  "canvas_clipped_characters": 0,
+  "overfull_boxes": 0,
+  "font_warnings": 0,
+  "undefined_citations_references": 0,
+  "duplicate_labels": 0,
+  "bibtex_warnings": 0,
+  "underfull_box_warnings": 15,
+  "remaining_layout_warning": "15 underfull hbox warnings: paragraph spacing and ragged table alignment; visually checked, no overflow.",
+  "build_command": "tectonic --only-cached --untrusted --keep-logs --keep-intermediates --outdir paper/build paper/main.tex",
+  "offline_final_build": true
+}

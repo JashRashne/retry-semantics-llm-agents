@@ -1,117 +1,277 @@
-% Bibliographic metadata only. Source provenance is recorded in literature.csv.
-% UTF-8; arXiv DOIs identify preprint records. RFC named authors are editors.
-
 @techreport{rfc9110,
-  title = {{HTTP Semantics}},
+  title = {{HTTP} Semantics},
   author = {Roy T. Fielding and Mark Nottingham and Julian Reschke},
-  year = {2022},
-  doi = {10.17487/RFC9110},
-  url = {https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2},
-  urldate = {2026-09-05},
   institution = {Internet Engineering Task Force},
   type = {RFC},
   number = {9110},
-  note = {Named contributors are editors. Published June 2022. Section 9.2.2: Idempotent Methods is the user-specified reading target. DOI also explicitly cited by RFC 9114.},
+  year = {2022},
+  doi = {10.17487/RFC9110},
+  url = {https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2}
+}
+
+@article{birrell_nelson,
+  title = {Implementing Remote Procedure Calls},
+  author = {Andrew D. Birrell and Bruce Jay Nelson},
+  journal = {ACM Transactions on Computer Systems},
+  volume = {2},
+  number = {1},
+  pages = {39--59},
+  year = {1984},
+  doi = {10.1145/2080.357392},
+  url = {https://doi.org/10.1145/2080.357392}
+}
+
+@article{helland_idempotence,
+  title = {Idempotence Is Not a Medical Condition},
+  author = {Pat Helland},
+  journal = {Communications of the ACM},
+  volume = {55},
+  number = {5},
+  pages = {56--65},
+  year = {2012},
+  doi = {10.1145/2160718.2160734},
+  url = {https://doi.org/10.1145/2160718.2160734}
 }
 
 @inproceedings{sagas,
-  title = {{Sagas}},
+  title = {Sagas},
   author = {Hector Garcia-Molina and Kenneth Salem},
+  booktitle = {Proceedings of the 1987 ACM SIGMOD International Conference on Management of Data},
+  pages = {249--259},
   year = {1987},
   doi = {10.1145/38713.38742},
-  url = {https://doi.org/10.1145/38713.38742},
-  urldate = {2026-09-05},
-  booktitle = {Proceedings of the 1987 ACM SIGMOD International Conference on Management of Data (SIGMOD '87)},
-  note = {Proceedings DOI retained as supplied by user. Indexed ACM publisher result verifies title, authors, year and proceedings, but also displays companion ACM SIGMOD Record DOI 10.1145/38714.38742. Direct publisher fetch was blocked; DOI relationship needs manual verification.},
+  url = {https://doi.org/10.1145/38713.38742}
+}
+
+@inproceedings{helland_life,
+  title = {Life beyond Distributed Transactions: An Apostate's Opinion},
+  author = {Pat Helland},
+  booktitle = {Proceedings of the Conference on Innovative Data Systems Research},
+  pages = {132--141},
+  year = {2007},
+  url = {https://www.cidrdb.org/cidr2007/papers/cidr07p15.pdf}
+}
+
+@inproceedings{helland_quicksand,
+  title = {Building on Quicksand},
+  author = {Pat Helland and David Campbell},
+  booktitle = {Proceedings of the Conference on Innovative Data Systems Research},
+  year = {2009},
+  url = {https://www.cidrdb.org/cidr2009/Paper_133.pdf}
 }
 
 @inproceedings{react,
-  title = {{ReAct: Synergizing Reasoning and Acting in Language Models}},
+  title = {{ReAct}: Synergizing Reasoning and Acting in Language Models},
   author = {Shunyu Yao and Jeffrey Zhao and Dian Yu and Nan Du and Izhak Shafran and Karthik Narasimhan and Yuan Cao},
+  booktitle = {International Conference on Learning Representations},
   year = {2023},
-  doi = {10.48550/arXiv.2210.03629},
-  url = {https://arxiv.org/abs/2210.03629},
-  urldate = {2026-09-05},
-  booktitle = {International Conference on Learning Representations (ICLR)},
-  eprint = {2210.03629},
-  archivePrefix = {arXiv},
-  note = {Year refers to ICLR 2023; initial arXiv submission 2022-10-06. Metadata checked for v3 (2023-03-10). DOI identifies arXiv record, not a separate proceedings DOI.},
+  url = {https://openreview.net/forum?id=WE_vluYUL-X}
 }
 
-@misc{tau_bench,
+@inproceedings{tau_bench,
   title = {{$\tau$-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains}},
   author = {Shunyu Yao and Noah Shinn and Pedram Razavi and Karthik Narasimhan},
-  year = {2024},
-  doi = {10.48550/arXiv.2406.12045},
-  url = {https://arxiv.org/abs/2406.12045},
-  urldate = {2026-09-05},
-  eprint = {2406.12045},
+  booktitle = {International Conference on Learning Representations},
+  year = {2025},
+  url = {https://openreview.net/forum?id=roNSXZpUDN}
+}
+
+@misc{toolmaze,
+  title = {When Tools Fail: Benchmarking Dynamic Replanning and Anomaly Recovery in {LLM} Agents},
+  author = {Dongsheng Zhu and Xuchen Ma and Yucheng Shen and Xiang Li and Yukun Zhao and Shuaiqiang Wang and Lingyong Yan and Dawei Yin},
+  year = {2026},
+  eprint = {2606.05806},
   archivePrefix = {arXiv},
-  note = {ArXiv v1 submitted 2024-06-17. Cited manifestation is the arXiv preprint; any later conference or journal publication was not verified.},
+  howpublished = {arXiv preprint},
+  doi = {10.48550/arXiv.2606.05806},
+  url = {https://arxiv.org/abs/2606.05806}
 }
 
 @misc{verified_tool_calls,
-  title = {{Verified Tool Calls Improve LLM Agent Reliability Under Non-Atomic Failures}},
+  title = {Verified Tool Calls Improve {LLM} Agent Reliability Under Non-Atomic Failures},
   author = {Isham Kalappurackal Mansoor and Abhishek Phadke and Pratip Rana},
   year = {2026},
-  doi = {10.48550/arXiv.2608.02645},
-  url = {https://arxiv.org/abs/2608.02645},
-  urldate = {2026-09-05},
   eprint = {2608.02645},
   archivePrefix = {arXiv},
-  note = {ArXiv v1 submitted 2026-07-31 as explicitly displayed on the record. Cited manifestation is the arXiv preprint; any conference or journal publication was not verified.},
+  howpublished = {arXiv preprint},
+  doi = {10.48550/arXiv.2608.02645},
+  url = {https://arxiv.org/abs/2608.02645}
+}
+
+@misc{did_it_happen,
+  title = {Did It Happen? Counterfactual Evaluation of {LLM} Agent Recovery from Ambiguous Tool Outcomes},
+  author = {Shengyao Sun},
+  year = {2026},
+  howpublished = {Research Square preprint},
+  doi = {10.21203/rs.3.rs-10730245/v1},
+  url = {https://www.researchsquare.com/article/rs-10730245/v1}
+}
+
+@misc{acrfence,
+  title = {{ACRFence}: Preventing Semantic Rollback Attacks in Agent Checkpoint-Restore},
+  author = {Yusheng Zheng and Yiwei Yang and Wei Zhang and Andi Quinn},
+  year = {2026},
+  eprint = {2603.20625},
+  archivePrefix = {arXiv},
+  howpublished = {arXiv preprint},
+  doi = {10.48550/arXiv.2603.20625},
+  url = {https://arxiv.org/abs/2603.20625}
+}
+
+@misc{aft,
+  title = {Callability Is Not Operability: Controlled Interface Interventions for {LLM} Agents},
+  author = {Zihao Wang},
+  year = {2026},
+  eprint = {2608.23628},
+  archivePrefix = {arXiv},
+  howpublished = {arXiv preprint},
+  doi = {10.48550/arXiv.2608.23628},
+  url = {https://arxiv.org/abs/2608.23628}
 }
 
 @misc{atomix,
-  title = {{Atomix: Timely, Transactional Tool Use for Reliable Agentic Workflows}},
+  title = {{Atomix}: Timely, Transactional Tool Use for Reliable Agentic Workflows},
   author = {Bardia Mohammadi and Nearchos Potamitis and Lars Klein and Akhil Arora and Laurent Bindschaedler},
   year = {2026},
-  doi = {10.48550/arXiv.2602.14849},
-  url = {https://arxiv.org/abs/2602.14849},
-  urldate = {2026-09-05},
   eprint = {2602.14849},
   archivePrefix = {arXiv},
-  note = {Initial submission 2026-02-16; metadata checked for v2 (2026-05-29). Cited manifestation is the arXiv preprint; any conference or journal publication was not verified.},
+  howpublished = {arXiv preprint},
+  doi = {10.48550/arXiv.2602.14849},
+  url = {https://arxiv.org/abs/2602.14849}
 }
 
 @misc{agent_mesh,
-  title = {{Agent Mesh: Reliability Primitives for Non-Idempotent Agent Delegation - Identity Adequacy and Evidence Adequacy}},
+  title = {{Agent Mesh}: Reliability Primitives for Non-Idempotent Agent Delegation---Identity Adequacy and Evidence Adequacy},
   author = {Mazhar Shaikh and Anurag Rajkumar Bombarde and Harshal Pathak},
   year = {2026},
-  doi = {10.48550/arXiv.2608.26225},
-  url = {https://arxiv.org/abs/2608.26225},
-  urldate = {2026-09-05},
   eprint = {2608.26225},
   archivePrefix = {arXiv},
-  note = {ArXiv v1 submitted 2026-08-26. Full title includes subtitle omitted in starting list. ArXiv displays DOI with pending registration; resolution not verified. Cited manifestation is the arXiv preprint; any conference or journal publication was not verified.},
+  howpublished = {arXiv preprint},
+  doi = {10.48550/arXiv.2608.26225},
+  url = {https://arxiv.org/abs/2608.26225}
+}
+
+@misc{caplease,
+  title = {Beyond Single-Use Tokens: Durable Authorization State for Replay-Resistant {LLM} Agent Actions},
+  author = {Jinghan Xu and Longze Fan and Zeyuan Wang and Xinjin Li and Hankai Liu},
+  year = {2026},
+  eprint = {2608.01710},
+  archivePrefix = {arXiv},
+  howpublished = {arXiv preprint},
+  doi = {10.48550/arXiv.2608.01710},
+  url = {https://arxiv.org/abs/2608.01710}
+}
+
+@misc{finalitybench,
+  title = {{FinalityBench}: An Effect-Level Benchmark for Agent Decisions Under Delayed and Conflicting Financial Finality},
+  author = {Abhishek Sharma},
+  year = {2026},
+  eprint = {2609.04706},
+  archivePrefix = {arXiv},
+  howpublished = {arXiv preprint},
+  doi = {10.48550/arXiv.2609.04706},
+  url = {https://arxiv.org/abs/2609.04706}
+}
+
+@article{mcnemar,
+  title = {Note on the Sampling Error of the Difference Between Correlated Proportions or Percentages},
+  author = {Quinn McNemar},
+  journal = {Psychometrika},
+  volume = {12},
+  number = {2},
+  pages = {153--157},
+  year = {1947},
+  doi = {10.1007/BF02295996},
+  url = {https://doi.org/10.1007/BF02295996}
+}
+
+@article{newcombe,
+  title = {Improved Confidence Intervals for the Difference Between Binomial Proportions Based on Paired Data},
+  author = {Robert G. Newcombe},
+  journal = {Statistics in Medicine},
+  volume = {17},
+  number = {22},
+  pages = {2635--2650},
+  year = {1998},
+  doi = {10.1002/(SICI)1097-0258(19981130)17:22<2635::AID-SIM954>3.0.CO;2-C},
+  url = {https://doi.org/10.1002/(SICI)1097-0258(19981130)17:22<2635::AID-SIM954>3.0.CO;2-C}
+}
+
+@article{holm,
+  title = {A Simple Sequentially Rejective Multiple Test Procedure},
+  author = {Sture Holm},
+  journal = {Scandinavian Journal of Statistics},
+  volume = {6},
+  number = {2},
+  pages = {65--70},
+  year = {1979},
+  url = {https://www.jstor.org/stable/4615733}
+}
+
+@article{efron_bootstrap,
+  title = {Bootstrap Methods: Another Look at the Jackknife},
+  author = {Bradley Efron},
+  journal = {The Annals of Statistics},
+  volume = {7},
+  number = {1},
+  pages = {1--26},
+  year = {1979},
+  doi = {10.1214/aos/1176344552},
+  url = {https://doi.org/10.1214/aos/1176344552}
 }
 
 @misc{github_issues_api,
-  title = {{REST API endpoints for issues}},
+  title = {REST API Endpoints for Issues},
   author = {{GitHub}},
-  url = {https://docs.github.com/en/rest/issues/issues},
-  urldate = {2026-09-05},
   howpublished = {GitHub Docs},
-  note = {Organizational attribution to documentation provider; no individual byline or publication year verified. Access date is not a publication date. No DOI or arXiv identifier verified.},
+  url = {https://docs.github.com/en/rest/issues/issues}
 }
 
-@misc{ollama_tool_calling,
-  title = {{Tool calling}},
-  author = {{Ollama}},
-  url = {https://docs.ollama.com/capabilities/tool-calling},
-  urldate = {2026-09-05},
-  howpublished = {Ollama Docs},
-  note = {Organizational attribution to documentation provider; no individual byline or publication year verified. Access date is not a publication date. No DOI or arXiv identifier verified.},
+@misc{sheets_append_cells,
+  title = {Google Sheets API: AppendCellsRequest},
+  author = {{Google}},
+  howpublished = {Google for Developers},
+  url = {https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/request#AppendCellsRequest}
 }
 
-@misc{qwen3,
-  title = {{Qwen3 Technical Report}},
-  author = {An Yang and Anfeng Li and Baosong Yang and Beichen Zhang and Binyuan Hui and Bo Zheng and Bowen Yu and Chang Gao and Chengen Huang and Chenxu Lv and Chujie Zheng and Dayiheng Liu and Fan Zhou and Fei Huang and Feng Hu and Hao Ge and Haoran Wei and Huan Lin and Jialong Tang and Jian Yang and Jianhong Tu and Jianwei Zhang and Jianxin Yang and Jiaxi Yang and Jing Zhou and Jingren Zhou and Junyang Lin and Kai Dang and Keqin Bao and Kexin Yang and Le Yu and Lianghao Deng and Mei Li and Mingfeng Xue and Mingze Li and Pei Zhang and Peng Wang and Qin Zhu and Rui Men and Ruize Gao and Shixuan Liu and Shuang Luo and Tianhao Li and Tianyi Tang and Wenbiao Yin and Xingzhang Ren and Xinyu Wang and Xinyu Zhang and Xuancheng Ren and Yang Fan and Yang Su and Yichang Zhang and Yinger Zhang and Yu Wan and Yuqiong Liu and Zekun Wang and Zeyu Cui and Zhenru Zhang and Zhipeng Zhou and Zihan Qiu},
-  year = {2025},
-  doi = {10.48550/arXiv.2505.09388},
-  url = {https://arxiv.org/abs/2505.09388},
-  urldate = {2026-09-05},
-  eprint = {2505.09388},
-  archivePrefix = {arXiv},
-  note = {ArXiv v1 submitted 2025-05-14. All 60 authors transcribed in source order. Cited manifestation is the arXiv preprint; any conference or journal publication was not verified.},
+@misc{sheets_get,
+  title = {Google Sheets API: spreadsheets.get},
+  author = {{Google}},
+  howpublished = {Google for Developers},
+  url = {https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get}
+}
+
+@misc{razorpay_create,
+  title = {Create an Order},
+  author = {{Razorpay}},
+  howpublished = {Razorpay Orders API documentation},
+  url = {https://razorpay.com/docs/api/orders/create/}
+}
+
+@misc{razorpay_list,
+  title = {Fetch All Orders},
+  author = {{Razorpay}},
+  howpublished = {Razorpay Orders API documentation},
+  url = {https://razorpay.com/docs/api/orders/fetch-all/}
+}
+
+@misc{razorpay_fetch_id,
+  title = {Fetch an Order With ID},
+  author = {{Razorpay}},
+  howpublished = {Razorpay Orders API documentation},
+  url = {https://razorpay.com/docs/api/orders/fetch-with-id/}
+}
+
+@misc{fireworks_v4_flash,
+  title = {DeepSeek-V4-Flash-0731 API and Playground},
+  author = {{Fireworks AI}},
+  howpublished = {Fireworks model documentation},
+  url = {https://fireworks.ai/models/deepseek-ai/deepseek-v4-flash-0731}
+}
+
+@misc{fireworks_v4p1_flash,
+  title = {DeepSeek V4.1 Flash API and Playground},
+  author = {{Fireworks AI}},
+  howpublished = {Fireworks model documentation},
+  url = {https://fireworks.ai/models/deepseek-ai/deepseek-v4p1-flash}
 }

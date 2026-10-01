@@ -1,0 +1,5 @@
+world,policy,unit,within_world_contrast,family_interaction,type
+H0,Replay,same frozen original call M; isolated arm scope,Replay - Regeneration,(H1 Replay - H1 Regeneration) - (H0 Replay - H0 Regeneration),conceptual
+H0,Regeneration,same frozen original call M; isolated arm scope,Replay - Regeneration,(H1 Replay - H1 Regeneration) - (H0 Replay - H0 Regeneration),conceptual
+H1,Replay,same frozen original call M; isolated arm scope,Replay - Regeneration,(H1 Replay - H1 Regeneration) - (H0 Replay - H0 Regeneration),conceptual
+H1,Regeneration,same frozen original call M; isolated arm scope,Replay - Regeneration,(H1 Replay - H1 Regeneration) - (H0 Replay - H0 Regeneration),conceptual

@@ -1,0 +1,9 @@
+Environment,World,Policy,Evaluable,Missing,Duplicate,Wrong,Non-evaluable,Infrastructure note
+GitHub,H0,Replay,63,0,0,0,1,Second census failed after Replay entry
+GitHub,H0,Regeneration,64,4,0,0,0,Four missing effects; one partner non-evaluable; one missing-effect arm recorded HTTP 504
+GitHub,H1,Replay,64,0,64,0,0,
+GitHub,H1,Regeneration,64,0,0,0,0,
+Sheets replication,H0,Replay,64,0,0,0,0,
+Sheets replication,H0,Regeneration,64,0,0,0,0,
+Sheets replication,H1,Replay,64,0,64,0,0,
+Sheets replication,H1,Regeneration,64,0,0,0,0,

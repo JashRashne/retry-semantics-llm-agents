@@ -1,0 +1,40 @@
+{
+  "HEAD": "eb33b0de00588c6a13c5793c5069e027b363106d",
+  "branch": "main",
+  "status_before": "",
+  "paper_files_sha256": {
+    "paper/main.tex": "822e4c88dc3f249530b964d9783a5b971b6b2065815c2d9730bfaaea9ea62026",
+    "paper/manuscript.md": "ef467afde930f3ba68f4dde7c57249970f893d30c6aec864a2efb1bfcf3fae28",
+    "paper/tables/study1_table.tex": "97121ed9c024974fa1e3d2185e8dbcc715caa3fc32eb894cc89503f9ffd1f64a",
+    "paper/tables/study2_table.tex": "2247be5f688225ffcf4a8b2b951d72d1a23f344c5997d5fb117268afeee472ae"
+  },
+  "bibliography_sha256": "87da59ff341b773486fc30b579101f8ca25a03921ab59042d5e6a397066df3b3",
+  "study1_lock_sha256": "310a6df8b457b9dc0d6f732f85beb82fbc3cadacb366c3932ea718332db94499",
+  "approved_phase41_manifest_sha256": "671d1dff2e2995c14646cd5f46568430f606a749d6671cc608e9c9ee6950717d",
+  "canonical_sources": [
+    "paper/main.tex",
+    "paper/manuscript.md"
+  ],
+  "latex_entry": "paper/main.tex",
+  "bibliography": "research/references.bib",
+  "template": "IEEEtran 10pt journal compsoc; two columns",
+  "existing_tables": [
+    "paper/tables/study1_table.tex",
+    "paper/tables/study2_table.tex"
+  ],
+  "existing_figures": [],
+  "existing_build_command": "No repository build command documented; installed Tectonic found. Intended entry uses IEEEtran and BibTeX IEEEtran style.",
+  "offline_initial_build": "Tectonic --only-cached fails generating latex format: missing cmmi5.tfm",
+  "superseded_sections": [
+    "Abstract",
+    "Introduction contributions / pre-data claims",
+    "Study 2 design/status/results",
+    "Discussion",
+    "Threats",
+    "Conclusion",
+    "Reproducibility"
+  ],
+  "citation_conflicts": [
+    "Embedded Markdown Atomix and Agent Mesh metadata disagree with curated research/references.bib; curated existing bibliography is retained unchanged."
+  ]
+}

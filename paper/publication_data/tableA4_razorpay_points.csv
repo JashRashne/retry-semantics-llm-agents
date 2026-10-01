@@ -1,0 +1,7 @@
+Run,World,N,Replay correct,Regeneration correct,Difference (pp),Intervals / p-values
+Razorpay original,H0,0,Not estimable,Not estimable,Not estimable,Withheld: stopped run
+Razorpay original,H1,1,0/1,0/1,0.0000,Withheld: stopped run
+Razorpay paced V1,H0,1,1/1,1/1,0.0000,Withheld: stopped run
+Razorpay paced V1,H1,1,0/1,0/1,0.0000,Withheld: stopped run
+Razorpay host V2,H0,3,3/3,3/3,0.0000,Withheld: stopped run
+Razorpay host V2,H1,3,0/3,1/3,-33.3333,Withheld: stopped run

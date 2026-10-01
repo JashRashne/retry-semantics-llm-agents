@@ -1,17 +1,16 @@
-\begin{table*}[t]
+\begin{table*}[!t]
 \centering
-\small
-\caption{Study 1 Primary Experimental Results: State Correctness in 160 Matched Ticket CREATE Families}
+\caption{Locked Study 1 confirmatory results}
 \label{tab:study1-results}
-\begin{tabular}{lcccccc}
-\hline
-\textbf{Hidden Execution World} & \textbf{N Matched} & \textbf{Exact Replay} & \textbf{LLM Regeneration} & $\Delta$ (Replay - Regen) & \textbf{Paired 95\% CI (Method 10)} & \textbf{McNemar $p$} \\
-\hline
-$H_0$ (NOT\_EXECUTED) & 160 & 160/160 (100.0\%) & 160/160 (100.0\%) & 0.000 (0.0 pp) & [-2.345\%, +2.345\%] & $1.000$ \\
-$H_1$ (EXECUTED\_ACK\_LOST) & 160 & 0/160 (0.0\%) & 151/160 (94.375\%) & -0.94375 (-94.375 pp) & [-97.013\%, -89.106\%] & $7.006 \times 10^{-46}$ \\
-\hline
-\multicolumn{7}{l}{\textbf{Prespecified Interaction:} $\Delta_{H1} - \Delta_{H0} = -94.375$ percentage points (10,000-replicate bootstrap 95\% CI: [-97.5\%, -90.625\%])} \\
-\multicolumn{7}{l}{\textbf{Holm-Adjusted $p$-values:} $H_0: p = 1.000$; $H_1: p = 1.401 \times 10^{-45}$} \\
-\hline
-\end{tabular}
+\begingroup\footnotesize\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.22}
+\begin{tabularx}{\textwidth}{>{\hsize=0.44138\hsize\raggedright\arraybackslash}X>{\hsize=0.44138\hsize\raggedright\arraybackslash}X>{\hsize=1.21379\hsize\raggedright\arraybackslash}X>{\hsize=1.32414\hsize\raggedright\arraybackslash}X>{\hsize=1.04828\hsize\raggedright\arraybackslash}X>{\hsize=1.65517\hsize\raggedright\arraybackslash}X>{\hsize=0.93793\hsize\raggedright\arraybackslash}X>{\hsize=0.93793\hsize\raggedright\arraybackslash}X}
+\toprule
+\textbf{World} & \textbf{N} & \textbf{Replay correct} & \textbf{Regeneration correct} & \textbf{Difference (pp)} & \textbf{95\% paired CI (pp)} & \textbf{Raw McNemar p} & \textbf{Holm-adjusted p} \\
+\midrule
+$H_0$ & 160 & 160/160 (100.00\%) & 160/160 (100.00\%) & 0.0000 & [-2.3446, 2.3446] & 1 & 1 \\
+$H_1$ & 160 & 0/160 (0.00\%) & 151/160 (94.38\%) & -94.3750 & [-97.0128, -89.1060] & 7.00649e-46 & 1.4013e-45 \\
+\bottomrule
+\end{tabularx}
+\par\smallskip\raggedright\footnotesize Locked interaction: -94.3750 pp; bootstrap CI [-97.5000, -90.6250] pp. Values are reported from the approved locked context, without recalculation. The Holm family contains only the two Study 1 world comparisons.
+\endgroup
 \end{table*}

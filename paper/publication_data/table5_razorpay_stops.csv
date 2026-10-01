@@ -1,0 +1,4 @@
+Run,Evaluated / scheduled,Success,Failure,Unrun,H0 / H1 pairs,Complete families,Stop evidence,Interpretation
+original,2/256,0,2,254,0 / 1,0,ValueError wrapper; raw HTTP 429 during GET fetch_all,Observed prefix only
+paced V1,4/256,2,2,252,1 / 1,1,PaperCollectionError wrapper; raw HTTP 429 during GET fetch_all,Observed prefix only
+host V2,12/256,7,5,244,3 / 3,3,PaperCollectionError wrapper; raw HTTP 429 during GET fetch_all,Observed prefix only

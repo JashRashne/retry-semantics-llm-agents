@@ -1,0 +1,9 @@
+population,environment,world,policy,evaluable_arms,recorded_arms,missing,duplicate,wrong,non_evaluable,paired_missing_count,recorded_mutation_5xx_status,source_json_pointer
+github_canonical_coverage,GitHub,H0,Replay,63,64,0,0,0,1,,,/failure_subtypes (disjoint source runs for github_canonical_coverage); /policy_world_summary; /recorded_recovery_mutation_5xx_arms
+github_canonical_coverage,GitHub,H0,Regeneration,64,64,4,0,0,0,3,504,/failure_subtypes (disjoint source runs for github_canonical_coverage); /policy_world_summary; /recorded_recovery_mutation_5xx_arms
+github_canonical_coverage,GitHub,H1,Replay,64,64,0,64,0,0,,,/failure_subtypes (disjoint source runs for github_canonical_coverage); /policy_world_summary; /recorded_recovery_mutation_5xx_arms
+github_canonical_coverage,GitHub,H1,Regeneration,64,64,0,0,0,0,,,/failure_subtypes (disjoint source runs for github_canonical_coverage); /policy_world_summary; /recorded_recovery_mutation_5xx_arms
+sheets_post_incident_replication,Sheets replication,H0,Replay,64,64,0,0,0,0,,,/failure_subtypes (disjoint source runs for sheets_post_incident_replication); /policy_world_summary; /recorded_recovery_mutation_5xx_arms
+sheets_post_incident_replication,Sheets replication,H0,Regeneration,64,64,0,0,0,0,,,/failure_subtypes (disjoint source runs for sheets_post_incident_replication); /policy_world_summary; /recorded_recovery_mutation_5xx_arms
+sheets_post_incident_replication,Sheets replication,H1,Replay,64,64,0,64,0,0,,,/failure_subtypes (disjoint source runs for sheets_post_incident_replication); /policy_world_summary; /recorded_recovery_mutation_5xx_arms
+sheets_post_incident_replication,Sheets replication,H1,Regeneration,64,64,0,0,0,0,,,/failure_subtypes (disjoint source runs for sheets_post_incident_replication); /policy_world_summary; /recorded_recovery_mutation_5xx_arms

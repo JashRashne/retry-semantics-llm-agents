@@ -1,0 +1,17 @@
+\begin{table}[!htbp]
+\centering
+\caption{Separately governed Razorpay stopped runs}
+\label{tab:table5_razorpay_stops}
+\begingroup\footnotesize\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.22}
+\begin{tabularx}{\textwidth}{>{\hsize=0.84706\hsize\raggedright\arraybackslash}X>{\hsize=0.95294\hsize\raggedright\arraybackslash}X>{\hsize=0.58235\hsize\raggedright\arraybackslash}X>{\hsize=0.58235\hsize\raggedright\arraybackslash}X>{\hsize=0.58235\hsize\raggedright\arraybackslash}X>{\hsize=0.84706\hsize\raggedright\arraybackslash}X>{\hsize=0.68824\hsize\raggedright\arraybackslash}X>{\hsize=2.64706\hsize\raggedright\arraybackslash}X>{\hsize=1.27059\hsize\raggedright\arraybackslash}X}
+\toprule
+\textbf{Run} & \textbf{Evaluated / scheduled} & \textbf{Success} & \textbf{Failure} & \textbf{Unrun} & \textbf{$H_0$ / $H_1$ pairs} & \textbf{Complete families} & \textbf{Stop evidence} & \textbf{Interpretation} \\
+\midrule
+original & 2/256 & 0 & 2 & 254 & 0 / 1 & 0 & ValueError wrapper; raw HTTP 429 during GET fetch\_all & Observed prefix only \\
+paced V1 & 4/256 & 2 & 2 & 252 & 1 / 1 & 1 & PaperCollectionError wrapper; raw HTTP 429 during GET fetch\_all & Observed prefix only \\
+host V2 & 12/256 & 7 & 5 & 244 & 3 / 3 & 3 & PaperCollectionError wrapper; raw HTTP 429 during GET fetch\_all & Observed prefix only \\
+\bottomrule
+\end{tabularx}
+\par\smallskip\raggedright\footnotesize All recorded failures are \nolinkurl{DUPLICATE_EFFECT}. Provider stops are infrastructure events and are not scored as retry-policy failures. No provider-wide success estimate, pooled inference, p-values or confidence intervals.
+\endgroup
+\end{table}

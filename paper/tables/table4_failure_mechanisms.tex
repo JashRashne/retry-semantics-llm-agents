@@ -1,0 +1,22 @@
+\begin{table}[!htbp]
+\centering
+\caption{State defects and evaluability in GitHub coverage and the completed Sheets replication}
+\label{tab:table4_failure_mechanisms}
+\begingroup\footnotesize\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.22}
+\begin{tabularx}{\textwidth}{>{\hsize=1.31013\hsize\raggedright\arraybackslash}X>{\hsize=0.51266\hsize\raggedright\arraybackslash}X>{\hsize=0.96835\hsize\raggedright\arraybackslash}X>{\hsize=0.79747\hsize\raggedright\arraybackslash}X>{\hsize=0.68354\hsize\raggedright\arraybackslash}X>{\hsize=0.79747\hsize\raggedright\arraybackslash}X>{\hsize=0.62658\hsize\raggedright\arraybackslash}X>{\hsize=0.85443\hsize\raggedright\arraybackslash}X>{\hsize=2.44937\hsize\raggedright\arraybackslash}X}
+\toprule
+\textbf{Environment} & \textbf{World} & \textbf{Policy} & \textbf{Evaluable} & \textbf{Missing} & \textbf{Duplicate} & \textbf{Wrong} & \textbf{Non-evaluable} & \textbf{Infrastructure note} \\
+\midrule
+GitHub & $H_0$ & Replay & 63 & 0 & 0 & 0 & 1 & Second census failed after Replay entry \\
+GitHub & $H_0$ & Regeneration & 64 & 4 & 0 & 0 & 0 & Four missing effects; one partner non-evaluable; one missing-effect arm recorded HTTP 504 \\
+GitHub & $H_1$ & Replay & 64 & 0 & 64 & 0 & 0 &  \\
+GitHub & $H_1$ & Regeneration & 64 & 0 & 0 & 0 & 0 &  \\
+Sheets replication & $H_0$ & Replay & 64 & 0 & 0 & 0 & 0 &  \\
+Sheets replication & $H_0$ & Regeneration & 64 & 0 & 0 & 0 & 0 &  \\
+Sheets replication & $H_1$ & Replay & 64 & 0 & 64 & 0 & 0 &  \\
+Sheets replication & $H_1$ & Regeneration & 64 & 0 & 0 & 0 & 0 &  \\
+\bottomrule
+\end{tabularx}
+\par\smallskip\raggedright\footnotesize State-defect counts use all evaluable arms, not the matched comparison denominator. Non-evaluable counts refer to recorded arms; zero does not mean no unrun opportunities. Indicators are not assumed exclusive. GitHub source counts are added only within its approved coverage union. No behavioral rates are assigned to the invalidated Sheets primary. Razorpay cells are disclosed in Table \ref{tab:tableA5_razorpay_mechanisms}.
+\endgroup
+\end{table}

@@ -1,53 +1,40 @@
 # Replay or Regenerate? Retry Semantics for State-Mutating LLM Agent Tool Calls Under Ambiguous Outcomes
 
-**Author:** J. Rashne<br>
-**Affiliation:** Independent Research<br>
-**Correspondence:** `rashne.jash@gmail.com`<br>
-**Date:** September 2026<br>
-**Artifact Repository:** `https://github.com/JashRashne/retry-semantics-llm-agents`<br>
-**Status:** Study 1A Canonical Locked; Study 1B Results Pending; Study 2 Pre-Data V4.1 Amendment Pending Audit
-
----
+**Author:** J. Rashne
+**Affiliation:** Independent Research
+**Correspondence:** rashne.jash@gmail.com
+**Date:** October 2026
+**Status:** Canonical paper candidate; Study 1 locked confirmatory, Study 2 external validation/generalization.
 
 ## Abstract
 
-Large Language Model (LLM) agents are increasingly entrusted with executing state-mutating operations across software systems, databases, and third-party web APIs. When an external mutation call encounters an ambiguous outcome—such as a network transport timeout or dropped HTTP connection—the client cannot determine whether the request was committed by the remote service or was not executed remotely. In distributed systems, this classical uncertainty is governed by transport-level retry protocols and idempotent endpoint design. However, LLM agent runtimes face a novel architectural fork at the retry boundary: **Exact Request Replay** (deterministically redispatching the identical synthesized request payload without invoking the model) versus **LLM Regeneration** (returning the ambiguity to the model context and allowing it to re-reason, inspect external state, or select alternative actions).
+An ambiguous tool-call outcome leaves an agent uncertain whether a state mutation failed to execute or executed without a returned acknowledgement. Retrying the same request and returning the ambiguity to a language model are different recovery policies. We compare Exact Replay and LLM Regeneration in matched four-arm families that cross policy with hidden execution world: H0, where the original mutation did not execute, and H1, where it executed but acknowledgement was lost. In the locked confirmatory Ticket CREATE experiment, both policies were correct in 160/160 H0 arms. In H1, Replay was correct in 0/160 and Regeneration in 151/160; the Replay-minus-Regeneration difference was -94.3750 percentage points (95% paired CI [-97.0128, -89.1060] pp). Canonical GitHub external-replication coverage and a separately authorized Google Sheets post-incident replication reproduce the large hidden-world shift: H1 Replay was correct in 0/64 and 0/64, respectively, while Regeneration was correct in 64/64 and 64/64. GitHub additionally recorded H0 Regeneration missing effects. The original Sheets attempt was invalidated by a shared constructor defect and contributes no behavioral denominator. Three separate Razorpay runs stopped under provider throttling and contribute observed-prefix and operational evidence. Under these controlled ambiguous-outcome constructions, retry correctness varies sharply with hidden execution state, while safe recovery also depends on what terminal state can be authoritatively established; the evidence supports designing runtimes around that uncertainty rather than an unconditional retry strategy.
 
-We present a controlled empirical study isolating this execution-boundary choice. We formalize an ambiguity model distinguishing two mutually exclusive hidden execution states: $H_0$ (the original mutation was not executed remotely) and $H_1$ (the original mutation committed, but its acknowledgment was lost). In **Study 1A**, evaluating 160 matched four-arm families (640 total arms) on a controlled, non-idempotent Ticket Creation benchmark using DeepSeek-V4-Flash, we observe an extreme interaction between retry locus and hidden execution state. Under $H_0$, both Replay and Regeneration achieved 100.0% state correctness (160/160 each). Under $H_1$, Exact Request Replay suffered a 100.0% failure rate due to duplicate mutations (0/160 state-correct), whereas LLM Regeneration achieved 94.375% state correctness (151/160). The prespecified $H_1$ difference was $-94.375$ percentage points (paired Newcombe Method 10 95% CI: $[-97.013\%, -89.106\%]$; exact McNemar $p = 7.006 \times 10^{-46}$), with an interaction $(\Delta_{H1} - \Delta_{H0})$ of $-94.375$ percentage points (bootstrap 95% CI: $[-97.500\%, -90.625\%]$). Mechanistically, 100.0% of successful $H_1$ regeneration arms (151/151) executed an observation-before-write recovery sequence, whereas all unsuccessful arms (9/9) wrote before observing.
+## Introduction
 
-To evaluate whether these phenomena extend beyond the controlled benchmark, we present the prospective design, formal semantics contracts, and bounded observation schedule (OBS-1) for **Study 2**, spanning GitHub Issues, Google Sheets v4, and Razorpay Orders (64 scheduled families; 256 arms per provider; 768 total arms). The original 0731 model became unavailable before collection. A prospective pre-data amendment binds Study 2 to Fireworks V4.1 (`accounts/fireworks/models/deepseek-v4p1-flash`) after non-paper capability checks; provider readiness remains pending. Study 1B is a separate V4.1 model-matched replication with results pending. Zero Study 2 paper observations have been executed, and all Study 2 empirical results remain explicit placeholders.
+Tool-using Large Language Model (LLM) agents interleave reasoning, external actions and observations \cite{react}; stateful benchmarks evaluate whether those actions reach the intended terminal database state \cite{tau_bench}. When an action mutates external state, an uncertain tool outcome creates a recovery decision that the model's final answer alone cannot settle.
 
----
+In distributed systems, a lost reply can leave the caller uncertain whether a remote operation executed \cite{birrell_nelson}. Network partitions, socket timeouts, gateway dropped connections (e.g., HTTP 504), and server restarts can produce an *ambiguous execution outcome*: a client sends a state-mutating command, receives no acknowledgment, and cannot definitively ascertain whether the command committed on the server prior to the disruption or was aborted before execution. Application designs address this ambiguity using mechanisms such as:
+1. **Idempotent interfaces**, where an application-level key can associate repeated deliveries with one logical effect \cite{helland_idempotence}; or
+2. **Read-before-retry reconciliation**, where the client queries remote state before deciding whether another mutation is needed \cite{verified_tool_calls}.
 
-## 1. Introduction
-
-Autonomous software agents powered by Large Language Models (LLMs) have progressed from conversational assistants to active agents capable of calling external tools, invoking REST endpoints, manipulating cloud spreadsheets, dispatching financial transactions, and issuing database mutations \cite{react, tau_bench}. As agents transition from read-only retrieval-augmented generation (RAG) to autonomous action, their reliability depends critically on how they handle transient execution failures.
-
-In distributed systems, transient failures are inevitable. Network partitions, socket timeouts, gateway dropped connections (e.g., HTTP 504), and server restarts introduce *ambiguous execution outcomes* \cite{rfc9110}: a client sends a state-mutating command, receives no acknowledgment, and cannot definitively ascertain whether the command committed on the server prior to the disruption or was aborted before execution. Classical systems engineering resolves this ambiguity via two well-established mechanisms:
-1. **Idempotent interfaces**, where requests carry unique client-generated idempotency keys allowing safe, deterministic transport-level replays; or
-2. **Read-before-retry reconciliation**, where the client issues a non-mutating query to inspect current remote state before deciding whether to resend.
-
-When these principles are mapped to LLM agent architectures, an unexamined ambiguity arises at the runtime boundary. When a tool call returns an ambiguous failure (e.g., `ToolError: Request timed out`), the agent framework must decide *what constitutes a retry*. Runtimes currently implement one of two contrasting semantics:
-- **Exact Request Replay ($R_{\text{rep}}$):** The runtime infrastructure catches the error and redispatches the exact same HTTP request payload (identical URL, headers, and body bytes) previously generated by the model, bypassing further model inference.
+When these principles are mapped to LLM agent architectures, the runtime faces a concrete policy choice. When a tool call returns an ambiguous failure (e.g., `ToolError: Request timed out`), the agent framework must decide *what constitutes a retry*. We distinguish two contrasting retry semantics:
+- **Exact Replay ($R_{\text{rep}}$):** The runtime infrastructure catches the error and redispatches the exact same HTTP request payload (identical URL, headers, and body bytes) previously generated by the model, bypassing further model inference.
 - **LLM Regeneration ($R_{\text{reg}}$):** The runtime appends the ambiguous error message into the conversational context and re-invokes the LLM, granting the model the agency to decide the next action—which may include querying current state, synthesizing a new mutation, modifying arguments, or halting execution.
 
-While both strategies are colloquially labeled "retries" in practitioner discourse and agent framework documentation, they represent fundamentally different execution regimes with diametrically opposed safety and cost profiles. Request Replay is computationally instantaneous and consumes zero additional model tokens, but risks blind duplicate execution if the original request had in fact committed. LLM Regeneration grants the agent the opportunity to inspect external state, but incurs latency, non-trivial token expense, and the risk of non-deterministic argument drift, tool hallucination, or looping.
+The two recovery policies expose different safety and cost profiles. Exact Replay makes no additional model completion calls, but risks blind duplicate execution if the original request had committed. LLM Regeneration grants the agent the opportunity to inspect external state, but incurs latency and token expense and may alter the generated request after recovery; checkpoint-restore work has independently identified this semantic re-synthesis risk \cite{acrfence}.
 
-Despite the proliferation of agent evaluation benchmarks, the literature lacks a rigorous, paired empirical measurement isolating the effect of this retry locus under controlled ground-truth hidden execution states.
+The paper asks how these policies compare when the same original call is evaluated in both hidden worlds. The experiment isolates the recovery boundary rather than comparing entire agent frameworks. Study 1 supplies locked confirmatory evidence in a controlled Ticket CREATE environment. Study 2 supplies external replication evidence from GitHub and Google Sheets, together with the operational limits exposed by incomplete Razorpay collection. External comparisons retain a secondary descriptive role; they are not co-primary tests.
 
 ### Contributions
 
-This paper provides a paired empirical analysis and formal account of the Replay versus Regeneration retry boundary for state-mutating LLM agent tool calls:
+The contributions are a precise hidden-state model, a matched four-arm design with state-only evaluation, the locked controlled result, external replication contrasts with transparent provenance, and implications for agent runtimes that distinguish reconciliation from repeated dispatch. The experiments measure terminal state rather than treating an HTTP code or a model's completion statement as task success.
 
-1. **Formal Ambiguity and Recovery Model:** We formalize the distinction between Request Replay and LLM Regeneration across two ground-truth hidden execution worlds ($H_0$: mutation not executed remotely; $H_1$: mutation committed, acknowledgment lost), establishing a state-only projection framework for evaluating correctness.
-2. **Controlled Benchmark Evaluation (Study 1A):** We report the canonical, locked results of 160 matched four-arm families (640 experimental arms) evaluated on a non-idempotent Ticket Creation benchmark using DeepSeek-V4-Flash. Both policies achieved 100.0% correctness under $H_0$. Under $H_1$, Replay produced duplicate mutations in 160/160 arms (0/160 correct), while Regeneration achieved 94.375% correctness ($p = 7.006 \times 10^{-46}$).
-3. **Behavioral Mechanism Analysis:** We show that the success of LLM Regeneration under $H_1$ is strictly associated with an emergent *observation-before-write* pattern: 151/151 successful agents observed state prior to mutating, whereas 9/9 failed agents issued duplicate writes without prior observation.
-4. **Cross-Provider External Validation Protocol (Study 2):** We design, formally specify, and freeze a pre-data multi-provider validation suite encompassing three real-world cloud APIs: GitHub Issues (eventual consistency, paginated list traversal), Google Sheets v4 (immediate grid visibility, OAuth scope constraints), and Razorpay Orders (financial test ledger, closed causal attribution).
-5. **Rigorous Pre-Data Integrity:** In adherence to strict prospective protocol registration, zero Study 2 observations have been collected; existing provider manifests and evaluators are frozen, while provider readiness and the Google Sheets publication-ingestion path remain explicit pre-data work.
+## Background and problem formulation
 
----
+The hazard of retrying state-mutating operations over unreliable networks is a foundational topic in distributed computing. RFC 9110 §9.2.2 formally defines an HTTP method as *idempotent* if the intended effect on the server of multiple identical requests is the same as for a single request \cite{rfc9110}. Methods such as `GET`, `PUT`, and `DELETE` are idempotent by specification, whereas a byte-identical `POST` request alone does not establish an idempotent effect.
 
-## 2. Motivation and Problem Formulation
+When an ambiguous outcome occurs on a non-idempotent endpoint, compensating transactions \cite{sagas}, application-level idempotency \cite{helland_idempotence}, and state reconciliation offer different controls. The frozen GitHub Issues creation protocol used here has no deduplication-key field; its retry semantics therefore require explicit attention to observed state \cite{github_issues_api}.
 
 Consider an LLM agent instructed to perform a business operation:
 
@@ -67,17 +54,6 @@ The model reasons and generates a tool call:
 
 The runtime serializes this tool call into an HTTP `POST /api/v1/tickets` request. The socket is opened, bytes are pushed to the network layer, but the connection abruptly drops after 30 seconds with no HTTP status code returned.
 
-```
-       Client Runtime                       Remote Service
-             |                                     |
-             |--- POST /api/v1/tickets ----------->| [Commit?]
-             |    (Socket Timeout / Dropped TCP)   |
-             |<- - - - - - - - - - - - - - - - - - |
-             |
-             v
-   Outcome is Ambiguous:
-   Did the ticket commit?
-```
 
 From the perspective of the client runtime, two mutually exclusive ground-truth states exist:
 - **World $H_0$ (NOT_EXECUTED):** The original mutation was not executed remotely; zero tickets exist on the server.
@@ -89,7 +65,7 @@ Dispatch initiated, local send completed, remote receipt, remote commitment, and
 
 Faced with this ambiguity, how should an autonomous agent framework respond?
 
-- **Policy A (Request Replay):** The runtime executes a blind transport-level retry, dispatching the exact same `POST` payload. If the server does not enforce idempotency keys, World $H_0$ transitions to 1 ticket (Correct), but World $H_1$ transitions to 2 tickets (**Duplicate Side Effect / State Corruption**).
+- **Policy A (Exact Replay):** The runtime executes a blind transport-level retry, dispatching the exact same `POST` payload. If the server does not enforce idempotency keys, World $H_0$ transitions to 1 ticket (Correct), but World $H_1$ transitions to 2 tickets (**Duplicate Side Effect / State Corruption**).
 - **Policy B (LLM Regeneration):** The runtime exposes the failure to the model: `ToolError: Request timed out. Outcome unknown.` The LLM receives control. The model may choose to:
   1. Call `list_tickets(customer_id="cust_acme_101")` to verify current state;
   2. Re-issue `create_ticket(...)`;
@@ -100,65 +76,42 @@ If the agent inspects state first, it can safely discover the committed ticket i
 
 The central research question of this paper is:
 
-> **RQ:** Under identical ambiguous outcomes from state-mutating tool calls, how does deterministic Request Replay compare to LLM Regeneration in final-state correctness, duplicate creation, and recovery overhead across controlled environments and production cloud APIs?
+> **RQ:** Under identical ambiguous outcomes from state-mutating tool calls, how does deterministic Exact Replay compare to LLM Regeneration in final-state correctness, duplicate creation, and recovery overhead across a controlled environment and external provider systems?
 
----
 
-## 3. Background and Related Work
-
-### 3.1 Distributed Systems and Idempotence Foundations
-
-The hazard of retrying state-mutating operations over unreliable networks is a foundational topic in distributed computing. RFC 9110 §9.2.2 formally defines an HTTP method as *idempotent* if the intended effect on the server of multiple identical requests is the same as for a single request \cite{rfc9110}. Methods such as `GET`, `PUT`, and `DELETE` are idempotent by specification, whereas `POST` and `PATCH` are non-idempotent.
-
-When an ambiguous outcome occurs on a non-idempotent endpoint, compensating transactions \cite{sagas}, idempotency keys, and state reconciliation offer different controls. The GitHub Issues creation operation studied here has no native idempotency key in the frozen protocol, so its retry semantics require explicit attention to observed state.
-
-### 3.2 LLM Tool Calling and Agent Reliability
-
-Recent literature has explored LLM reasoning in interactive environments. The ReAct framework \cite{react} established the paradigm of interleaving reasoning ("thought") with action ("tool call") and observation. Benchmarks such as $\tau$-bench \cite{tau_bench} evaluate agent task completion across multi-turn user interactions in retail and airline domains, identifying high failure rates in multi-step workflows.
-
-Closest to our investigation is the recent work by Mansoor et al. on *Verified Tool Calls* \cite{verified_tool_calls}, which investigates non-atomic tool failures and demonstrates that programmatic verification contracts improve agent reliability. Similarly, *Atomix* \cite{atomix} explores transactional semantics for multi-tool workflows, and *Agent Mesh* \cite{agent_mesh} investigates identity and evidence adequacy in multi-agent delegation.
-
-### 3.3 Novelty and Research Positioning
-
-To maintain scientific integrity, we explicitly demarcate what this paper does **not** claim to invent:
-- We do **not** claim to invent ambiguous failure models or non-idempotent retry hazards (well-known since early network computing \cite{rfc9110, sagas});
-- We do **not** claim to invent read-before-retry or verification patterns \cite{verified_tool_calls};
-- We do **not** propose a new general-purpose agent framework or transactional engine.
-
-Instead, our unique contribution is a **controlled, paired empirical dissection of the retry boundary itself**: isolating exact request replay from LLM regeneration under ground-truth $H_0$ and $H_1$ conditions, measuring their exact mathematical divergence, identifying the behavioral mechanisms of regeneration failure, and evaluating cross-provider feasibility across diverse production cloud architectures.
-
----
-
-## 4. Formal Ambiguity and Execution Model
+## Retry semantics and experimental model
 
 We model an agent executing in an environment characterized by a state $S \in \mathcal{S}$ and interacting with an external service via a set of tools $\mathcal{T} = \{T_{\text{mut}}, T_{\text{read}}\}$, where $T_{\text{mut}}$ is a state-mutating operation and $T_{\text{read}}$ is an observation operation.
 
-### 4.1 The Tool-Call Opportunity and Linked Family
+### The Tool-Call Opportunity and Linked Family
 
 An experimental opportunity begins with a user task prompt $U$. The model, initialized with system prompt $S_0$ and tool schemas $\mathcal{T}$, generates an original assistant message containing a tool call $M = (\text{name}, \text{call\_id}, \text{args})$.
 
 If $M$ is parseable, schema-valid, and task-correct, it is declared an *eligible original generation*. To eliminate sampling variance and ensure exact pairing, $M$ is frozen and evaluated across a linked four-arm family:
 
-$$\mathcal{F} = \{ \text{Arm}(H_0, R_{\text{rep}}), \, \text{Arm}(H_0, R_{\text{reg}}), \, \text{Arm}(H_1, R_{\text{rep}}), \, \text{Arm}(H_1, R_{\text{reg}}) \}$$
+$$\begin{aligned}
+\mathcal{F}=\{ &\operatorname{Arm}(H_0,R_{\mathrm{rep}}),\operatorname{Arm}(H_0,R_{\mathrm{reg}}),\\
+&\operatorname{Arm}(H_1,R_{\mathrm{rep}}),\operatorname{Arm}(H_1,R_{\mathrm{reg}})\}.
+\end{aligned}$$
 
 All four arms inherit the identical initial logical state, identical prompt context, and identical synthesized tool call $M$.
 
-### 4.2 The Two Hidden Execution Worlds
+### The Two Hidden Execution Worlds
 
 Let $W_{\text{arm}}$ be the deterministic mapping of $M$ into a concrete provider HTTP request (binding scope, credentials, and collision-free correlation markers).
 
 - **World $H_0$ (NOT_EXECUTED):**
-  $$W_{\text{arm}} \text{ is constructed and durably recorded, but } \mathbf{never} \text{ dispatched.}$$
+  $W_{\text{arm}}$ is constructed and durably recorded, but **never** dispatched.
   The pre-recovery external state satisfies:
   $$\text{Card}(\text{Effects}_{\text{pre}}) = 0$$
 
 - **World $H_1$ (EXECUTED_ACK_LOST):**
-  $$W_{\text{arm}} \text{ is dispatched exactly once to the provider and successfully committed.}$$
+  $W_{\text{arm}}$ is dispatched exactly once to the provider and successfully committed.
   The positive acknowledgment (e.g., HTTP 201 Created with resource ID) is captured by the harness for verification, but **strictly withheld** from the model context.
   The pre-recovery external state satisfies:
   $$\text{Card}(\text{Effects}_{\text{pre}}) = 1$$
 
-### 4.3 Controlled Synthetic Ambiguity
+### Controlled Synthetic Ambiguity
 
 In all four arms, the model receives an identical synthetic tool error response:
 ```text
@@ -166,9 +119,9 @@ ToolError: The previous request timed out. Its outcome is unknown.
 ```
 No hidden state, provider IDs, or status codes leak into the model context.
 
-### 4.4 Recovery Policies
+### Recovery Policies
 
-1. **Exact Request Replay ($R_{\text{rep}}$):**
+1. **Exact Replay ($R_{\text{rep}}$):**
    The runtime takes the stored request bytes $W_{\text{arm}}$ and executes them over the network exactly once. The model is not invoked. Replay terminates immediately following this single dispatch.
 
 2. **LLM Regeneration ($R_{\text{reg}}$):**
@@ -177,7 +130,7 @@ No hidden state, provider IDs, or status codes leak into the model context.
    - Maximum permitted model completion calls: $B_{\text{calls}} = 4$.
    The model may issue read actions ($T_{\text{read}}$), mutation actions ($T_{\text{mut}}$), or terminate with a textual completion.
 
-### 4.5 State-Only Evaluation and Logical Projection
+### State-Only Evaluation and Logical Projection
 
 Correctness is evaluated from provider-specific certified terminal-state evidence, never from intermediate model claims or HTTP return codes alone.
 
@@ -185,83 +138,73 @@ We define a projection function $\mathcal{P}: \mathcal{S}_{\text{ext}} \to \math
 - $N_{\text{intended}}$ is the count of distinct external resources matching the semantic requirements of task $U$ within the arm's isolated namespace.
 - $N_{\text{unintended}}$ is the count of non-matching or corrupted resources.
 
-The primary binary endpoint $\text{STATE\_CORRECT} \in \{0, 1\}$ is defined as:
+For authoritatively certified states, the binary endpoint $\text{STATE\_CORRECT} \in \{0, 1\}$ is defined as:
 $$\text{STATE\_CORRECT} = \begin{cases}
-1 & \text{if } N_{\text{intended}} = 1 \text{ and } N_{\text{unintended}} = 0 \\
-0 & \text{otherwise (Missing, Duplicate, or Unintended Effect)}
+1 & \substack{\text{if }N_{\text{intended}}=1\\
+\text{and }N_{\text{unintended}}=0} \\
+0 & \text{if a state defect is certified}
 \end{cases}$$
 
-If external state cannot be authoritatively certified by the evaluator prior to the observation deadline, the arm is classified as $\text{INCONCLUSIVE}$ and excluded from primary paired analysis.
+If external state cannot be authoritatively certified by the evaluator prior to the observation deadline, the arm is classified as $\text{INCONCLUSIVE}$ and retained in provenance without an imputed binary score and excluded from the corresponding paired analysis.
 
----
 
-## 5. Study 1: Controlled Benchmark Methodology
+See Figure \ref{fig:figure1} for the retry boundary and hidden-world construction.
 
-### 5.1 Experimental Setup
+\input{figures/figure1.tex}
+
+## Experimental design and analysis hierarchy
+
+Each family has H0 Replay, H0 Regeneration, H1 Replay and H1 Regeneration arms. A within-world paired comparison requires both policies to be evaluable in the same family/world. Both displayed policy fractions therefore use exactly the same matched denominator. Let Delta_w = correctness(Replay, w) - correctness(Regeneration, w). Positive differences favor Replay; negative differences favor Regeneration.
+
+The interaction is the mean of [(H1 Replay - H1 Regeneration) - (H0 Replay - H0 Regeneration)] in complete families. All four arms must be evaluable. This difference of differences can span [-200,+200] percentage points. It is not computed by independently resampling policies or worlds.
+
+See Figure \ref{fig:figure2}.
+
+\input{figures/figure2.tex}
+
+Study 1 used the controlled non-idempotent Ticket CREATE design and its locked DeepSeek-V4-Flash model configuration. Study 2 used dedicated external scopes and a prospectively amended Fireworks V4.1 binding after the original model became unavailable. Fireworks documents the corresponding model identifiers \cite{fireworks_v4_flash, fireworks_v4p1_flash}; the frozen study records establish which configurations were actually used. These are the studied model configurations, not a model-diversity sample.
+
+Table \ref{tab:table1_environments} distinguishes scheduled design size, actual coverage and evaluable pairs.
+
+\input{tables/table1_environments.tex}
+
+The two Study 1 world comparisons form its locked confirmatory Holm family. External comparisons are secondary descriptive replications/generalization analyses and are excluded from that family. We report approved paired Newcombe Method 10 intervals and complete-family percentile bootstrap intervals. Exact McNemar numeric values for GitHub coverage and the completed Sheets replication appear only as secondary descriptive, unadjusted quantities in Appendix \ref{app:mcnemar}; no Study 2 Holm adjustment or confirmatory decision is made. Prematurely stopped Razorpay allocations have observed points only, with no p-values or confidence intervals.
+
+The external evaluators use bounded, provider-specific observation contracts. GitHub uses bounded complete issue-census traversal with validated pagination and PR exclusion, with two predeclared observation opportunities subject to the frozen early-stop rules; GitHub's Issues listing can include pull requests, which the protocol excludes \cite{github_issues_api}. Sheets appends cells and reads the assigned bounded grid through the documented request and grid-retrieval interfaces \cite{sheets_append_cells, sheets_get}. Razorpay's documented Orders create, list and known-ID fetch operations underlie its protocol \cite{razorpay_create, razorpay_list, razorpay_fetch_id}; its list view is not treated as authoritatively complete, so the evaluator also uses a closed causal ledger and permitted direct-ID observations. Observation strength is therefore provider-specific. Qualification, readiness and localization evidence do not contribute behavioral arms.
+
+## Study 1: controlled confirmatory experiment
+
+### Experimental Setup
 
 Study 1 evaluates the primary hypotheses on an isolated, deterministic Ticket Creation benchmark simulating an enterprise service-desk backend.
 - **Scenarios:** 8 distinct ticket scenarios (`CREATE001` through `CREATE008`), specifying customer identifiers, problem domains, titles, and descriptions.
 - **Replicates & Counterbalancing:** 20 replicates across 8 scenarios, yielding $N = 160$ scheduled family opportunities (640 total arms). Replicate ordering was strictly counterbalanced (odd replicates: $1 \to 8$; even replicates: $8 \to 1$).
-- **Study 1A Model Configuration:** DeepSeek-V4-Flash (`accounts/fireworks/models/deepseek-v4-flash-0731`) served via Fireworks serverless inference. Hyperparameters were frozen: temperature $T = 0.0$, top-$p = 1.0$, maximum completion tokens 1024, `parallel_tool_calls = False`, `reasoning_effort = "none"`. Study 1B prospectively repeats the same design with V4.1; its results are pending.
+- **Study 1A Model Configuration:** DeepSeek-V4-Flash (`accounts/fireworks/models/deepseek-v4-flash-0731`) served via Fireworks serverless inference. Hyperparameters were frozen: temperature $T = 0.0$, top-$p = 1.0$, maximum completion tokens 1024, `parallel_tool_calls = False`, `reasoning_effort = "none"`. Study 1B is a separate prospectively specified V4.1 replication and contributes no results here.
 - **Stopping Rule:** Exactly 160 scheduled opportunities; zero sample replacement, zero model shopping, and zero prompt tuning.
 
-### 5.2 Statistical Plan and Estimands
+### Statistical Plan and Estimands
 
 For each hidden world $w \in \{H_0, H_1\}$, the primary estimand is the risk difference:
 $$\Delta_w = \text{Rate}(\text{Replay})_{\text{correct}} - \text{Rate}(\text{Regeneration})_{\text{correct}}$$
 evaluated over matched families where both arms are evaluable.
 
 Statistical significance is assessed using:
-- **Exact conditional McNemar tests** on discordant cell counts ($n_{10}, n_{01}$);
-- **Paired Newcombe (1998) Method 10** two-sided 95% confidence intervals;
-- **Holm-Bonferroni correction** across the two primary families ($H_0, H_1$);
-- **Whole-family bootstrap** (10,000 replicates, seed 20260916) for the interaction contrast:
+- **Exact conditional McNemar tests** on discordant cell counts ($n_{10}, n_{01}$) \cite{mcnemar};
+- **Paired Newcombe (1998) Method 10** two-sided 95% confidence intervals \cite{newcombe};
+- **Holm-Bonferroni correction** across the two primary world comparisons ($H_0, H_1$) \cite{holm};
+- **Whole-family bootstrap** (10,000 replicates, seed 20260916) for the interaction contrast \cite{efron_bootstrap}:
   $$\text{Interaction} = \Delta_{H1} - \Delta_{H0}$$
 
----
 
-## 6. Study 1: Locked Empirical Results
+### Locked primary results
 
-Study 1 collection concluded on 2026-09-17 with zero dropped families, zero infrastructure aborts, and 100% data audit compliance. All results reported below are derived from the canonical, locked analysis artifact (`research/results/STUDY1_RESULTS_LOCK.md`).
+Study 1 remains locked. The values below are copied from its approved result context and have not been recalculated. In H0, Replay and Regeneration were both correct in 160/160 arms. The paired difference was 0.0000 pp (95% paired Newcombe Method 10 CI [-2.3446, 2.3446] pp). In H1, Replay was correct in 0/160 and Regeneration in 151/160; the difference was -94.3750 pp (95% CI [-97.0128, -89.1060] pp). The locked H1 exact McNemar raw p-value is 7.0064923216240854e-46 and its Holm-adjusted value is 1.4012984643248171e-45. These values belong only to the controlled confirmatory comparisons.
 
-### 6.1 Primary Correctness Findings
-
-Table \ref{tab:study1-results} summarizes the primary estimands across the 160 matched families.
+The prespecified interaction was -94.3750 pp (95% whole-family bootstrap CI [-97.5000, -90.6250] pp; 160 complete families). No interaction p-value is attached to this interval. Table \ref{tab:study1-results} provides the locked primary table. This evidence establishes the measured hidden-world contrast in the controlled environment; it does not alone establish performance across providers or models.
 
 \input{tables/study1_table.tex}
 
-#### World $H_0$ (NOT_EXECUTED)
-When the initial mutation never reached the server, both policies achieved flawless recovery:
-- Exact Replay: 160/160 state-correct ($1.000$);
-- LLM Regeneration: 160/160 state-correct ($1.000$);
-- Difference $\Delta_{H0} = 0.000$ percentage points;
-- Paired Newcombe 95% CI: $[-2.345\%, +2.345\%]$;
-- McNemar raw and Holm-adjusted $p = 1.000$.
-
-#### World $H_1$ (EXECUTED_ACK_LOST)
-When the initial mutation committed but its acknowledgment was withheld, the policies diverged completely:
-- Exact Replay: **0/160 state-correct ($0.000$)**;
-- LLM Regeneration: **151/160 state-correct ($0.94375$)**;
-- Difference $\Delta_{H1} = -0.94375$ ($-94.375$ percentage points);
-- Discordant counts: $n_{10} = 0$ (Replay correct, Regen incorrect), $n_{01} = 151$ (Replay incorrect, Regen correct), $n_{00} = 9$ (both incorrect), $n_{11} = 0$ (both correct);
-- Paired Newcombe 95% CI: $[-97.013\%, -89.106\%]$;
-- Exact McNemar raw $p = 7.006 \times 10^{-46}$; Holm-adjusted $p = 1.401 \times 10^{-45}$.
-
-#### Prespecified Interaction
-The interaction between retry locus and hidden world was:
-$$\Delta_{H1} - \Delta_{H0} = -94.375 \text{ percentage points}$$
-with a 10,000-replicate whole-family bootstrap 95% percentile confidence interval of $[-97.500\%, -90.625\%]$.
-
-```text
-Study 1 State Correctness Summary:
-============================================================
-World H0: Replay [160/160] (100%)  ==  Regen [160/160] (100%)
-World H1: Replay [  0/160] (  0%)  <<  Regen [151/160] (94.4%)
-============================================================
-Interaction: -94.375 percentage points (p = 1.40e-45)
-```
-
-### 6.2 Failure Taxonomy and Behavioral Mechanism
+### Failure taxonomy and behavioral mechanism
 
 Analysis of the 640 executed arms revealed sharp failure-mode segregation:
 - **Duplicate Mutations:** Exact Replay produced duplicate mutations in 160/160 $H_1$ arms (100.0%), and 0/160 $H_0$ arms. LLM Regeneration produced duplicate mutations in 9/160 $H_1$ arms (5.625%), and 0/160 $H_0$ arms.
@@ -280,281 +223,178 @@ The observed correspondence was absolute:
 $$\text{Correctness} \iff \text{Observation-Before-Write}$$
 *(Note: As prespecified, this is an observed mechanism association, not a randomized causal intervention.)*
 
-### 6.3 Recovery Overhead
+### Recovery Overhead
 
-The safety of LLM Regeneration comes at a measurable overhead cost:
+Regeneration incurs a measurable recovery overhead in the locked experiment. Table \ref{tab:study1-overhead} reports the existing descriptive averages:
 
-| World | Policy | Mean Model Calls | Mean Recovery Tool Calls |
-|---|---|---:|---:|
-| $H_0$ | Exact Replay | 0.00 | 1.00 |
-| $H_0$ | LLM Regeneration | 3.70 | 2.70 |
-| $H_1$ | Exact Replay | 0.00 | 1.00 |
-| $H_1$ | LLM Regeneration | 2.03 | 1.03 |
+\input{tables/study1_overhead.tex}
 
-Under $H_0$, regeneration spent an average of 3.70 model invocations and 2.70 tool calls (typically reading state, observing absence, issuing the creation, and reading state again to confirm). Under $H_1$, regeneration required 2.03 model invocations (reading state, observing presence, and issuing a terminal textual confirmation). Request Replay required zero model calls and exactly one tool dispatch in all cases.
+Under $H_0$, regeneration spent an average of 3.70 model invocations and 2.70 tool calls (typically reading state, observing absence, issuing the creation, and reading state again to confirm). Under $H_1$, regeneration required 2.03 model invocations (reading state, observing presence, and issuing a terminal textual confirmation). Exact Replay required zero model calls and exactly one tool dispatch in all cases.
 
----
 
-## 7. Study 2: Cross-Provider External Validation Design
+## Study 2: external validation
 
-While Study 1 establishes internal validity in a controlled environment, production cloud APIs exhibit idiosyncratic behaviors that may alter these dynamics:
-- Non-authoritative search indexing and delayed read visibility;
-- Bounded list pagination and rate-limit quotas;
-- Distinct transport framing and authentication lifecycles.
+### GitHub: canonical external replication coverage
 
-**Study 2** extends the investigation to three production cloud platforms: **GitHub Issues**, **Google Sheets v4**, and **Razorpay Orders**.
+The headline GitHub population is the authorized canonical coverage union: 256 identities comprising 187 SUCCESS, 68 FAILURE and 1 INCONCLUSIVE. Coverage consists of 77 preserved original observations plus 179 continuation observations. The 45 earlier pre-policy inconclusive projections are superseded historical records, not additional observations; the canonical dataset is not the sum of historical and canonical records. The split collection epochs are disclosed in Appendix \ref{app:github}.
 
-### 7.1 Provider Selection and Systems Diversity
+The retained non-evaluable arm, `gh-f020:H0:EXACT_REPLAY`, entered policy recovery and performed Replay, but the required authoritative second census failed. Its state remains unknown. The arm is not converted into a failure, reentered or replaced. Its H0 pair and complete family are unavailable, while its valid H1 pair remains eligible.
 
-Table \ref{tab:providers} compares the architectural characteristics of the selected providers.
+In matched H0, Replay was correct in 63/63 (100.00%) and Regeneration in 60/63 (95.24%). The paired difference was +4.7619 pp (95% CI [-1.7819, 13.0910] pp). In H1, Replay was correct in 0/64 and Regeneration in 64/64; the difference was -100.0000 pp (95% CI [-100.0000, -91.9921] pp). The complete-family interaction was -104.7619 pp (95% family-bootstrap CI [-111.1111, -100.0000] pp; 63 complete families).
 
-\begin{table*}[t]
-\centering
-\small
-\caption{Architectural Comparison of Selected External Providers for Study 2}
-\label{tab:providers}
-\begin{tabular}{lllll}
-\hline
-\textbf{Dimension} & \textbf{GitHub Issues} & \textbf{Google Sheets v4} & \textbf{Razorpay Orders} \\
-\hline
-Mutation Endpoint & `POST /repos/{o}/{r}/issues` & `POST /v4/spreadsheets/...:batchUpdate` & `POST /v1/orders` \\
-Mutation Semantic & Append issue to repository & Append row to allocated tab & Insert order into ledger \\
-Observation Method & `GET /repos/{o}/{r}/issues` & `GET /v4/spreadsheets/{id}` & `GET /v1/orders` \\
-Read Scope & Repository issues (`state=all`) & Bounded grid `A1:C100` & Account-level order ledger \\
-Pagination Model & `Link` header pagination & Fixed bounding box (1 GET) & Offset/count query pagination \\
-Visibility Latency & Eventual (search/list lag) & Immediate grid data & Variable / non-authoritative list \\
-Correlation Mechanism & Unique body suffix marker & Column A marker & `notes.retry_semantics_marker` \\
-Authentication & Fine-grained GitHub PAT & OAuth2 `drive.file` Desktop & Basic Auth (Key ID : Secret) \\
-\hline
-\end{tabular}
-\end{table*}
+Across all evaluable H0 Regeneration arms, 4 missing effects were recorded. Only 3 enter the matched comparison because the remaining missing-effect arm has the inconclusive Replay partner. One missing-effect arm, `gh-f002:H0:LLM_REGENERATION`, also recorded HTTP 504 during recovery mutation. Its authoritative final state remained a missing effect; the canonical score is preserved. These defects are not all attributed solely to model behavior.
 
-### 7.2 Experimental Unit and Allocation
+Table \ref{tab:table2_external_paired} reports the approved matched contrasts for GitHub coverage and the separate Sheets replication.
 
-- **Sample Size:** 64 scheduled family opportunities per provider $\times$ 4 serial arms = 256 arms per provider (768 total Study 2 arms).
-- **Model Binding:** The originally specified Fireworks serverless 0731 model became unavailable before Study 2 collection. Study 2 remains pre-data and is prospectively bound to Fireworks V4.1; provider readiness and collection remain pending.
-- **Provider Scopes:**
-  - GitHub: Dedicated non-production sandbox repository (`JashRashne/retry-semantics-study2-github-sandbox`).
-  - Google Sheets: One already-created spreadsheet with 256 isolated GRID tabs (one arm per tab), using audited OAuth same-app/principal access. `spreadsheets.create` must not be rerun.
-  - Razorpay: Dedicated Test Mode merchant account with closed ledger verification.
+\input{tables/table2_external_paired.tex}
 
----
+See Figure \ref{fig:figure3}.
 
-## 8. Provider Methodologies and Bounded Observation Schedules
+\input{figures/figure3.tex}
 
-Evaluating external cloud systems requires bounding observation costs and preventing outcome-adaptive polling loops. We specify the frozen **OBS-1 Bounded Observation Schedule** governing post-recovery evaluation.
+### Google Sheets: invalidated attempt and separate replication
 
-### 8.1 Monotonic Anchor and Horizon
+The original primary attempt scheduled 256 opportunities and recorded 128 projections: 64 historical H0 successes and 64 H1 constructor inconclusives. Another 128 opportunities were subsequently invalidated/unrun. A shared H1 acknowledgement-construction/validation implementation defect invalidated all 64 families for behavioral analysis. The primary behavioral denominator is 0; the historical H0 success bytes do not support a primary policy effect.
 
-Each arm defines an anchor $r_0$ recorded immediately upon recovery termination (after Replay dispatches or Regeneration stops/exhausts its budget). All observation rounds execute at fixed offsets from $r_0$. The global maximum observation horizon is capped at:
-$$H = 1140 \text{ seconds (19 minutes)}$$
+The subsequent run is a separately authorized post-incident replication, not a replacement for the invalidated primary attempt. Its exact status is `POST_INCIDENT_REPLICATION_NOT_PRIMARY_REPLACEMENT`. It uses a fresh experimental namespace and remains separate from the historical attempt. This distinction is retained wherever Sheets results are interpreted.
 
-### 8.2 Provider-Specific Observation Rules
+The completed replication recorded 256 observations: 192 SUCCESS, 64 FAILURE and 0 INCONCLUSIVE. H0 Replay and Regeneration were both correct in 64/64; the paired difference was 0.0000 pp (95% CI [-5.6624, 5.6624] pp). H1 Replay was correct in 0/64, while Regeneration was correct in 64/64; the difference was -100.0000 pp (95% CI [-100.0000, -91.9921] pp). Its interaction was -100.0000 pp (95% family-bootstrap CI [-100.0000, -100.0000] pp; 64 complete families). The degenerate bootstrap interval reflects identical observed family contributions, not proof of absent external uncertainty.
 
-#### 1. GitHub Issues
-- **Endpoint & Tool:** `create_issue` ($T_{\text{mut}}$) and `list_issues` ($T_{\text{read}}$).
-- **Correlation:** The arm marker is `rs2gh1-` plus the first 32 lowercase hex characters of SHA-256(namespace + `:` + arm ID), where namespace is `d88836f3d4b57ed5c300d650ddfb0e3a`. The issue body ends with `<!-- retry-semantics-study2-gh:v1:{arm_marker} -->`.
-- **Census Traversal:** Model reads and evaluator censuses traverse the complete bounded `GET /issues?state=all` Issues and PR census, following `next` rel-links to exhaustion, capped at 16 pages (1,600 maximum entries) and 540 seconds.
-- **OBS-1 Schedule:** Exactly two complete-census opportunities:
-  - Round 1: initiated at $r_0 + 0$s (deadline $+540$s);
-  - Round 2: initiated at $r_0 + 600$s (deadline $+1140$s).
+Table \ref{tab:table3_interactions} reports complete-family interactions, which condition on all four arms being evaluable.
 
-#### 2. Google Sheets v4
-- **Endpoint & Tool:** `append_row` ($T_{\text{mut}}$ via `AppendCellsRequest`) and `list_rows` ($T_{\text{read}}$).
-- **Correlation:** Column A contains the arm correlation marker; Columns B and C store item and detail.
-- **Grid Traversal:** A single bounded `spreadsheets.get` querying range `A1:C100` retrieves all populated rows within 40 seconds (30s HTTP deadline + 10s local processing).
-- **OBS-1 Schedule:** Exactly one immediate complete read at $r_0 + 0$s (deadline $+40$s).
+\input{tables/table3_interactions.tex}
 
-#### 3. Razorpay Orders
-- **Endpoint & Tool:** `create_order` ($T_{\text{mut}}$) and `list_orders` ($T_{\text{read}}$).
-- **Correlation:** Harness injects `notes.retry_semantics_marker` into the provider request payload (hidden from model arguments).
-- **Ledger Traversal:** `GET /v1/orders` queries up to 5 pages ($5 \times 100 = 500$ orders). Because Razorpay list traversal is not authoritatively complete, evaluation relies on a *closed causal ledger* tracking all dispatched HTTP requests and acknowledgments, supplemented by at most one optional H1 constructor-ID direct request plus at most three recovery Create-ID direct `GET /v1/orders/{id}` requests for independently known IDs.
-- **OBS-1 Schedule:**
-  - Round 1: initiated at $r_0 + 0$s (deadline $+170$s);
-  - Round 2: initiated at $r_0 + 200$s (deadline $+370$s);
-  - Direct GET supplements: executed sequentially, finishing by $+470$s.
+See Figure \ref{fig:figure4}.
 
----
+\input{figures/figure4.tex}
 
-## 9. Evaluator Semantics and Inconclusive Outcomes
+### Razorpay: incomplete external validation and provider constraints
 
-To prevent evaluation bias, Study 2 enforces strict fail-closed evaluator semantics:
+Razorpay contributes three separately governed stopped datasets: original: 0 SUCCESS, 2 FAILURE, 254 unrun; paced V1: 2 SUCCESS, 2 FAILURE, 252 unrun; host V2: 7 SUCCESS, 5 FAILURE, 244 unrun. The original, paced V1 and host-migration V2 attempts remain distinct observed prefixes. Table \ref{tab:table5_razorpay_stops} in Appendix \ref{app:razorpay} gives allocation and paired availability. These unequal prefixes do not support a provider-wide correctness estimate, an apparent rate improvement across runs, or pooled inference.
 
-1. **State Correctness:**
-   - $\text{STATE\_CORRECT} = 1$: Exactly one matching intended effect and zero unintended/duplicate effects identified in external storage.
-   - $\text{STATE\_CORRECT} = 0$: Positively certified duplicate mutation, missing mutation, or corrupted resource.
-2. **Inconclusive Handling ($\text{INCONCLUSIVE}$):**
-   If network failures, provider rate limits, incomplete pagination, or observation timeouts prevent definitive determination of external state before the terminal deadline, the arm is labeled $\text{INCONCLUSIVE}$.
-   - An inconclusive arm is **never** scored as model failure.
-   - It is excluded from primary paired comparisons.
-   - In accordance with V1.3 protocol rules, denominators are never backfilled or replaced.
-3. **Early Stopping:** An observation round terminates early if and only if $\text{STATE\_CORRECT} = 0$ is definitively established by positive evidence (e.g., encountering two verified duplicate issue IDs).
+All 9 recorded research failures across the separate runs are DUPLICATE_EFFECT. That tally is a taxonomy description, not a pooled performance sample. Every collection stop is backed by raw HTTP 429 during GET Fetch All. The original historical exception is a ValueError wrapper; later runs use PaperCollectionError wrappers. The underlying provider stop evidence is preserved separately. A provider stop is an infrastructure event, not a retry-policy failure. A positively established duplicate can remain a known state defect despite later throttled observation.
 
----
+Engineering localization is disclosed in Appendix \ref{app:razorpay}; it is outside behavioral denominators and does not isolate IP causality.
 
-## 10. Experimental Controls and Reproducibility
+### Cross-provider synthesis and failure patterns
 
-The frozen protocols specify the following controls; Study 2 collection remains pre-data:
+Under these controlled ambiguous-outcome constructions, the complete GitHub H1 matched population and the completed Sheets replication show the same H1 pattern: Exact Replay duplicates an already-executed mutation, whereas Regeneration avoids those duplicate effects. In H0, Replay preserves the needed mutation in the measured matched arms; GitHub shows that Regeneration can instead omit it. Sheets H0 shows both policies succeeding. The external pattern is therefore world-dependent rather than a universal policy ranking.
 
-1. **Writer and Baseline Controls:** Provider-specific readiness and baseline checks constrain writer scope and marker collisions before an arm proceeds.
-2. **Sampling Contract:** The manifests specify $T = 0.0$ and top-$p = 1.0$, with provider-specific prespecified seeds.
-3. **Model Requests:** The GitHub and Razorpay paper collectors send explicit conversation history with model requests.
-4. **Transport Controls:** The frozen GitHub and Razorpay paper transport uses one HTTP send per request, disables automatic retries and redirects, and records dispatch, local-send, response, and transport-error evidence separately.
-5. **Durable Evidence:** The GitHub and Razorpay collectors write exclusive JSON operation-intent, result, and selected event files. Request and response bodies have SHA-256 digests; Sheets uses a separate audited evidence path.
+State correctness and procedural completion are distinct. In GitHub H0 Regeneration, 16/64 arms reached the explicit budget-exhaustion terminal; 16 of those arms were state-correct. They remain included when state is known. Some malformed-generation, schema-rejection and infrastructure-sensitivity quantities cannot be estimated from the frozen external evidence because the separate certified attribution mapping is unavailable. No heuristic substitution or zero imputation fills that gap.
 
----
+The comparison is side by side: no cross-provider omnibus test, universal pooled success rate, external confirmatory significance family, or real-world hidden-world prevalence estimate is produced. Razorpay adds concrete operational limits and observed-prefix state evidence while remaining incomplete external validation.
 
-## 11. Study 2 Cross-Provider Analysis and Pre-Data Status
+Table \ref{tab:table4_failure_mechanisms} and Figure \ref{fig:figure5} in Appendix \ref{app:failures} disclose all-evaluable state-defect counts alongside non-evaluability, separately from the matched denominators.
 
-Table \ref{tab:study2-results} provides the prospective analysis template for Study 2.
-For each provider and hidden world, matched N, both displayed correctness fractions, the risk difference, confidence interval, and McNemar test will use the same families with both arms evaluable. Scheduled family counts describe design size, not observed matched N.
+## Discussion
 
-\input{tables/study2_table.tex}
+### Hidden state determines what a retry must accomplish
 
-```text
-Study 2 Prospective Execution Matrix:
-========================================================================
-Provider          Total Scheduled Families    Total Arms    Status
-------------------------------------------------------------------------
-GitHub Issues                64                   256       PENDING
-Google Sheets                64                   256       PENDING
-Razorpay Orders              64                   256       PENDING
-========================================================================
-Total Study 2                192                  768       PRE-DATA
-```
+H0 asks what to do when the original mutation did not happen. H1 asks what to do when it did happen but acknowledgement was lost. The recovery objective differs even though the error message is identical. The measured hidden-world contrast explains why byte-identical Replay cannot be called globally safe: identical requests to the studied non-idempotent mutation paths can create additional effects. Conversely, model reconsideration is not universally safe. The measured GitHub H0 missing effects show an omission risk, and the locked controlled result contains H1 Regeneration incorrect outcomes.
 
-### Pre-Data Protocol Integrity Declaration
-In strict conformance with open-science standards:
-- **Zero Study 2 paper observations have been collected.**
-- Existing manifests, catalogues, readiness contracts, and evaluators are frozen; the V4.1 model binding is prospectively amended before collection.
-- The GitHub and Razorpay publication-ingestion path is implemented and tested and refuses incomplete or corrupt run evidence; Google Sheets ingestion remains fail-closed pending a frozen run-projection schema.
-- Empirical results will be populated only after provider readiness, authorization, and collection.
+### Observation and authoritative reconciliation
 
----
+Regeneration gives the model access to observation before mutation. The external state patterns are consistent with that capability being useful in H1, but correctness comparisons do not randomize observation behavior or establish that one read policy caused the result. A runtime's reconciliation decision must depend on observation strength: a bounded grid, a complete paginated census and a nonauthoritative ledger list are different evidence sources. A result that cannot certify absence should not be treated as proof that a mutation did not occur.
 
-## 12. Discussion and Systems Implications
+As a design implication, runtimes should separate knowledge of dispatch from knowledge of commitment and should preserve an unresolved state when evidence is insufficient. Before allowing another potentially duplicate mutation, they can use bounded reconciliation or an endpoint's supported deduplication contract. This implication follows from the measured tradeoff; the study has not evaluated a production reconciliation controller.
 
-The empirical findings from Study 1, paired with the cross-provider architecture of Study 2, provide actionable guidance for AI agent runtimes:
+### Raw replay and idempotency-key semantics
 
-### 12.1 When is Replay Safe?
-Exact Request Replay can be safe when repeated dispatch is semantically idempotent or deduplicated by the endpoint or surrounding protocol. One important mechanism is **strict, end-to-end server-side idempotency keys** (e.g., Stripe's `Idempotency-Key` or AWS client request tokens). The safety of replay depends on the endpoint's documented deduplication scope and retention rules.
+Raw request replay and server-side idempotency keys address different guarantees \cite{rfc9110, helland_idempotence}. Sending the same bytes preserves the request, but a deduplication contract determines whether repeated dispatch is associated with one effect. Its scope, retention and resource semantics matter. These experiments compare the frozen Replay and Regeneration policies on the studied mutation paths; they do not estimate the performance of a key-enabled alternative or establish current provider support for such keys.
 
-### 12.2 When is Regeneration Necessary?
-For non-idempotent state-mutating operations (such as GitHub Issues creation or Google Sheets `AppendCells`), **blind replay can duplicate effects when the original request committed but its acknowledgement was lost**. In our controlled benchmark, blind replay caused a 100.0% failure rate under $H_1$. For non-idempotent endpoints, runtimes can reconcile external state before another mutation, programmatically or through a bounded model read.
+### External generalization and runtime design
 
-### 12.3 The Hidden Costs of Regeneration
-While LLM Regeneration successfully mitigates duplicate mutations, it introduces significant operational tradeoffs:
-- **Model-Call Cost:** Regeneration averaged 3.70 recovery model calls under $H_0$ and 2.03 under $H_1$; Replay made zero recovery model calls.
-- **Latency:** Multi-step read-before-write sequences add significant wall-clock latency, compounding the duration of already slow agent workflows.
-- **Residual Risk:** In 5.625% of $H_1$ cases, the model failed to observe state before writing, duplicating the mutation despite having the tools to verify.
+GitHub Issues and a Sheets append construction differ in storage and observation mechanics, yet GitHub external-replication coverage and the completed Sheets replication reproduce the H1 direction from the controlled experiment. That is substantive external evidence, with a secondary descriptive inferential role. It does not remove the need to distinguish implementation invalidation, continuation provenance, observation failure and premature provider stops.
 
-### 12.4 Proposed Architectural Standard: Guarded Idempotence Wrappers
-Agent runtimes should neither blindly replay nor unconditionally regenerate. Instead, we advocate for **Guarded Idempotence Wrappers**:
-1. If the tool endpoint supports server-side idempotency keys, the runtime should attach a deterministic key and execute Request Replay.
-2. If the endpoint is non-idempotent, the runtime should enforce a *mandatory verification probe* (programmatic or forced model-read) before permitting any retry mutation to be dispatched.
+For runtime design, the measured evidence motivates explicit retry semantics, durable correlation and operation receipts, bounded observation, and separation of state outcome from procedural/error status. Provider throttling should terminate or defer collection without manufacturing behavioral failures. Future work should compare reconciliation controllers, key-enabled mutations, additional model configurations and naturally occurring ambiguities. Those are proposed evaluations, not measured improvements.
 
----
+## Threats to validity
 
-## 13. Threats to Validity
+**Controlled ambiguity.** Ambiguity is constructed synthetically, allowing ground-truth H0/H1 pairing. Naturally occurring network ambiguity may involve other partial-effect states, delayed execution or different error messages. The balanced hidden-world design does not identify real-world H0/H1 prevalence or an unconditional deployment-weighted winner.
 
-### 13.1 Internal Validity
-- *Synthetic Ambiguity:* We injected synthetic timeout errors rather than waiting for natural network drops. This is a deliberate experimental control: natural drops cannot be randomized across matched $H_0/H_1$ worlds without violating causal pairing.
-- *Prompt and Sampling Sensitivity:* Study 1 used a pinned sampling configuration; hosted inference can still vary across invocations.
+**Models and recovery bounds.** Study 1 has one primary locked LLM/model configuration; Study 2's prospectively amended configuration is not a broad model sample. Prompt, hosted inference and bounded recovery choices can affect behavior. The experiment does not estimate optimal budgets, model diversity or causal effects of forcing a read.
 
-### 13.2 Construct Validity
-- *State-Only Correctness:* Study 1A used terminal ticket counts; Study 2 specifies provider-specific certified state evidence, avoiding subjective LLM-as-a-judge evaluation.
-- *Budget Limits:* The 3-action / 4-call regeneration budget was chosen based on pilot feasibility. Expanding the budget could theoretically allow failed agents more opportunities to recover, but would increase cost and risk infinite loops.
+**Provider semantics and observation strength.** The studied mutations, dedicated scopes, correlation markers and observation contracts differ across providers. GitHub's census, Sheets' bounded grid and Razorpay's causal-ledger supplements certify different kinds of evidence. The limited number and type of providers constrain generalization to other create/update/delete or multi-resource workflows.
 
-### 13.3 External Validity
-- *Model Diversity:* Study 1 focused on DeepSeek-V4-Flash. While this model demonstrates representative modern tool-calling capabilities, frontier models (e.g., GPT-4o, Claude 3.5 Sonnet) may exhibit different observation-before-write base rates.
-- *API Diversity:* The pre-data Study 2 design incorporates three cloud architectures with different observation semantics.
+**Collection provenance.** GitHub combines preserved original and continuation epochs. Epoch changes can affect behavior even with a shared namespace and frozen eligibility rules. Source-segment summaries disclose this limitation without replacing the coverage headline. One retained GitHub Replay arm is non-evaluable, so matched H0 and complete-family results condition on availability; its missing score is not imputed.
 
-### 13.4 Statistical Validity
-- For Study 1A, the primary estimands, confidence intervals, and Holm-Bonferroni correction were prespecified prior to collection.
+**Implementation incident.** The Sheets primary attempt was invalidated by a shared H1 constructor defect. Its historical H0 successes cannot restore a valid primary denominator. The separately authorized post-incident replication is valuable external evidence, but is not a retrospective repair or replacement of that attempt.
 
----
+**Premature stops.** Razorpay collection repeatedly stopped under provider throttling. Small unequal observed prefixes and different governance/runtime paths do not provide complete provider replication, provider-wide rates or a causal comparison of pacing and host migration. Infrastructure stops remain separate from state-known behavioral defects.
 
-## 14. Ethics and Limitations
+**Inferential and measurement limits.** External replications were not powered co-primary experiments. Their intervals and exact McNemar values retain a secondary descriptive role, with no external Holm adjustment or confirmatory decision. Complete-family bootstrap intervals condition on the observed eligible families; a degenerate interval does not remove external uncertainty. Separate malformed/rejected and full infrastructure sensitivity measures are unavailable from the frozen mapping. Missing state defects can overlap provider errors, preventing an attribution solely to the model.
 
-- **API Safety and Resource Quotas:** All experiments operate within dedicated developer sandboxes, test-mode credentials, and private repositories. Zero real currency, private personal data, or production infrastructure was exposed.
-- **Negative Externalities:** Automated retry loops can generate unintended load or spam if unconstrained. Our protocol enforces strict request caps and timeouts.
+## Related work
 
----
+HTTP idempotence defines when identical method requests have the same intended server effect \cite{rfc9110}. Early RPC work identified the difficulty of knowing whether a remote call executed after a communication failure \cite{birrell_nelson}; application-level idempotence and durable message identity address repeated delivery \cite{helland_idempotence}. Sagas provide compensation for long-lived multi-step work \cite{sagas}, while distributed-application patterns emphasize application-level recovery when global transactions are unavailable \cite{helland_life, helland_quicksand}. These mechanisms motivate the retry boundary here but do not make an unprotected create operation safe to redispatch.
 
-## 15. Conclusion and Future Work
+ReAct interleaves language-model reasoning with actions and observations \cite{react}. $\tau$-bench evaluates tool-agent-user interaction against terminal database state and reliability across repeated trials \cite{tau_bench}. ToolMaze broadens evaluation to tool perturbations and dynamic replanning \cite{toolmaze}. These works establish tool-use and stateful-evaluation context; they do not test the specific frozen-request Replay versus bounded model-continuation intervention used here.
 
-This paper investigated the Replay versus Regeneration boundary through a matched four-arm experimental protocol. In Study 1A, both policies achieved 100.0% correctness when the original mutation was not executed remotely ($H_0$). When it committed but its acknowledgment was lost ($H_1$), blind Replay produced duplicate effects in 160/160 arms, while Regeneration achieved 94.375% correctness. This result is specific to the studied benchmark and model.
+The closest recovery studies narrow the claim further. *Verified Tool Calls* injects non-atomic failures and evaluates postcondition verification, verify-before-retry and idempotency keys in a simulated wrapper \cite{verified_tool_calls}. *Did It Happen?* pairs uncommitted and committed hidden worlds behind an identical timeout and compares a standard prompt, reliability advice, a status-query interface and a stable-idempotency-key control \cite{did_it_happen}. Its intervention is recovery affordance, not a direct Exact Replay versus LLM Regeneration policy assignment over one frozen original action. ACRFence independently identifies how an agent restored from a checkpoint can re-synthesize a different request and studies semantic rollback defenses \cite{acrfence}; it is not a matched behavioral comparison of those two retry policies. AFT-Bench holds task, backend, initial state, failure, agent and model fixed while changing the exposed interface, including recovery and postcondition-verification affordances \cite{aft}. Its interface intervention differs from changing who controls the post-timeout retry.
 
-The pre-data Study 2 protocol is designed to test how these dynamics behave across three cloud providers with different observation semantics.
+Broader systems address adjacent layers. Atomix supplies a transactional runtime for multi-tool effects \cite{atomix}; Agent Mesh derives identity and evidence primitives for non-idempotent delegations from incident observations, rather than a controlled retry-policy intervention \cite{agent_mesh}. CapLease maintains durable authorization state for a semantic action across replanning, retries, delegation and crash recovery \cite{caplease}. FinalityBench evaluates agent decisions against delayed and conflicting financial finality at the effect level \cite{finalitybench}; our provider study is not a payment-finality benchmark. These works clarify where stronger runtime or evaluation contracts may be needed beyond the policy contrast measured here.
 
-```text
-Final Research Status:
-========================================================================
-Study 1 (Controlled Ticket CREATE):    CANONICAL / LOCKED (N=160, p < 1e-44)
-Study 2 (Cross-Provider Validation):   FROZEN PRE-DATA (OBS-1, N=192 fams)
-Total Paper Observations Executed:     640 (Study 1) / 0 (Study 2)
-========================================================================
-```
+Our narrower question is what changes when, after the same ambiguous observation and the same original generated mutation, the runtime either redispatches its frozen request or returns control to the model for bounded recovery. Matched $H_0$/$H_1$ families isolate that policy contrast in the locked Ticket experiment and in external GitHub and Sheets replications, with source/effect-level evidence under provider-specific semantics. The experiment characterizes observed correctness and Regeneration behavior; it does not claim priority for hidden-world pairing, regenerated-request drift, verification, or idempotency mechanisms.
 
----
+
+## Conclusion
+
+Under controlled ambiguous-outcome constructions, recovery correctness depends on whether the original mutation executed. The locked controlled experiment, canonical GitHub external-replication coverage and the separately authorized completed Sheets replication show a large H1 contrast: Replay duplicates an existing effect, whereas Regeneration was correct in 151/160 H1 arms in Study 1 and in 64/64 H1 arms in both the complete GitHub H1 matched population and the completed Sheets replication. GitHub H0 missing effects also demonstrate that regeneration is not universally safe. Razorpay's separate stopped runs expose a provider-observation and throttling limitation rather than a completed provider comparison. The evidence supports explicit retry semantics and authoritative reconciliation before additional mutation, with uncertainty retained when state cannot be certified.
+
+## Reproducibility
+
+Results come from the approved Phase 3 machine-readable outputs and frozen Phase 4.1 publication package; locked Study 1 primary values were not recalculated. Paired effects use the frozen state-only endpoint and matched populations, and complete-family interactions use the frozen 10,000-replicate whole-family bootstrap. Integration added no hypotheses, estimators or analysis populations.
+
+The project artifacts include full-precision figure data, offline generation scripts, vector figures, table exports and reproduction receipts. The paper integration audit records the approved SHA-256 manifest. The repository's `paper/README.md` documents the build; the archived `phase4_publication` package preserves frozen source and inputs. Reproduction requires no live provider/API access.
+
+## Appendix: GitHub source segments
+\label{app:github}
+
+Table \ref{tab:tableA1_github_segments} partitions GitHub coverage by source epoch.
+
+\input{tables/tableA1_github_segments.tex}
+
+These summaries condition on source-epoch pair availability and overlap the main canonical coverage. They are provenance disclosure, not additional replication samples. The continuation preserves every original policy-entered arm, including the non-evaluable Replay arm, and uses remaining eligible identities. Source-segment interaction intervals and full-precision paired values remain in the approved Phase 3 JSON.
+
+## Appendix: Secondary descriptive McNemar values
+\label{app:mcnemar}
+
+Table \ref{tab:tableA2_descriptive_mcnemar} reports secondary descriptive numeric quantities, with no external confirmatory decision.
+
+\input{tables/tableA2_descriptive_mcnemar.tex}
+
+## Appendix: State defects and evaluability
+\label{app:failures}
+
+Table \ref{tab:table4_failure_mechanisms} and Figure \ref{fig:figure5} use all evaluable arms; those denominators differ from matched pairs.
+
+\input{tables/table4_failure_mechanisms.tex}
+
+\input{figures/figure5.tex}
+
+## Appendix: Razorpay observed prefixes and diagnostics
+\label{app:razorpay}
+
+Table \ref{tab:table5_razorpay_stops} retains the separate governed allocations.
+
+\input{tables/table5_razorpay_stops.tex}
+
+Table \ref{tab:tableA4_razorpay_points} reports observed-prefix points only; no stopped-run intervals or p-values are estimated.
+
+\input{tables/tableA4_razorpay_points.tex}
+
+See Figure \ref{fig:figureS1}.
+
+\input{figures/figureS1.tex}
+
+Table \ref{tab:tableA5_razorpay_mechanisms} discloses state defects separately within each observed prefix.
+
+\input{tables/tableA5_razorpay_mechanisms.tex}
+
+### Engineering localization
+
+The sealed engineering localization comparison observed status 429 on one execution/source path and 200 on another for the same method and target. This is consistent with limiter state partly partitioned by execution/source/network/edge/runtime path and argues against one uniformly enforced account-wide cooldown being sufficient. It does not isolate IP causality, establish a stable per-IP or larger Mac quota, or identify Razorpay's rate-limit algorithm. Exact historical API-key-pair equality is not independently established on the A side. The diagnostic is outside behavioral denominators and is not a randomized host or pacing intervention.
 
 ## References
 
-```bibtex
-@techreport{rfc9110,
-  title = {{HTTP Semantics}},
-  author = {Fielding, Roy T. and Nottingham, Mark and Reschke, Julian},
-  year = {2022},
-  institution = {Internet Engineering Task Force},
-  type = {RFC},
-  number = {9110},
-  url = {https://www.rfc-editor.org/rfc/rfc9110.html}
-}
-
-@inproceedings{sagas,
-  title = {{Sagas}},
-  author = {Garcia-Molina, Hector and Salem, Kenneth},
-  year = {1987},
-  booktitle = {Proceedings of the 1987 ACM SIGMOD International Conference on Management of Data},
-  pages = {249--259}
-}
-
-@inproceedings{react,
-  title = {{ReAct: Synergizing Reasoning and Acting in Language Models}},
-  author = {Yao, Shunyu and Zhao, Jeffrey and Yu, Dian and Du, Nan and Shafran, Izhak and Narasimhan, Karthik and Cao, Yuan},
-  year = {2023},
-  booktitle = {International Conference on Learning Representations (ICLR)}
-}
-
-@misc{tau_bench,
-  title = {{$\tau$-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains}},
-  author = {Yao, Shunyu and Shinn, Noah and Razavi, Pedram and Narasimhan, Karthik},
-  year = {2024},
-  eprint = {2406.12045},
-  archivePrefix = {arXiv}
-}
-
-@misc{verified_tool_calls,
-  title = {{Verified Tool Calls Improve LLM Agent Reliability Under Non-Atomic Failures}},
-  author = {Mansoor, Isham Kalappurackal and Phadke, Abhishek and Rana, Pratip},
-  year = {2026},
-  eprint = {2608.02645},
-  archivePrefix = {arXiv}
-}
-
-@misc{atomix,
-  title = {{Atomix: Transactional Execution for Stateful LLM Agent Tools}},
-  author = {DeepSeek Research},
-  year = {2026},
-  eprint = {2608.10000},
-  archivePrefix = {arXiv}
-}
-
-@misc{agent_mesh,
-  title = {{Agent Mesh: Identity Adequacy and Evidence Adequacy in Multi-Agent Delegation}},
-  author = {Rashne, Jash and Collaborators},
-  year = {2026},
-  eprint = {2608.26225},
-  archivePrefix = {arXiv}
-}
-```
+Bibliographic source: `research/references.bib`. The existing curated bibliography is retained unchanged; the superseded embedded Markdown records are not a second bibliography.
