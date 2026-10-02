@@ -1,6 +1,6 @@
-\begin{figure*}[!t]
+\begin{figure*}[t]
 \centering
-\includegraphics[width=0.9\textwidth]{figures/figure1.pdf}
-\caption{Conceptual retry-semantics model. The same ambiguous tool response is compatible with $H_0$ (the original mutation did not execute) or $H_1$ (it executed but acknowledgement was lost). Each hidden world is studied under Exact Replay and LLM Regeneration. Terminal state is classified as correct, missing, duplicate, or wrong/unintended effect; state that cannot be certified remains non-evaluable. Diagram arrows denote experimental branches, not transition probabilities. Regeneration can inspect state but is not guaranteed to do so.}
+\includegraphics[width=\textwidth]{figures/passb_concept.pdf}
+\caption{An ambiguous timeout hides whether the original create happened. Each hidden situation is evaluated under both recovery policies using the same stored original semantic action in isolated state. Arrows show experimental comparisons, not their probabilities. Regeneration may inspect state; it is not forced to do so.}
 \label{fig:figure1}
 \end{figure*}
