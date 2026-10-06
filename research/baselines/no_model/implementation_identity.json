@@ -1,0 +1,17 @@
+{
+  "status": "PRE_COLLECTION_AUDIT_CANDIDATE_NOT_EXECUTION_AUTHORIZATION",
+  "head_before": "8eb45b161221db3e84d03fc9061a65109042f655",
+  "files": {
+    "research/baselines/no_model/PROTOCOL.md": "b43d4d838fa23539ec7de11f5137a3190a1a2500c132dde371127fb58ad03022",
+    "research/baselines/no_model/protected_before.json": "133dff9d0890f73b11f6e7cd4dcdc96aeec9a61f57298032b4e583cdc7767590",
+    "research/baselines/no_model/sources.json": "ff10f6b65e27f643e11f94515ad671b10428196d233a7212f82fa09f02c35bc9",
+    "scripts/check_no_model_baseline_offline.py": "6dd5ca1070e5bf3eab8372a2a42e0419312b2c05b1d70561566076355e6d3376",
+    "src/retry_semantics/baselines/__init__.py": "643b6e0464fcfa12f2b1e2a4a3522796dcdd650def4b553147d6420919f9523e",
+    "src/retry_semantics/baselines/adapters.py": "a01d8dc0d36dc3336604731947455535407d0b3d85dd4d778c29ec6fe72d63ce",
+    "src/retry_semantics/baselines/harness.py": "d96799ecf7e8ca9f9d2c00d2b2642437069d0afab950aa0ae86bbf37ce4ef650",
+    "src/retry_semantics/baselines/no_model.py": "de46df24bc721cebe9e735a846c381c9fed29489d8d2af83fe82cfca3020dd0d",
+    "src/retry_semantics/baselines/preparation.py": "3919ed8c52a63f483ae095183b850920117960f0bde50ddad2d437f386b163d8",
+    "src/retry_semantics/baselines/readiness.py": "55f84dc226fa76a1847ab62b97e19b6097a29c553300ea38c6b89630bdfcc9b7",
+    "tests/test_no_model_baseline.py": "4b952cfe089a7f893b8c037e45846bf4e899073c0800a0bd9ad81ad0bf955cb5"
+  }
+}

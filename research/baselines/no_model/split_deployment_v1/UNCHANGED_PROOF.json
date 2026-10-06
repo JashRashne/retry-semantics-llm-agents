@@ -1,0 +1,22 @@
+{
+  "frozen_files_verified": 3584,
+  "all_frozen_bytes_identical": true,
+  "accepted_policy_sha256": "de46df24bc721cebe9e735a846c381c9fed29489d8d2af83fe82cfca3020dd0d",
+  "accepted_adapters_harness_preparation_readiness_protocol_unchanged": true,
+  "all_896_entries_indices_order_worlds_targets_markers_requests_scopes_identical": true,
+  "all_readiness_evidence_and_original_lock_identical": true,
+  "protected_files_unchanged": 5942,
+  "manuscript_unchanged": true,
+  "descriptive_counts_unchanged": true,
+  "no_global_or_partition_consumption_claims": true,
+  "scientific_evaluations": 0,
+  "scientific_provider_mutations": 0,
+  "provider_reads_this_pass": 0,
+  "readiness_mutations_this_pass": 0,
+  "commit_or_push": false,
+  "head": "8eb45b161221db3e84d03fc9061a65109042f655",
+  "branch": "main",
+  "tracked_diff_empty": true,
+  "authorization_guard_AST_identical": true,
+  "constructor_transport_and_scientific_arm_execution_AST_identical_except_runtime_provenance": true
+}
