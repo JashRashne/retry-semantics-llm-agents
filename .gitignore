@@ -22,3 +22,60 @@ artifacts/
 
 # Phase 2B live GitHub engineering artifacts — never paper data.
 research/study2/engineering/github/live/
+
+# Paper-root compiler outputs; published PDFs in build/ and figures/ stay visible.
+/paper/*.pdf
+/paper/*.log
+/paper/*.blg
+/paper/*.aux
+/paper/*.bbl
+/paper/*.out
+/paper/*.toc
+/paper/*.synctex.gz
+/paper/*.fls
+/paper/*.fdb_latexmk
+
+# Local baseline source paths, stale table and preservation/readiness snapshots.
+/research/baselines/no_model/descriptive_counts.csv
+/research/baselines/no_model/protected_before.json
+/research/baselines/no_model/readiness.json
+/research/baselines/no_model/sources.json
+
+# Obsolete V2 local precollection evidence; no tracked files in this tree.
+/research/baselines/no_model/precollection_v2/
+
+# V3 per-arm raw requests and machine-local consumption claims.
+# Keep frozen_bindings/*.json metadata, collection protocol, lock and receipts.
+/research/baselines/no_model/precollection_v3/frozen_bindings/[0-9][0-9][0-9]/stored-original.json
+/research/baselines/no_model/precollection_v3/frozen_bindings/COLLECTION_CONSUMED_*.json
+
+# V3 local provider qualification, identity, preservation and verification evidence.
+/research/baselines/no_model/precollection_v3/accepted_identity_proof.json
+/research/baselines/no_model/precollection_v3/collection_lock_identity.json
+/research/baselines/no_model/precollection_v3/github_visibility_plus600/
+/research/baselines/no_model/precollection_v3/github_write_visibility_qualification/
+/research/baselines/no_model/precollection_v3/inherited_app_principal/
+/research/baselines/no_model/precollection_v3/sheets_readiness_clean_environment/
+/research/baselines/no_model/precollection_v3/sheets_readiness_serialization_fixed/
+/research/baselines/no_model/precollection_v3/verification/
+/research/baselines/no_model/precollection_v3/READINESS_REPORT.md
+/research/baselines/no_model/precollection_v3/authorization_scope.json
+/research/baselines/no_model/precollection_v3/commands_used.json
+/research/baselines/no_model/precollection_v3/copied_input_reproduction.json
+/research/baselines/no_model/precollection_v3/export_command.json
+/research/baselines/no_model/precollection_v3/final_preservation_check.json
+/research/baselines/no_model/precollection_v3/independent_packaged_source_proof.json
+/research/baselines/no_model/precollection_v3/preserved_before.json
+/research/baselines/no_model/precollection_v3/provider_operation_counts.json
+/research/baselines/no_model/precollection_v3/qualification_visibility_comparison.json
+
+# Split-deployment local exports, transfers and archived source; retain protocols and manifests.
+/research/baselines/no_model/split_deployment_v1/VM_TRANSFER.json
+/research/baselines/no_model/split_deployment_v1/VM_VERIFY_COMMAND.sh
+/research/baselines/no_model/split_deployment_v1/previous_deployment/
+/research/baselines/no_model/split_deployment_v1/audit_export_command.json
+/research/baselines/no_model/split_deployment_v1/commands_used.json
+/research/baselines/no_model/split_deployment_v1/deployment_changes.patch
+/research/baselines/no_model/split_deployment_v1/frozen_before.json
+/research/baselines/no_model/split_deployment_v1/repository_state/
+/research/baselines/no_model/split_deployment_v1/verification/

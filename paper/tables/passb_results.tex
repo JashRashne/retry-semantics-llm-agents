@@ -1,23 +1,25 @@
 \begin{table*}[t]
 \centering
-\caption{Core final-state correctness. Counts use matched pairs in each execution situation. Differences and two-sided 95\% paired Newcombe method 10 intervals are in percentage points (pp), displayed to one decimal.}
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Final-state correctness counts. Replay is a semantic reference: an unprotected CREATE duplicates an already-existing effect by construction. Historical Replay--Regeneration differences retain two-sided 95\% paired Newcombe method 10 intervals in percentage points (pp); no hypothesis tests are displayed. The no-model column is a separate post-review descriptive cohort.}
 \label{tab:results}
-\begin{tabular}{@{}llrrrr@{}}
+\begin{tabular}{@{}llrrrrr@{}}
 \toprule
-Study & Execution situation & Matched $N$ & Replay correct & Regeneration correct & Difference [95\% CI] \\
+Study & World & \shortstack{Matched\\$N$} & Replay & Regeneration & No-model & \shortstack{Difference (pp)\\{}[95\% paired CI]} \\
 \midrule
-Study 1A & $H_0$ & 160 & 160/160 & 160/160 & +0.0 [-2.3, 2.3] \\
-Study 1A & $H_1$ & 160 & 0/160 & 151/160 & -94.4 [-97.0, -89.1] \\
+Study 1A & $H_0$ & 160 & 160/160 & 160/160 & 160/160 & +0.0 [-2.3, 2.3] \\
+Study 1A & $H_1$ & 160 & 0/160 & 151/160 & 160/160 & -94.4 [-97.0, -89.1] \\
 \addlinespace
-Study 1B & $H_0$ & 160 & 160/160 & 160/160 & +0.0 [-2.3, 2.3] \\
-Study 1B & $H_1$ & 160 & 0/160 & 160/160 & -100.0 [-100.0, -96.7] \\
+Study 1B & $H_0$ & 160 & 160/160 & 160/160 & 160/160 & +0.0 [-2.3, 2.3] \\
+Study 1B & $H_1$ & 160 & 0/160 & 160/160 & 160/160 & -100.0 [-100.0, -96.7] \\
 \addlinespace
-GitHub & $H_0$ & 63 & 63/63 & 60/63 & +4.8 [-1.8, 13.1] \\
-GitHub & $H_1$ & 64 & 0/64 & 64/64 & -100.0 [-100.0, -92.0] \\
+GitHub & $H_0$ & 63 & 63/63 & 60/63 & 64/64 & +4.8 [-1.8, 13.1] \\
+GitHub & $H_1$ & 64 & 0/64 & 64/64 & 64/64 & -100.0 [-100.0, -92.0] \\
 \addlinespace
-Sheets replication & $H_0$ & 64 & 64/64 & 64/64 & +0.0 [-5.7, 5.7] \\
-Sheets replication & $H_1$ & 64 & 0/64 & 64/64 & -100.0 [-100.0, -92.0] \\
+Sheets repl. & $H_0$ & 64 & 64/64 & 64/64 & 64/64 & +0.0 [-5.7, 5.7] \\
+Sheets repl. & $H_1$ & 64 & 0/64 & 64/64 & 64/64 & -100.0 [-100.0, -92.0] \\
 \bottomrule
 \end{tabular}
-\par\smallskip\raggedright $H_0$: Original action did not execute. $H_1$: Executed, acknowledgement lost. Difference = Replay minus Regeneration. GitHub has four missing Regeneration effects among 64 evaluable $H_0$ arms; three enter its 63 matched pairs. External intervals are descriptive. Perfect scores do not imply zero population risk; post-hoc marginal intervals are in the public artifact repository.
+\par\smallskip\raggedright $H_0$: Original action did not execute. $H_1$: Executed, acknowledgement lost. Sheets repl. denotes the valid separate replication. Difference = Replay minus Regeneration on historical matched pairs; external intervals are descriptive. GitHub $H_0$ has 63 historical pairs because one Replay outcome was unknown. Regeneration scored 60/64 over all evaluable arms; the no-model baseline independently scored 64/64 on its complete cohort. No-model counts have no paired contrast, confidence interval, or significance test.
 \end{table*}

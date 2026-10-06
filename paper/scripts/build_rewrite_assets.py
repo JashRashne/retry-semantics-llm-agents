@@ -7,18 +7,59 @@ import reportlab
 pdfmetrics.registerFont(TTFont("FigureSans", str(Path(reportlab.__file__).parent / "fonts" / "Vera.ttf")))
 from reportlab.lib.colors import HexColor, white
 P=Path(__file__).resolve().parent.parent
+def read_baseline_cells(path):
+    """Read Success/Evaluable from the audited record; reject malformed strata."""
+    record=path.read_text()
+    heading='## No-model results\n'
+    if record.count(heading)!=1:
+        raise ValueError(f'{path}: expected one No-model results section')
+    section=record.split(heading,1)[1].split('\n## ',1)[0]
+    table=[line.strip() for line in section.splitlines() if line.strip().startswith('|')]
+    headers=['Study','World','Scheduled','Evaluable','Success','Failure','UNKNOWN',
+             'Effect already visible','Stored CREATE dispatched']
+    def fields(line):
+        if not line.endswith('|'):
+            raise ValueError(f'{path}: incomplete baseline table row')
+        return [cell.strip() for cell in line[1:-1].split('|')]
+    if len(table)!=10 or fields(table[0])!=headers:
+        raise ValueError(f'{path}: expected the nine-column, eight-stratum results table')
+    separators=fields(table[1])
+    if len(separators)!=len(headers) or any(cell.strip(':')!='---' for cell in separators):
+        raise ValueError(f'{path}: invalid baseline table separator')
+    study_names={'Study 1A':'Study 1A','Study 1B':'Study 1B','GitHub':'GitHub',
+                 'Sheets valid replication':'Google Sheets replication'}
+    expected={(study,world) for study in study_names.values() for world in ('H0','H1')}
+    cells={}
+    for line in table[2:]:
+        row=fields(line)
+        if len(row)!=len(headers) or row[0] not in study_names or row[1] not in ('H0','H1'):
+            raise ValueError(f'{path}: unexpected baseline stratum: {row}')
+        key=(study_names[row[0]],row[1])
+        if key in cells or any(not value.isascii() or not value.isdecimal() for value in row[2:]):
+            raise ValueError(f'{path}: duplicate stratum or invalid counts: {row}')
+        scheduled,evaluable,success,failure,unknown,visible,dispatched=map(int,row[2:])
+        if (evaluable<=0 or scheduled!=evaluable+unknown or evaluable!=success+failure
+                or scheduled!=visible+dispatched):
+            raise ValueError(f'{path}: inconsistent baseline counts: {row}')
+        cells[key]=(success,evaluable)
+    if set(cells)!=expected:
+        raise ValueError(f'{path}: incomplete baseline strata')
+    return cells
+
+baseline_cells=read_baseline_cells(P.parent/'research/baselines/no_model/RESULTS.md')
 rows=list(csv.DictReader((P/'rewrite_plan/PASS_A_RESULTS_TABLES.csv').open()))[:8]
 # Printed contrasts are display-rounding of retained estimates, never recomputed.
 lines=[r'\begin{table*}[t]',r'\centering',r'\caption{Completed-study overview. Family counts describe linked original actions; GitHub has 63 not-executed pairs and 64 already-executed pairs. Sheets denotes the separate replication after the implementation fix.}',r'\label{tab:overview}',r'\begin{tabularx}{\textwidth}{@{}lXX Xr@{}}',r'\toprule',r'Study & Environment & Full model (Fireworks) & Purpose & Families \\',r'\midrule',r'Study 1A & Controlled ticket creation & DeepSeek V4 Flash (0731) & Primary controlled experiment & 160 \\',r'Study 1B & Controlled ticket creation & DeepSeek V4.1 Flash & Model-transition replication & 160 \\',r'Study 2: GitHub & External issue creation & DeepSeek V4.1 Flash & Descriptive external validation & 64 \\',r'Study 2: Sheets & External row append & DeepSeek V4.1 Flash & Separate external replication & 64 \\',r'\bottomrule',r'\end{tabularx}',r'\end{table*}']
 (P/'tables/passb_overview.tex').write_text('\n'.join(lines)+'\n')
-lines=[r'\begin{table*}[t]',r'\centering',r'\caption{Core final-state correctness. Counts use matched pairs in each execution situation. Differences and two-sided 95\% paired Newcombe method 10 intervals are in percentage points (pp), displayed to one decimal.}',r'\label{tab:results}',r'\begin{tabular}{@{}llrrrr@{}}',r'\toprule',r'Study & Execution situation & Matched $N$ & Replay correct & Regeneration correct & Difference [95\% CI] \\',r'\midrule']
+lines=[r'\begin{table*}[t]',r'\centering',r'\small',r'\setlength{\tabcolsep}{4pt}',r'\caption{Final-state correctness counts. Replay is a semantic reference: an unprotected CREATE duplicates an already-existing effect by construction. Historical Replay--Regeneration differences retain two-sided 95\% paired Newcombe method 10 intervals in percentage points (pp); no hypothesis tests are displayed. The no-model column is a separate post-review descriptive cohort.}',r'\label{tab:results}',r'\begin{tabular}{@{}llrrrrr@{}}',r'\toprule',r'Study & World & \shortstack{Matched\\$N$} & Replay & Regeneration & No-model & \shortstack{Difference (pp)\\{}[95\% paired CI]} \\',r'\midrule']
 for i,r in enumerate(rows):
-    name={'Google Sheets replication':'Sheets replication'}.get(r['study'],r['study'])
+    name={'Google Sheets replication':'Sheets repl.'}.get(r['study'],r['study'])
     world='$H_0$' if r['world']=='H0' else '$H_1$'
     d,lo,hi=[float(r[k]) for k in ['difference_Replay_minus_Regeneration_pp','paired_CI_lower_pp','paired_CI_upper_pp']]
-    lines.append(f"{name} & {world} & {r['N_pairs']} & {r['Replay_correct']}/{r['N_pairs']} & {r['Regeneration_correct']}/{r['N_pairs']} & {d:+.1f} [{lo:.1f}, {hi:.1f}]"+r' \\')
+    baseline_success,baseline_evaluable=baseline_cells[(r['study'],r['world'])]
+    lines.append(f"{name} & {world} & {r['N_pairs']} & {r['Replay_correct']}/{r['N_pairs']} & {r['Regeneration_correct']}/{r['N_pairs']} & {baseline_success}/{baseline_evaluable} & {d:+.1f} [{lo:.1f}, {hi:.1f}]"+r' \\')
     if i%2 and i<7:lines.append(r'\addlinespace')
-lines += [r'\bottomrule',r'\end{tabular}',r'\par\smallskip\raggedright $H_0$: Original action did not execute. $H_1$: Executed, acknowledgement lost. Difference = Replay minus Regeneration. GitHub has four missing Regeneration effects among 64 evaluable $H_0$ arms; three enter its 63 matched pairs. External intervals are descriptive. Perfect scores do not imply zero population risk; post-hoc marginal intervals are in the public artifact repository.',r'\end{table*}']
+lines += [r'\bottomrule',r'\end{tabular}',r'\par\smallskip\raggedright $H_0$: Original action did not execute. $H_1$: Executed, acknowledgement lost. Sheets repl. denotes the valid separate replication. Difference = Replay minus Regeneration on historical matched pairs; external intervals are descriptive. GitHub $H_0$ has 63 historical pairs because one Replay outcome was unknown. Regeneration scored 60/64 over all evaluable arms; the no-model baseline independently scored 64/64 on its complete cohort. No-model counts have no paired contrast, confidence interval, or significance test.',r'\end{table*}']
 (P/'tables/passb_results.tex').write_text('\n'.join(lines)+'\n')
 
 # Vector presentation figures, using retained numbers only.
@@ -75,6 +116,6 @@ for k in range(2):
         c.circle(xx(v),y,3,fill=1,stroke=0)
 c.setFillColor(HexColor('#17273a'));text(c,255,7,'Paired difference: Replay minus Regeneration (percentage points)',10)
 c.showPage();c.save()
-for name,asset,caption in [('figure1','passb_concept','An ambiguous timeout hides whether the original create happened. Each hidden situation is evaluated under both recovery policies using the same stored original semantic action in isolated state. Arrows show experimental comparisons, not their probabilities. Regeneration may inspect state; it is not forced to do so.'),('figure2','passb_completed_results','The policy contrast depends on hidden execution state. Points show Replay-minus-Regeneration correctness differences; bars are the retained 95\\% paired intervals, not marginal success intervals. External results are descriptive. GitHub uses 63 not-executed pairs and 64 already-executed pairs; the invalid first Sheets attempt and incomplete Razorpay collections are excluded. Counts appear in Table \\ref{tab:results}.')]:
+for name,asset,caption in [('figure1','passb_concept','Original paired Replay--Regeneration design. An ambiguous timeout hides whether the stored create happened. Each hidden situation uses the same original semantic action in isolated state. Regeneration may inspect state; Replay redispatches directly. The post-review baseline uses a separate fixed state-aware controller, defined in the text.'),('figure2','passb_completed_results','Historical Replay--Regeneration contrasts. Replay is the semantic reference arm; points show Replay-minus-Regeneration correctness differences and bars retain the 95\\% paired intervals. External intervals are descriptive. GitHub uses 63 not-executed pairs and 64 already-executed pairs. The post-review no-model counts appear separately in Table \\ref{tab:results}; the invalid first Sheets attempt and incomplete Razorpay collections are excluded.')]:
     (P/f'figures/{name}.tex').write_text('\\begin{figure*}[t]\n\\centering\n\\includegraphics[width=\\textwidth]{figures/'+asset+'.pdf}\n\\caption{'+caption+'}\n\\label{fig:'+name+'}\n\\end{figure*}\n')
 print('Generated 2 presentation figures and 2 main tables from stored data.')
