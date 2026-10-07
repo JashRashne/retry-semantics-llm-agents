@@ -36,7 +36,7 @@ The contributions are threefold:
 
 \item \textbf{Focused recovery comparison.} We compare Exact Replay with bounded LLM continuation after an ambiguous, initially correct stored CREATE under matched NE/AE conditions.
 
-\item \textbf{Live effect validation.} Unlike simulated-service studies \cite{limbo}, we score final effects on live GitHub and Google Sheets endpoints, distinguishing duplicates, model stops without required writes, and a correct write attempt followed by HTTP 504 and a missing effect; evaluator uncertainty remains explicit.
+\item \textbf{Live effect validation.} Unlike simulated-service studies \cite{verified_tool_calls,limbo}, we score final effects on live GitHub and Google Sheets endpoints, distinguishing duplicates, model stops without required writes, and a correct write attempt followed by HTTP 504 and a missing effect; evaluator uncertainty remains explicit.
 
 \item \textbf{Deterministic reference.} We evaluate a one-read keyless rule as a restricted form of established verification-aware recovery, observing 896/896 correct outcomes in separately evaluated cases with usable decision observations and zero recovery model calls.
 
@@ -250,7 +250,7 @@ Classical remote-procedure-call work describes execution uncertainty after commu
 Mansoor et al.'s \emph{Verified Tool Calls} combines task-specific postcondition checks, verify-before-retry logic, and stable idempotency keys under simulated non-atomic failures \cite{verified_tool_calls}. Its verifier distinguishes satisfied, unsatisfied, and inconclusive state; keyless verification leaves a race window. Our deterministic reference is a restricted keyless instantiation of this recovery principle, rather than their complete wrapper. \emph{Did It Happen?} places executed and not-executed outcomes behind an identical timeout and varies reliability advice, status queries, and stable-key affordances \cite{did_it_happen}. Counterfactual hidden-world pairing follows that prior design.
 
 
-Li's closely related study, \emph{Where Does Exactly-Once Live?}, introduces Limbo across a broader model, harness, fault, and tool-contract space \cite{limbo}. It includes counterfactual ambiguity, a verify-before-retry baseline, late commits, redelivery, and a keys-everywhere contract intervention. Limbo uses simulated services; our GitHub and Sheets runs use live endpoints, with provider pagination and an observed transport failure, but at much smaller scale: 64 families per provider and one model family. Its results and late-commit proposition delimit verification: without a known bound on in-flight execution, a keyless observation-based policy cannot guarantee both bounded completion and exactly-once effects. Our constructed execution conditions cover a narrower observation setting.
+Li's closely related study, \emph{Where Does Exactly-Once Live?}, introduces Limbo across a broader model, harness, fault, and tool-contract space \cite{limbo}. It includes counterfactual ambiguity, a verify-before-retry baseline, late commits, redelivery, and a keys-everywhere contract intervention. Limbo uses simulated services; our GitHub and Sheets runs use live endpoints, with provider pagination and an observed HTTP 504, but at much smaller scale: 64 families per provider and one model family. Its results and late-commit proposition delimit verification: without a known bound on in-flight execution, a keyless observation-based policy cannot guarantee both bounded completion and exactly-once effects. Our constructed execution conditions cover a narrower observation setting.
 
 
 Atomix provides broader transactional settlement semantics \cite{atomix}. Its runtime records read and effect scopes, seals transaction footprints, and uses per-resource progress frontiers to permit settlement. Bufferable effects are deferred, reversible effects can be compensated, and irreversible effects remain gated until commit. This composition addresses faults, contention, and speculation subject to adapter and progress contracts. Our controllers address recovery after a single ambiguous CREATE, without providing transactional settlement.
@@ -267,6 +267,11 @@ After an ambiguous mutation, preserving the original request cannot determine wh
 \section{Reproducibility}
 
 {\raggedright The public repository is \codeurl{https://github.com/JashRashne/retry-semantics-llm-agents}. It provides research protocols, stored result artifacts, offline analysis scripts, build instructions, and optional supplementary material with detailed provenance. Model IDs are given in Section III. Presentation uses stored outcomes and requires no live research-provider access. Deterministic-reference results, audit summaries, and archive hashes are in \codeurl{research/baselines/no_model/RESULTS.md}.\par}
+
+
+\section*{Acknowledgment}
+
+Generative AI tools were used during the preparation of this work. OpenAI ChatGPT and Anthropic Claude were used for independent manuscript review, language and style editing, and consistency checks. OpenAI Codex was used for code assistance, including test development and paper--repository consistency checks. The author designed and executed the experiments, verified the reported results and source artifacts, reviewed all AI-assisted outputs, and takes full responsibility for the content of the paper.
 
 \bibliographystyle{IEEEtran}\IfFileExists{research/references.bib}{\bibliography{research/references}}{\bibliography{../research/references}}
 \end{document}

@@ -38,7 +38,7 @@ def render_body(s):
         if line.startswith('#'):
             flush();m=re.match(r'(#+) (.*)',line)
             out.append('\\'+{2:'section',3:'subsection',4:'subsubsection'}[len(m[1])]+'{'+inline(m[2])+'}')
-        elif line.startswith('\\input') or line.startswith('\\label'):
+        elif line.startswith('\\input') or line.startswith('\\label') or line.startswith('\\section*{'):
             flush();out.append(line)
         else:paragraph.append(line.strip())
     flush()

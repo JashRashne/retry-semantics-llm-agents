@@ -210,7 +210,7 @@ c.showPage();c.save()
 
 figures=[
     ('figure1','passb_concept','figure',r'Three controllers after an ambiguous stored CREATE. The solid panel is the matched comparison; the dashed panel is the separately evaluated deterministic verify-before-retry reference. The unusable-observation STOP branch was not exercised in the 896-case reference collection. Stored-request fidelity, effect evidence, and mutation authorization are the analytical lens.'),
-    ('figure2','passb_completed_results','figure*',r'Observed recovery paths. Study 1A AE failures wrote before reading. GitHub NE separates stops without a write from a correct write attempt followed by HTTP 504. The deterministic reference uses separately evaluated reference cohorts, with zero recovery model calls; its successful writes do not establish resilience to the same transport failure.'),
+    ('figure2','passb_completed_results','figure*',r'Observed recovery paths. Study 1A AE failures wrote before reading. GitHub NE separates stops without a write from a correct write attempt followed by HTTP 504. The deterministic reference uses separately evaluated reference cohorts, with zero recovery model calls; its successful writes do not establish resilience to the same HTTP 504 failure.'),
 ]
 for name,asset,environment,caption in figures:
     width=r'\columnwidth' if environment=='figure' else r'\textwidth'
