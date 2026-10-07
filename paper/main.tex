@@ -9,21 +9,24 @@
 \hypersetup{hidelinks,pdftitle={Replay or Regenerate? Retry Semantics for State-Mutating LLM Agent Tool Calls Under Ambiguous Outcomes},pdfauthor={J. Rashne}}
 \begin{document}
 \title{Replay or Regenerate? Retry Semantics for State-Mutating LLM Agent Tool Calls Under Ambiguous Outcomes}
-\author{\IEEEauthorblockN{J. Rashne}\IEEEauthorblockA{Independent researcher\\rashne.jash@gmail.com}}
+\author{\IEEEauthorblockN{J. Rashne}\IEEEauthorblockA{Independent researcher\\jash.rashne@gmail.com}}
 \maketitle
 \begin{abstract}
-An ambiguous timeout after a state-mutating tool call leaves a recovery controller to determine whether the intended effect exists and whether another mutation is justified. We study this state-reconciliation problem through Exact Replay, bounded LLM Regeneration, and a post-review deterministic observe-then-create-if-absent baseline. Controlled ticket experiments and live GitHub and Google Sheets validation score final external state. Replay duplicates an already-completed unprotected CREATE by construction. Regeneration often inspects state and avoids that duplicate: it succeeds in 151/160 already-executed cases in the first ticket study, 160/160 in the model-transition replication, and 64/64 each on GitHub and Sheets. GitHub also exposes missing-effect failures: four of 64 evaluable Regeneration recoveries leave a required issue absent, including one HTTP 504 write attempt. The deterministic baseline succeeds in all 896 post-review opportunities with usable decision observations and zero LLM calls. In these tested observable-state settings, model reasoning was not required for the recovery decision. The central abstraction separates stored request identity, evidence about external state, and the rule authorizing another mutation.
+A timeout after a non-idempotent CREATE leaves its execution outcome unknown: another write may complete the task or duplicate an existing effect. We study recovery after a stored, initially correct call through Exact Replay, bounded LLM Regeneration, and a deterministic verify-before-retry reference. Controlled ticket studies and live GitHub and Google Sheets mutations are scored against final external state. Replay duplicates already-completed unprotected creates. In already-executed cases, Regeneration is correct in 151/160 opportunities in Study 1A, 160/160 in Study 1B, and 64/64 each on GitHub and Sheets. GitHub not-executed Regeneration is correct in 60/64 evaluable cases: three recoveries stop without attempting the required write; one attempts the correct write, receives HTTP 504, and leaves the intended effect absent. The minimal keyless deterministic reference achieves 896/896 correct outcomes on separately evaluated opportunities with usable decision observations and zero recovery model calls. These results show sufficiency of the fixed rule in environments that supplied usable, exactly matchable effect observations. Noisy, delayed, incomplete, or otherwise ambiguous observations remain outside the reference's evidence. The comparison uses stored-request fidelity, effect evidence, and the decision permitting another mutation as an analytical lens on established recovery mechanisms.
 \end{abstract}
 \begin{IEEEkeywords}LLM agents, tool calls, retry semantics, state correctness, ambiguous outcomes.\end{IEEEkeywords}
 \section{Introduction}
 
-Suppose an agent sends a request to create a customer-support issue and receives a timeout. The runtime cannot tell whether the write failed to execute or succeeded with its acknowledgement lost. Sending the same bytes again preserves the request, but deciding whether another issue is needed requires evidence about external state. Recovery therefore has three distinct concerns: stored request identity, evidence that the intended effect exists, and a rule deciding whether another mutation is justified.
+Suppose an agent sends a request to create a customer-support issue and receives a timeout. The response does not reveal whether the mutation never executed or succeeded with its acknowledgement lost. Redispatching the stored request preserves its content, but can create a second issue when the first already exists. We use three concerns to interpret recovery control: stored-request fidelity, evidence about the external effect, and the decision permitting another mutation.
 
 
-Remote-call uncertainty and repeated delivery are established distributed-systems problems \cite{birrell_nelson,helland_idempotence}. Tool-using language models expose a recovery boundary where the runtime can redispatch the stored request or return control to the model. Model continuation can read state, reconsider the action, and stop. That flexibility makes state reconciliation possible, but a deterministic controller may obtain the same evidence and make the decision without a model.
+Remote-call uncertainty and repeated delivery are established distributed-systems problems \cite{birrell_nelson,helland_idempotence}. Verification-before-retry is also established in agent recovery: a controller checks whether an intended effect exists before permitting another write \cite{verified_tool_calls,limbo}. A tool-using runtime can instead return control to the model, whose continuation may inspect state, write, or stop. This flexibility can suppress duplicates, but can also leave a needed mutation unattempted.
 
 
-We examine CREATE-like, non-idempotent operations: support tickets, GitHub issues, and spreadsheet row appends. The original studies compare \textbf{Exact Replay}, a single redispatch of the stored request, with \textbf{bounded LLM Regeneration}, a limited continuation that can read, write, or stop. A \textbf{post-review deterministic no-model baseline} reads once and dispatches the stored original CREATE only when a usable observation does not show the intended effect. Study 1A supplies the original planned controlled comparison; Study 1B bridges a model-availability transition; Study 2 provides descriptive live validation. The baseline is a separate descriptive addition.
+We examine this boundary for support-ticket creation, GitHub issue creation, and spreadsheet row appends. \textbf{Exact Replay} redispatches the stored mutation once. \textbf{Bounded LLM Regeneration} continues the conversation with access to read and write tools. The \textbf{deterministic verify-before-retry reference} makes one decision read and dispatches the stored CREATE only when a usable observation does not show the exact intended effect. The comparison begins after an initially correct call; it concerns recovery control rather than initial task planning.
+
+
+Study 1A evaluates controlled tickets, Study 1B repeats the comparison across a model-availability transition, and Study 2 validates effects through live GitHub and Sheets operations. Counterfactual executed/not-executed ambiguity follows prior evaluation work \cite{did_it_happen,limbo}. The paper's role is a focused empirical comparison with a minimal deterministic reference.
 
 
 The contributions are threefold:
@@ -31,11 +34,11 @@ The contributions are threefold:
 
 \begin{itemize}
 
-\item \textbf{Recovery-control semantics.} We distinguish request fidelity from effect evidence and the decision to mutate again. The paired hidden-outcome design follows prior recovery work \cite{did_it_happen}; the focus here is what each controller does after a stored state-mutating call becomes ambiguous.
+\item \textbf{Focused recovery comparison.} Compare Exact Replay with bounded LLM continuation after an ambiguous stored CREATE under matched not-executed and already-executed conditions.
 
-\item \textbf{Live state validation.} Controlled ticket studies and completed GitHub and Sheets comparisons show both duplicate-producing writes and missing required effects. GitHub demonstrates that bounded model continuation can stop while a mutation is still needed.
+\item \textbf{Live effect validation.} Extend controlled ticket evidence to GitHub and Sheets, distinguishing duplicate effects, model stops without required writes, a correct write attempt followed by HTTP 504 and a missing effect, and evaluator uncertainty.
 
-\item \textbf{A deterministic state-aware comparison.} The post-review rule succeeds in 896/896 opportunities with zero LLM calls. With usable state observations in the tested environments, it matches or exceeds Regeneration's observed correctness, showing that these decisions did not require model reasoning.
+\item \textbf{Deterministic reference.} Evaluate a minimal keyless verify-before-retry rule on separate frozen cohorts: 896/896 correct outcomes with usable observations and zero recovery model calls.
 
 \end{itemize}
 
@@ -48,13 +51,13 @@ An acknowledgement is the service's reply confirming an action. Losing that repl
 
 \begin{itemize}
 
-\item \textbf{Original action did not execute.} No intended effect exists before recovery, so completing the task requires a mutation.
+\item \textbf{NE (not-executed).} The original action did not execute. No intended effect exists before recovery, so completing the task requires a mutation.
 
-\item \textbf{Executed, acknowledgement lost.} The original action executed successfully, but its acknowledgement was lost. One intended effect already exists, so another unprotected create can produce a duplicate.
+\item \textbf{AE (already-executed).} The original action executed successfully, but its acknowledgement was lost. One intended effect already exists, so another unprotected create can produce a duplicate.
 
 \end{itemize}
 
-We later denote these execution worlds by $H_0$ and $H_1$, respectively. They are labels for hidden execution state, not statistical null and alternative hypotheses. Their frequencies in the experiment are assigned by design; we do not estimate how often either situation occurs in deployment.
+These execution conditions are assigned by design; their frequencies do not estimate deployment prevalence.
 
 
 For a create operation, sending identical bytes twice need not mean creating one resource. Idempotence means repeated requests have the same intended effect as one request \cite{rfc9110}. An application-level idempotency key can associate repeated deliveries with one logical operation \cite{helland_idempotence}. We study mutation paths without such a deduplication intervention. Replay is a semantic reference arm: after successful execution, another unprotected CREATE duplicates the effect by construction.
@@ -62,19 +65,19 @@ For a create operation, sending identical bytes twice need not mean creating one
 
 \subsection{Recovery policies}
 
-\textbf{Exact Replay} redispatches the stored original request once, preserving its URL, headers, and body bytes within that trial. It invokes no recovery model call and then terminates. Its advantage is request fidelity: it cannot change the requested content while reconsidering the task. Fidelity alone does not establish whether that request should be sent again.
+\textbf{Exact Replay} redispatches the stored original request once, preserving its URL, headers, and body bytes within that trial, then stops. It makes zero recovery model calls. This provides stored-request fidelity, but does not determine whether another mutation is justified or supply service-enforced deduplication. Replay is the semantic reference for unconditional redispatch.
 
 
-\textbf{LLM Regeneration} appends the ambiguous tool result to the original conversation and invokes the same study model. The model may inspect state, issue a mutation, change arguments, or stop. At most three tool-action attempts and four model calls are permitted. Reads and writes both consume the action budget; a text-only stop consumes a model call but no tool action. Invalid in-budget tool attempts also consume an action, and an over-budget request is recorded but not executed. A recovery is budget-exhausted when the model requests another tool action after its three-action allowance has been spent; using all three permitted actions is not itself exhaustion. Original generation and final evaluator reads are outside this recovery budget.
+\textbf{Bounded LLM Regeneration} appends the ambiguous tool result to the original conversation and invokes the same study model. The model may inspect state, issue a mutation, change arguments, or stop. At most three tool-action attempts and four model calls are permitted. Reads and writes both consume the action budget; a text-only stop consumes a model call but no tool action. Invalid in-budget tool attempts also consume an action, and an over-budget request is recorded but not executed. A recovery is budget-exhausted when the model requests another tool action after its three-action allowance has been spent; using all three permitted actions is not itself exhaustion. Original generation and final evaluator reads are outside this recovery budget.
 
 
 The budget permits a compact read--write--confirm sequence while bounding loops. A high-level paginated list counts as one tool action even if it makes several HTTP requests; provider traversal limits apply separately. This cap defines the evaluated Regeneration policy.
 
 
-\textbf{Deterministic no-model baseline.} Added after reviewer feedback, this fixed rule makes one decision LIST/logical read. If the observation is unusable, it stops; an unusable read is never treated as absence. If the exact intended effect is visible, it stops without writing. Otherwise, it dispatches the stored original CREATE once and stops. It makes zero LLM calls, permits at most one recovery CREATE, and has no loop or second decision read. It uses the same semantic observation interface as Regeneration, without a hidden $H_0$/$H_1$ oracle, evaluator-only evidence, an original resource ID hidden from Regeneration, or an idempotency key. A required write retains the stored original request and request identity.
+\textbf{Deterministic verify-before-retry reference} makes one decision LIST/logical read. If the observation is unusable, it stops; an unusable read is never treated as absence. If the exact intended effect is visible, it stops without writing. Otherwise, it dispatches the stored original CREATE once and stops. It makes zero recovery model calls, permits at most one recovery CREATE, and has no loop or second decision read. It uses Regeneration's semantic observation interface, with no hidden execution-world oracle, evaluator-only evidence, original resource ID unavailable to Regeneration, or idempotency key. A dispatched mutation retains stored-request fidelity. This is a deliberately restricted instantiation of verification-before-retry \cite{verified_tool_calls}.
 
 
-Figure \ref{fig:figure1} shows the original Replay--Regeneration recovery boundary; the baseline adds a fixed controller that uses state evidence and the stored request.
+Figure \ref{fig:figure1} compares the three controllers at this recovery boundary, distinguishing the matched Replay--Regeneration comparison from the separately evaluated deterministic reference.
 
 
 \input{figures/figure1.tex}
@@ -83,7 +86,7 @@ Figure \ref{fig:figure1} shows the original Replay--Regeneration recovery bounda
 
 \subsection{One original action, four linked recoveries}
 
-Each original Replay--Regeneration trial begins with a task and a model-generated mutation. An original call is eligible only if it is parseable, schema-valid, and correct for the requested task. We store that original assistant message and mutation unchanged before recovery. We call the four linked evaluations derived from it a \textbf{family}: two execution situations, each evaluated under Replay and Regeneration. A family is a matched unit, not four independent task examples. The comparison starts after a correct original call; it does not measure whether an agent selects the right initial action from scratch.
+Each Replay--Regeneration trial begins with a task and a model-generated mutation. An original call is eligible only if it is parseable, schema-valid, and correct for the requested task. We store that assistant message and mutation unchanged before recovery. The four linked evaluations form a \textbf{family}: two execution situations, each evaluated under Replay and Regeneration. A family is the matched unit. The deterministic reference is evaluated on separate frozen opportunities, outside this four-evaluation comparison.
 
 
 Each evaluation uses an isolated copy of the logical initial state or a dedicated external trial scope. The same original semantic action and prompt history are shared across its family, while physical provider resources remain isolated. In the not-executed situation, the harness records the request but does not dispatch it. In the already-executed situation, it dispatches the original once, verifies successful execution, and withholds the acknowledgement from recovery. This construction gives known starting state for both situations instead of relying on naturally occurring timeouts with uncertain ground truth.
@@ -92,12 +95,12 @@ Each evaluation uses an isolated copy of the logical initial state or a dedicate
 Both situations expose the same synthetic message: \emph{The previous request timed out. Its outcome is unknown.} Neither the hidden situation nor the original resource identifier is supplied to the model. Replay sends the saved request; Regeneration receives the unchanged preceding conversation and this ambiguous result. Subsequent read-tool responses may reveal state. The experiment thus holds the original decision fixed while varying who controls recovery.
 
 
-Study 1 uses eight ticket scenarios repeated 20 times, giving 160 families per controlled study. Each replicate has a separately scheduled original generation, but the task templates recur. The scenarios describe different support incidents; all ask for a ticket creation using the same operation and tool interface. Alternating scenario order and four balanced scheduling strata reduce simple order confounding. These are 160 repeated opportunities across eight templates, not 160 unrelated task types.
+Study 1 uses 160 repeated opportunities across eight ticket templates, with 20 repeats per template in each controlled study. Each replicate has a separately scheduled original generation and supplies one matched family. The templates describe different support incidents; all ask for a ticket creation using the same operation and tool interface. Alternating template order and four balanced scheduling strata reduce simple order confounding.
 
 
 \subsection{Models, tools, and study roles}
 
-{\raggedright Study 1A used \textbf{DeepSeek V4 Flash (0731)} through Fireworks serverless inference, with model identifier \codeurl{accounts/fireworks/models/deepseek-v4-flash-0731}. Study 1B and Study 2 used \textbf{DeepSeek V4.1 Flash} through the same inference provider, identifier \codeurl{accounts/fireworks/models/deepseek-v4p1-flash}. All studies requested temperature 0.0, top-p 1.0, maximum output tokens 1024, reasoning effort none, automatic tool selection, and disabled parallel tool calls. An immutable hosted-model digest was not recorded.\par}
+{\raggedright Study 1A used \textbf{DeepSeek V4 Flash (0731)} through Fireworks serverless inference, with model identifier \codeurl{accounts/fireworks/models/deepseek-v4-flash-0731}. Study 1B and Study 2 used \textbf{DeepSeek V4.1 Flash} through the same inference provider, identifier \codeurl{accounts/fireworks/models/deepseek-v4p1-flash}. All studies requested temperature 0.0, top-p 1.0, maximum output tokens 1024, reasoning effort none, automatic tool selection, and disabled parallel tool calls.\par}
 
 
 {\raggedright The controlled studies offered \codeurl{create_ticket} and \codeurl{list_tickets}. External trials offered the corresponding create/list tools: \codeurl{create_issue} and \codeurl{list_issues} for GitHub, and \codeurl{append_row} and \codeurl{list_rows} for Sheets. Study 1B and Study 2 share the exact requested model ID and scalar inference settings, but provider-specific tasks, schemas, scopes, and seed schedules differ. Table \ref{tab:overview} summarizes the completed studies.\par}
@@ -110,21 +113,20 @@ Study 1 uses eight ticket scenarios repeated 20 times, giving 160 families per c
 A recovery is \textbf{state-correct} when the final system contains exactly one intended effect and no unintended effects attributable to the trial. Task fields must match the requested content. Zero intended effects is a missing effect; multiple matching resources are duplicates; additional nonmatching trial resources are unintended effects. An HTTP success response or the model's completion claim is insufficient. When the required observations cannot certify final state, the outcome remains unknown and is excluded from the corresponding matched comparison, rather than assigned a zero score.
 
 
-Natural-language answer quality is not scored. Latency, token use, and monetary cost are outside the endpoint. Tool and model-call counts describe recovery work but are not a cost-normalized comparison. In particular, procedural termination and state correctness can disagree: a recovery can terminate with budget exhaustion after already producing the correct state.
+Tool and model-call counts describe recovery work. Procedural termination and state correctness can disagree: a recovery can terminate with budget exhaustion after already producing the correct state.
 
 
-Controlled ticket reads expose complete trial-local state. External reads follow provider-specific contracts described below. For attribution, the harness attaches a unique trial marker to provider state and removes it from model-visible results. The marker is not exposed as a tool argument or in the task; it is provider-visible metadata, not an idempotency key, and does not suppress duplicate writes. Marker-based filtering gives the model trial-local semantic records, simplifying attribution relative to some production systems. The public artifact repository details placement, collision checks, and observation rules.
+Controlled ticket reads expose complete trial-local state. External reads follow the provider-specific contracts described below. For attribution, the harness attaches a unique trial marker to provider state and removes it from model-visible results. The marker is not exposed as a tool argument or in the task; it is provider-visible metadata, not an idempotency key, and does not suppress duplicate writes. Marker-based filtering produces trial-local semantic records. The public artifact repository details placement, collision checks, and observation rules.
 
 
-\subsection{Matched analysis and evidence status}
+\subsection{Results presentation}
 
-The historical Replay--Regeneration comparison uses the shared original action as its paired unit. Table \ref{tab:results} retains correctness counts and two-sided 95\% paired Newcombe method 10 intervals \cite{newcombe} for the difference, Replay minus Regeneration, in percentage points. Figure \ref{fig:figure2} displays those historical contrasts. Replay supplies a semantic reference; its deterministic already-executed failure requires no significance test. We omit Replay--Regeneration hypothesis tests from the manuscript while preserving the original statistical outputs in the evidence artifacts.
-
-
-Study 1A's analysis plan was specified before collection and timestamped in repository history, without independent preregistration. Study 1B is a separate model-transition replication. Study 2 retains a secondary descriptive role, with providers reported separately. Stored whole-family bootstrap interaction intervals \cite{efron_bootstrap}, full-precision paired estimates, and post-hoc descriptive marginal intervals remain in the supplement. Scenario counts and action-path summaries are post-hoc descriptive; GitHub missing-arm alternatives are post-hoc sensitivity checks.
+Table \ref{tab:results} reports observed final-state correctness counts. Replay's AE failure follows from unprotected CREATE semantics. Figure \ref{fig:figure2} shows recovery paths that distinguish duplicate writes, stops without required writes, and a transport-failed write attempt.
 
 
-The no-model baseline was added post-review and independently evaluated 896 frozen opportunities: 640 ticket, 128 GitHub, and 128 valid Sheets-replication cases. It is reported descriptively, without a paired contrast, confidence interval, or significance test. Its complete 64-case GitHub $H_0$ cohort is separate from the historical 63-pair analysis.
+\subsection{Evidence status}
+
+Replay--Regeneration comparisons use matched original-action families. Study 1A's analysis plan was specified before collection and timestamped in repository history, without independent preregistration; Study 1B is a model-transition replication. Study 2 provides secondary external validation, with providers reported separately. The deterministic verify-before-retry reference uses separate frozen cohorts and is reported descriptively, without a paired contrast, confidence interval, or significance test. Scenario and action-path summaries are descriptive, and GitHub missing-arm alternatives are post-hoc sensitivity checks. Existing statistical outputs remain in supplementary evidence: full-precision paired Newcombe method 10 intervals \cite{newcombe}, whole-family bootstrap interaction intervals \cite{efron_bootstrap}, post-hoc marginal intervals, and archived significance tests. The invalid first Sheets collection contributes no behavioral comparison; incomplete Razorpay collections supply operational evidence only.
 
 
 \input{tables/passb_results.tex}
@@ -138,7 +140,7 @@ The no-model baseline was added post-review and independently evaluated 896 froz
 Study 1A completed 160 eligible families and all 640 linked evaluations. When the original action did not execute, Replay and Regeneration were each correct in 160/160 cases.
 
 
-After execution with acknowledgement loss, Regeneration was correct in 151/160 cases (94.4\%); nine recoveries duplicated the ticket. Replay scored 0/160 because every redispatch created a second ticket. Table \ref{tab:results} retains the paired uncertainty intervals.
+After execution with acknowledgement loss, Regeneration was correct in 151/160 cases (94.4\%); nine recoveries duplicated the ticket. Replay scored 0/160 because every redispatch created a second ticket.
 
 
 \subsection{What the recovery traces establish}
@@ -146,7 +148,7 @@ After execution with acknowledgement loss, Regeneration was correct in 151/160 c
 In all 151 correct already-executed Regeneration cases, the model read the ticket list and stopped without another write. The nine failures wrote first and each created a duplicate. Five then read and stopped; four stopped immediately after the write. No wrong-content mutation, malformed or rejected generation, or budget exhaustion was recorded. These valid but unnecessary writes show why schema correctness alone cannot establish recovery correctness.
 
 
-Post-hoc scenario inspection places the nine failures across four of the eight templates, with failure counts of one, two, two, and four. Already-executed Regeneration correctness ranged from 16/20 to 20/20 across scenarios. Four templates had no observed failures; the remaining four had 1/20, 2/20, 2/20, and 4/20 failures.
+Scenario inspection places the nine failures across four of the eight templates, with failure counts of one, two, two, and four. Already-executed Regeneration correctness ranged from 16/20 to 20/20 across scenarios. Four templates had no observed failures; the remaining four had 1/20, 2/20, 2/20, and 4/20 failures.
 
 
 When the original action did not execute, 146/160 Regeneration recoveries read before writing; the remaining 14 wrote immediately. All were correct, and every recovery issued exactly one mutation. In the already-executed situation, the five write--read--stop paths explain the mean of 2.03 model calls rather than exactly two. The other four failed write--stop paths used the same number of calls as a successful read--stop path. Means alone therefore conceal some failures.
@@ -165,7 +167,7 @@ In all 160 already-executed Regeneration evaluations, DeepSeek V4.1 Flash inspec
 
 \section{Study 2: external validation}
 
-Study 1 deliberately makes state observation clean and complete. Study 2 asks whether the recovery distinction remains visible when mutations and observations reach actual external services. It retains DeepSeek V4.1 Flash and the same recovery bounds, using dedicated provider scopes and 64 planned families per provider. GitHub and the separate Sheets replication supply completed comparisons. A third provider attempt supplies only incomplete operational evidence.
+Study 1 deliberately makes state observation clean and complete. Study 2 asks whether the recovery distinction remains visible when mutations and observations reach actual external services. It retains DeepSeek V4.1 Flash and the same recovery bounds, using dedicated provider scopes and 64 planned families per provider. GitHub and the separate Sheets replication supply completed comparisons. A third external provider attempt, Razorpay, remained incomplete under sustained throttling and is reported only as operational evidence in the supplement.
 
 
 \subsection{GitHub issue creation}
@@ -176,16 +178,16 @@ The mutation created a GitHub issue with the requested title and body in a dedic
 Final-state evaluation used separate issue censuses at recovery end and, when required, 600 seconds later. Completeness required validated traversal within the protocol's bounds; an established irreversible duplicate could terminate observation early. A successful first census alone did not certify a final success if the required later census failed.
 
 
-When the original action did not execute, the historical matched results were Replay 63/63 and Regeneration 60/63: a +4.8 percentage-point difference (95\% paired CI [-1.8, 13.1]). After execution with acknowledgement loss, Replay scored 0/64 through duplicates and Regeneration 64/64.
+Across 63 matched NE pairs, Replay was correct in 63/63 cases and Regeneration in 60/63. In AE cases, Replay scored 0/64 through duplicates and Regeneration 64/64.
 
 
-Across all 64 evaluable not-executed Regeneration cases, four ended without the required effect. In three cases, the model stopped after two reads, citing uncertainty about visibility and the risk of creating a duplicate, without attempting a mutation. The fourth attempted the correct mutation after two reads, received HTTP 504, and subsequently had a confirmed missing final effect. That dispatch's provider/runtime failure mechanism remains ambiguous; it is not a model-chosen omission. None of the four terminated because of budget exhaustion.
+Across all 64 evaluable NE Regeneration arms, correctness was 60/64. Three recoveries (3/64) stopped after two reads, citing visibility uncertainty and duplicate risk, without attempting the required write. One recovery (1/64) attempted the correct mutation after two reads, received HTTP 504, and had no intended effect at final evaluation. The latter is an endpoint failure with an unresolved provider/runtime mechanism, not a model decision to omit the mutation. None of these four recoveries terminated because of budget exhaustion.
 
 
-One Replay case could not be scored because its first required census completed but its later confirmation census did not. Its Regeneration partner was one of the three no-write failures, so that pair is excluded from the matched not-executed result. This explains 60/63 in the paired table versus 60/64 among all evaluable Regeneration cases. The public artifact repository retains the unknown result and gives simple post-hoc alternatives for its possible binary score. No imputation changes the primary matched result.
+One NE Replay outcome remained unknown because the required later confirmation census failed. Its Regeneration partner was one of the three no-write failures, so the pair is excluded from the matched result. This explains 60/63 in Table \ref{tab:results} versus 60/64 among all evaluable NE Regeneration arms; the unknown Replay outcome and sensitivity alternatives remain in supplementary evidence.
 
 
-An interrupted original collection was completed by a continuation using the same saved original requests. Earlier unresolved records for untouched recoveries were replaced, not counted as additional observations; detailed collection history is in the public artifact repository. Finally, 16/64 not-executed Regeneration cases terminated with budget exhaustion but still ended state-correct. This illustrates the endpoint's separation from procedural completion rather than explaining the missing effects.
+Collection continuation preserved already-entered policy cases and completed previously untouched recoveries without adding observations. Separately, 16/64 NE Regeneration cases terminated with budget exhaustion but still ended state-correct; this procedural outcome does not explain the missing effects.
 
 
 \subsection{Google Sheets row appends}
@@ -193,74 +195,72 @@ An interrupted original collection was completed by a continuation using the sam
 {\raggedright The Sheets mutation appended a row to a private, isolated trial list using an \codeurl{AppendCellsRequest}; the read tool retrieved the assigned bounded grid through \codeurl{spreadsheets.get} \cite{sheets_append_cells,sheets_get}. Intended content occupied two columns, with a harness attribution marker in a separate column. Final evaluation checked the complete assigned 100-row range for exactly one matching append and no unintended trial rows.\par}
 
 
-The first attempt contained an acknowledgement-validation implementation bug that prevented valid construction of the executed-but-acknowledgement-lost condition. In the invalid first attempt, every already-executed construction was rejected before recovery began, so no already-executed policy behavior was observed. Its 64 not-executed successes were discarded under the predefined family-level validity rule, leaving zero behavioral comparison families. The public artifact repository documents the failed attempt.
+The first collection was invalid because of an acknowledgement-validation construction bug; zero behavioral comparison families were retained. Its provenance remains in the supplement.
 
 
-After correcting the bug, we ran a separate fresh replication using a new spreadsheet and namespace, with newly generated originals. The invalid first attempt remains separately preserved. In 64 completed families, Replay and Regeneration were each correct in 64/64 not-executed cases. After execution with acknowledgement loss, Replay was correct in 0/64 and Regeneration in 64/64. Regeneration read state and issued no recovery mutation in all 64 already-executed cases.
+After correction, a fresh replication completed 64 families. Replay and Regeneration were each correct in 64/64 NE cases. In AE cases, Replay was correct in 0/64 and Regeneration in 64/64. Regeneration read state and issued no recovery mutation in all 64 AE cases.
 
 
-\subsection{Incomplete Razorpay attempt}
+\section{Deterministic verify-before-retry reference}
 
-We also attempted external validation using Razorpay Test Mode order creation. Three separate collection attempts stopped under repeated HTTP 429 throttling after evaluating 2, 4, and 12 of 256 scheduled recoveries, respectively. The observed prefixes included duplicate effects under both policies, and Regeneration did not consistently recover correctly after the original action executed with its acknowledgement lost. Across the three stopped prefixes, the already-executed matched results were Replay versus Regeneration: 0/1 versus 0/1, 0/1 versus 0/1, and 0/3 versus 1/3, respectively. The public artifact repository retains separate prefix results and stop diagnostics.
-
-
-\section{Deterministic no-model baseline}
-
-The rule was final-state correct in 896/896 post-review opportunities, with zero unknown outcomes and zero model calls. All 896 decision observations were usable. In all 448 $H_0$ cases, the single read showed no intended effect and the stored CREATE succeeded. In all 448 $H_1$ cases, the effect was visible and the controller stopped without another mutation. Ticket cases contributed 640/640 successes; GitHub and Sheets contributed 128/128 each. Table \ref{tab:results} gives the eight strata.
+The fixed rule was final-state correct in 896/896 opportunities, with zero unknown outcomes and zero recovery model calls. All 896 decision observations were usable. In all 448 NE cases, the single read showed no intended effect and the stored CREATE succeeded. In all 448 AE cases, the effect was visible and the controller stopped without another mutation. Tickets contributed 640/640 successes; GitHub and Sheets contributed 128/128 each. Each execution condition scored 160/160 in each ticket study and 64/64 on each live service. Table \ref{tab:results} gives the eight strata.
 
 
-On their respective evaluable cohorts, the rule exceeded Regeneration's observed correctness in Study 1A $H_1$ (160/160 versus 151/160) and GitHub $H_0$ (64/64 versus 60/64), and matched it in the remaining strata. The GitHub comparison is descriptive across separate cohorts; the historical primary analysis remains 63 matched Replay--Regeneration pairs.
+The observed recovery path was one read followed by either a stored-request dispatch or a stop without writing. Final-state evaluation, rather than the controller's termination, certified these outcomes.
 
 
 \section{Discussion and limitations}
 
 \subsection{State reconciliation and recovery control}
 
-Replay preserves request identity but makes no use of state evidence. Regeneration can acquire evidence and reconsider the action, yet GitHub shows that it can also stop while a required effect remains missing. Three recoveries omitted the write; a fourth attempted the correct write and received HTTP 504. The latter shows that choosing a justified mutation and achieving the final state are separate requirements.
+Stored-request fidelity and effect evidence answer different questions: what to redispatch and whether another mutation is justified. Exact Replay retains the request but does not consult state. Regeneration often inspected state and suppressed a duplicate, yet GitHub also recorded three not-executed recoveries that stopped without attempting the required write. A fourth recovery attempted the correct write, received HTTP 504, and left the intended effect absent. Choosing a justified mutation and successfully realizing its effect are separate requirements.
 
 
-The deterministic baseline materially changes the interpretation. With usable observations, a fixed controller matched or exceeded Regeneration's observed correctness in every tested stratum, without model calls. These recovery decisions therefore do not demonstrate a need for LLM reasoning. The useful abstraction is stored request identity, evidence about external state, and a recovery rule deciding whether another mutation is justified.
+The deterministic verify-before-retry reference achieved final-state correctness across all 896 separately evaluated opportunities with usable decision observations and zero recovery model calls. This establishes sufficiency of the fixed rule in these observation settings. It does not isolate the contribution of reasoning within Regeneration or establish a general ranking of recovery policies. Its successful writes also do not show that the rule would survive the same HTTP 504 failure: it dispatches once and stops.
 
 
-This abstraction also identifies unresolved decisions. A controller needs an observation contract strong enough to support its action: an unusable read cannot establish absence, and stopping without evidence of execution can leave the task incomplete. Server-supported deduplication, stronger receipts, or escalation are possible mechanisms for handling that uncertainty.
+The unresolved boundary is evidence that cannot settle the recovery decision. An unusable read cannot establish absence; even an accurate read of current state cannot exclude a later commit by an in-flight original request \cite{limbo}. Stopping can leave required work incomplete, while redispatch can duplicate it. Stable operation keys, queryable outcomes with suitable execution guarantees, or escalation require stronger contracts than the reference evaluated here.
 
 
 \subsection{Scope of the evidence}
 
-\textbf{Baseline and observation quality.} The no-model baseline is a post-review descriptive evaluation on its own cohort. Its external cases were collected separately from the historical policy arms, rather than as contemporaneous paired provider measurements. All 896 decision observations were usable; stale, incomplete, noisy, or unusable observation behavior remains untested. The policy specifies STOP on an unusable read, but this branch was not exercised. Complete local lists, isolated external scopes, and harness-owned attribution markers simplify reconciliation. The markers are hidden from the model, visible to providers, and preserve duplicate writes. Uninstrumented reconciliation, unrelated concurrent activity, and arbitrary consistency models remain outside the evaluation. GitHub's read interface warned that an absent issue might still be unobserved, a relevant condition for its three no-write failures.
+\textbf{Observation and collection scope.} Reconciliation used complete local lists, isolated provider scopes, and exact semantic matching. Provider-visible attribution markers hidden from the model simplified trial-local observation. All deterministic-reference decision reads were usable; stale, noisy, incomplete, delayed, or unusable observations were untested, and its STOP-on-unusable branch was not exercised. The reference's external cohorts were collected separately from Replay and Regeneration, with no contemporaneous paired deterministic control. GitHub's read interface warned that an absent issue might still be unobserved; that warning formed part of the setting for its three no-write stops. Unmarked reconciliation and unrelated concurrent activity remain outside the evaluation.
 
 
-\textbf{Policy and model attribution.} Regeneration bundles model reasoning, observation access, and bounded continuation. Read-first behavior was observed, not randomized. The baseline demonstrates sufficiency of one controller in these settings, without isolating which Regeneration component caused each outcome. Idempotency-key recovery and abort/escalate policies were not evaluated. The availability-driven model transition and provider changes also prevent a clean attribution of Study 1A--Study 2 differences to the model. Hosted model IDs lack immutable weight digests.
+\textbf{Policy and model scope.} The studies used two hosted versions of one DeepSeek model family, requested reasoning effort none, and recorded no immutable weight digest. Regeneration combines model reasoning, observation access, and bounded continuation; read-first behavior was observed rather than randomized. The availability-driven model transition and provider changes prevent clean attribution of between-study differences to the model. There was no idempotency-key arm or evaluated abort/escalate policy. Longer continuations and other recovery budgets were not tested.
 
 
-\textbf{Task scope and uncertainty.} Eight ticket templates repeated 20 times may induce dependence beyond the matched family. The retained family-level intervals and descriptive scenario counts concern this fixed catalogue. Controlled tasks and two completed external services provide limited coverage of deployment behavior; perfect observed scores do not establish zero population risk. The equally allocated hidden situations do not estimate their real-world prevalence or an unconditional policy ranking.
+\textbf{Task coverage and dependence.} Eight ticket templates repeated 20 times yield 160 opportunities, not 160 independent task types. Template dependence remains beyond the matched family, and family-level intervals concern this fixed catalogue. Completed live validation is limited to GitHub and Sheets. Perfect observed scores do not establish zero population risk, and equally allocated execution conditions do not estimate deployment prevalence.
 
 
-\textbf{Bounds and endpoints.} Regeneration's three-action, four-call budget accommodates a short read--write--confirm path; longer strategies and other caps were not tested. Final-state correctness omits answer quality, latency, token use, and monetary cost. Sixteen GitHub recoveries exhausted their budget with correct state, so procedural completion and state correctness measure different outcomes.
-
-
-\textbf{Failure construction and collection.} The studies construct ambiguity around either complete successful execution or no execution. Natural failures, partial effects, and delayed execution were not sampled. GitHub retained one unknown Replay score and required interrupted-collection continuation. The first Sheets attempt was invalid; its separate valid replication supplies the reported results. Razorpay remained incomplete under throttling and supplies only operational evidence. Provenance and GitHub missing-arm sensitivity checks retain these collection limits.
+\textbf{Failure and endpoint scope.} Ambiguity was constructed around either complete successful execution or no execution; natural failure rates, late commits, delayed execution, and partial effects were not sampled. Final-state correctness measures neither latency, cost, nor natural-language answer quality, and does not provide an execution ledger of transient effects. A correct recovery action can still fail to produce the effect, as the HTTP 504 case demonstrates. GitHub continuation and its unknown Replay outcome preserve collection limits described above.
 
 
 \section{Related work}
 
-Classical remote-procedure-call work explains execution uncertainty after communication failure \cite{birrell_nelson}. HTTP idempotence and application-level operation identity address repeat delivery \cite{rfc9110,helland_idempotence}; sagas address compensation in multi-step work \cite{sagas}. ReAct supplies the reasoning--action--observation pattern \cite{react}, and $\tau$-bench evaluates agents against terminal database state across repeated trials \cite{tau_bench}. Those evaluation ideas motivate our final-state endpoint.
+Classical remote-procedure-call work describes execution uncertainty after communication failure \cite{birrell_nelson}. HTTP idempotence distinguishes repeatable effects from request fidelity, and application-level operation identity can support deduplication \cite{rfc9110,helland_idempotence}. Sagas address compensation in multi-step work \cite{sagas}. ReAct supplies the reasoning--action--observation pattern \cite{react}; $\tau$-bench evaluates tool-using agents against terminal database state across repeated trials \cite{tau_bench}.
 
 
-The closest recovery work further narrows the claim. \emph{Verified Tool Calls} evaluates postcondition verification, verify-before-retry, and idempotency mechanisms under simulated non-atomic failures \cite{verified_tool_calls}. \emph{Did It Happen?} places cases where the action had executed versus had not executed behind an identical timeout and varies reliability advice, status queries, and stable-key affordances \cite{did_it_happen}. Hidden-world pairing is therefore prior work, not our novelty. ACRFence studies how checkpoint-restored agents can re-synthesize requests and develops defenses against semantic rollback \cite{acrfence}; regenerated-request drift is also an established concern.
+Mansoor et al.'s \emph{Verified Tool Calls} combines task-specific postcondition checks, verify-before-retry logic, and stable idempotency keys under simulated non-atomic failures \cite{verified_tool_calls}. Its verifier distinguishes satisfied, unsatisfied, and inconclusive state; keyless verification leaves a race window. Our deterministic reference is a restricted keyless instantiation of this recovery principle, rather than their complete wrapper. \emph{Did It Happen?} places executed and not-executed outcomes behind an identical timeout and varies reliability advice, status queries, and stable-key affordances \cite{did_it_happen}. Counterfactual hidden-world pairing follows that prior design.
 
 
-\emph{Callability Is Not Operability}, through AFT-Bench, holds tasks and backends fixed while changing interfaces, including recovery and verification affordances \cite{aft}. Relative to the paired-outcome design already used in \emph{Did It Happen?} \cite{did_it_happen}, this paper focuses on recovery control for stored non-idempotent CREATE calls: request identity, evidence that an effect exists, and authorization of another mutation. Live GitHub and Sheets validation extends the controlled ticket evidence, and the post-review deterministic baseline tests whether a fixed state-aware rule suffices for these decisions. The contribution is this focused semantics and validation, rather than the paired hidden-outcome design itself.
+Li's closely related concurrent study, \emph{Where Does Exactly-Once Live?}, introduces LIMBO across a broader model, harness, fault, and tool-contract space \cite{limbo}. It includes counterfactual ambiguity, a verify-before-retry baseline, late commits, redelivery, and a keys-everywhere contract intervention. Its results and late-commit proposition delimit verification: without a known bound on in-flight execution, a keyless observation-based policy cannot guarantee both bounded completion and exactly-once effects. Our constructed execution conditions cover a narrower observation setting.
+
+
+Atomix provides broader transactional settlement semantics \cite{atomix}. Its runtime records read and effect scopes, seals transaction footprints, and uses per-resource progress frontiers to permit settlement. Bufferable effects are deferred, reversible effects can be compensated, and irreversible effects remain gated until commit. This composition addresses faults, contention, and speculation subject to adapter and progress contracts. Our controllers address recovery after a single ambiguous CREATE, without providing transactional settlement.
+
+
+ACRFence examines request re-synthesis after checkpoint restoration and defenses against semantic rollback \cite{acrfence}. \emph{Callability Is Not Operability}, through AFT-Bench, holds tasks and backends fixed while changing interfaces, including recovery and verification affordances \cite{aft}. These works establish the importance of request fidelity and available evidence. Our narrower empirical role is to compare stored-request replay with bounded continuation, validate final effects on tickets and live GitHub/Sheets operations, and evaluate the sufficiency of a minimal keyless reference under usable observations.
 
 
 \section{Conclusion}
 
-Ambiguous state-mutating retries require reconciliation of external state. Replay preserves the stored request but ignores evidence that its effect already exists. Bounded Regeneration often acquires that evidence and avoids another mutation, yet GitHub shows that it can leave a required effect missing. The post-review deterministic controller succeeded in 896/896 opportunities with usable observations and zero LLM calls, showing that a simple rule sufficed in these tested settings. Recovery control should separate request identity, state evidence, and the decision authorizing another mutation.
+Recovery after an ambiguous mutation requires effect evidence as well as stored-request fidelity. Unconditional Replay cannot use that evidence; bounded model continuation often reconciles state correctly but can also stop without a needed mutation. With usable, exactly matchable observations, the evaluated deterministic verify-before-retry rule was sufficient across its separate cohorts: 896/896 correct outcomes with zero recovery model calls. Noisy, delayed, incomplete, or otherwise ambiguous observations remain the unresolved boundary for this reference.
 
 
 \section{Reproducibility}
 
-{\raggedright The public repository is \codeurl{https://github.com/JashRashne/retry-semantics-llm-agents}. It provides research protocols, stored result artifacts, offline analysis scripts, build instructions, and optional supplementary material with detailed provenance. Model IDs are given in Section III. Presentation uses stored outcomes and requires no live research-provider access; archived tests, retained intervals, and post-hoc summaries retain their separate evidence status. The authoritative post-review baseline summary is \codeurl{research/baselines/no_model/RESULTS.md}.\par}
+{\raggedright The public repository is \codeurl{https://github.com/JashRashne/retry-semantics-llm-agents}. It provides research protocols, stored result artifacts, offline analysis scripts, build instructions, and optional supplementary material with detailed provenance. Model IDs are given in Section III. Presentation uses stored outcomes and requires no live research-provider access. The audited deterministic-reference summary is \codeurl{research/baselines/no_model/RESULTS.md}.\par}
 
 \bibliographystyle{IEEEtran}\IfFileExists{research/references.bib}{\bibliography{research/references}}{\bibliography{../research/references}}
 \end{document}

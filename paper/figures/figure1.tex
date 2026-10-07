@@ -1,6 +1,6 @@
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/passb_concept.pdf}
-\caption{Original paired Replay--Regeneration design. An ambiguous timeout hides whether the stored create happened. Each hidden situation uses the same original semantic action in isolated state. Regeneration may inspect state; Replay redispatches directly. The post-review baseline uses a separate fixed state-aware controller, defined in the text.}
+\includegraphics[width=\columnwidth]{figures/passb_concept.pdf}
+\caption{Three controllers after an ambiguous stored CREATE. The solid panel is the matched comparison; the dashed panel is the separately evaluated deterministic verify-before-retry reference. The unusable-observation STOP branch was not exercised in the 896-case reference collection. Stored-request fidelity, effect evidence, and mutation authorization are the analytical lens.}
 \label{fig:figure1}
-\end{figure*}
+\end{figure}

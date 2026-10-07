@@ -55,7 +55,7 @@ PREAMBLE=r'''% Generated from manuscript.md by build_source.py; presentation onl
 \hypersetup{hidelinks,pdftitle={'''+TITLE+r'''},pdfauthor={J. Rashne}}
 \begin{document}
 \title{'''+TITLE+r'''}
-\author{\IEEEauthorblockN{J. Rashne}\IEEEauthorblockA{Independent researcher\\rashne.jash@gmail.com}}
+\author{\IEEEauthorblockN{J. Rashne}\IEEEauthorblockA{Independent researcher\\jash.rashne@gmail.com}}
 \maketitle
 '''
 def main():
@@ -82,6 +82,6 @@ def main():
 \maketitle
 \raggedright
 '''
-        (P/'supplement.tex').write_text(header+render_body(body)+'\n\\end{document}\n')
+        (P/'supplement.tex').write_text(header+render_body(body)+'\n'+BIBLIOGRAPHY+'\n\\end{document}\n')
     print('Rendered conference main.tex and separate supplement.tex; no statistics recomputed.')
 if __name__=='__main__':main()

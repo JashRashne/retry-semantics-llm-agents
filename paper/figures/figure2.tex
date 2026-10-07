@@ -1,6 +1,6 @@
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/passb_completed_results.pdf}
-\caption{Historical Replay--Regeneration contrasts. Replay is the semantic reference arm; points show Replay-minus-Regeneration correctness differences and bars retain the 95\% paired intervals. External intervals are descriptive. GitHub uses 63 not-executed pairs and 64 already-executed pairs. The post-review no-model counts appear separately in Table \ref{tab:results}; the invalid first Sheets attempt and incomplete Razorpay collections are excluded.}
+\caption{Observed recovery paths. Study 1A AE failures wrote before reading. GitHub NE separates stops without a write from a correct write attempt followed by HTTP 504. The deterministic reference uses separate frozen cohorts, with zero recovery model calls; its successful writes do not establish resilience to the same transport failure.}
 \label{fig:figure2}
 \end{figure*}

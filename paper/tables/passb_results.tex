@@ -1,25 +1,27 @@
-\begin{table*}[t]
+\begin{table}[t]
 \centering
 \small
-\setlength{\tabcolsep}{4pt}
-\caption{Final-state correctness counts. Replay is a semantic reference: an unprotected CREATE duplicates an already-existing effect by construction. Historical Replay--Regeneration differences retain two-sided 95\% paired Newcombe method 10 intervals in percentage points (pp); no hypothesis tests are displayed. The no-model column is a separate post-review descriptive cohort.}
+\setlength{\tabcolsep}{3pt}
+\caption{Final-state correctness (correct/evaluable). Replay is the semantic reference for unconditional redispatch. The deterministic verify-before-retry reference uses separate frozen cohorts.}
 \label{tab:results}
-\begin{tabular}{@{}llrrrrr@{}}
+\begin{tabularx}{\columnwidth}{@{}lcrr|>{\centering\arraybackslash}X@{}}
 \toprule
-Study & World & \shortstack{Matched\\$N$} & Replay & Regeneration & No-model & \shortstack{Difference (pp)\\{}[95\% paired CI]} \\
+ & & \multicolumn{2}{c|}{Matched comparison} & \shortstack{Separate frozen\\cohorts} \\
+\cmidrule(lr){3-4}\cmidrule(l){5-5}
+Study & World & Replay & \shortstack{Regen-\\eration} & \shortstack{Deterministic\\reference} \\
 \midrule
-Study 1A & $H_0$ & 160 & 160/160 & 160/160 & 160/160 & +0.0 [-2.3, 2.3] \\
-Study 1A & $H_1$ & 160 & 0/160 & 151/160 & 160/160 & -94.4 [-97.0, -89.1] \\
+Study 1A & NE & 160/160 & 160/160 & 160/160 \\
+Study 1A & AE & 0/160 & 151/160 & 160/160 \\
 \addlinespace
-Study 1B & $H_0$ & 160 & 160/160 & 160/160 & 160/160 & +0.0 [-2.3, 2.3] \\
-Study 1B & $H_1$ & 160 & 0/160 & 160/160 & 160/160 & -100.0 [-100.0, -96.7] \\
+Study 1B & NE & 160/160 & 160/160 & 160/160 \\
+Study 1B & AE & 0/160 & 160/160 & 160/160 \\
 \addlinespace
-GitHub & $H_0$ & 63 & 63/63 & 60/63 & 64/64 & +4.8 [-1.8, 13.1] \\
-GitHub & $H_1$ & 64 & 0/64 & 64/64 & 64/64 & -100.0 [-100.0, -92.0] \\
+GitHub & NE & 63/63 & 60/63 & 64/64 \\
+GitHub & AE & 0/64 & 64/64 & 64/64 \\
 \addlinespace
-Sheets repl. & $H_0$ & 64 & 64/64 & 64/64 & 64/64 & +0.0 [-5.7, 5.7] \\
-Sheets repl. & $H_1$ & 64 & 0/64 & 64/64 & 64/64 & -100.0 [-100.0, -92.0] \\
+Sheets & NE & 64/64 & 64/64 & 64/64 \\
+Sheets & AE & 0/64 & 64/64 & 64/64 \\
 \bottomrule
-\end{tabular}
-\par\smallskip\raggedright $H_0$: Original action did not execute. $H_1$: Executed, acknowledgement lost. Sheets repl. denotes the valid separate replication. Difference = Replay minus Regeneration on historical matched pairs; external intervals are descriptive. GitHub $H_0$ has 63 historical pairs because one Replay outcome was unknown. Regeneration scored 60/64 over all evaluable arms; the no-model baseline independently scored 64/64 on its complete cohort. No-model counts have no paired contrast, confidence interval, or significance test.
-\end{table*}
+\end{tabularx}
+\par\smallskip\raggedright GitHub NE: Replay/Regeneration use 63 matched pairs; one Replay outcome is unknown. Regeneration is 60/64 over all evaluable NE arms. The reference independently evaluates 64/64. Sheets denotes the valid replication.
+\end{table}

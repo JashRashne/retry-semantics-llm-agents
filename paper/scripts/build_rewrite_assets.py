@@ -48,74 +48,174 @@ def read_baseline_cells(path):
 
 baseline_cells=read_baseline_cells(P.parent/'research/baselines/no_model/RESULTS.md')
 rows=list(csv.DictReader((P/'rewrite_plan/PASS_A_RESULTS_TABLES.csv').open()))[:8]
-# Printed contrasts are display-rounding of retained estimates, never recomputed.
-lines=[r'\begin{table*}[t]',r'\centering',r'\caption{Completed-study overview. Family counts describe linked original actions; GitHub has 63 not-executed pairs and 64 already-executed pairs. Sheets denotes the separate replication after the implementation fix.}',r'\label{tab:overview}',r'\begin{tabularx}{\textwidth}{@{}lXX Xr@{}}',r'\toprule',r'Study & Environment & Full model (Fireworks) & Purpose & Families \\',r'\midrule',r'Study 1A & Controlled ticket creation & DeepSeek V4 Flash (0731) & Primary controlled experiment & 160 \\',r'Study 1B & Controlled ticket creation & DeepSeek V4.1 Flash & Model-transition replication & 160 \\',r'Study 2: GitHub & External issue creation & DeepSeek V4.1 Flash & Descriptive external validation & 64 \\',r'Study 2: Sheets & External row append & DeepSeek V4.1 Flash & Separate external replication & 64 \\',r'\bottomrule',r'\end{tabularx}',r'\end{table*}']
+# Completed-study overview; matched families remain distinct from reference cohorts.
+lines=[r'\begin{table*}[t]',r'\centering',r'\caption{Completed-study overview. Family counts describe linked original actions; GitHub has 63 not-executed pairs and 64 already-executed pairs. Sheets denotes the valid fresh replication; the invalid first collection is documented in the supplement.}',r'\label{tab:overview}',r'\begin{tabularx}{\textwidth}{@{}lXX Xr@{}}',r'\toprule',r'Study & Environment & Full model (Fireworks) & Purpose & Families \\',r'\midrule',r'Study 1A & Controlled ticket creation & DeepSeek V4 Flash (0731) & Primary controlled experiment & 160 \\',r'Study 1B & Controlled ticket creation & DeepSeek V4.1 Flash & Model-transition replication & 160 \\',r'Study 2: GitHub & External issue creation & DeepSeek V4.1 Flash & Descriptive external validation & 64 \\',r'Study 2: Sheets & External row append & DeepSeek V4.1 Flash & Separate external replication & 64 \\',r'\bottomrule',r'\end{tabularx}',r'\end{table*}']
 (P/'tables/passb_overview.tex').write_text('\n'.join(lines)+'\n')
-lines=[r'\begin{table*}[t]',r'\centering',r'\small',r'\setlength{\tabcolsep}{4pt}',r'\caption{Final-state correctness counts. Replay is a semantic reference: an unprotected CREATE duplicates an already-existing effect by construction. Historical Replay--Regeneration differences retain two-sided 95\% paired Newcombe method 10 intervals in percentage points (pp); no hypothesis tests are displayed. The no-model column is a separate post-review descriptive cohort.}',r'\label{tab:results}',r'\begin{tabular}{@{}llrrrrr@{}}',r'\toprule',r'Study & World & \shortstack{Matched\\$N$} & Replay & Regeneration & No-model & \shortstack{Difference (pp)\\{}[95\% paired CI]} \\',r'\midrule']
-for i,r in enumerate(rows):
-    name={'Google Sheets replication':'Sheets repl.'}.get(r['study'],r['study'])
-    world='$H_0$' if r['world']=='H0' else '$H_1$'
-    d,lo,hi=[float(r[k]) for k in ['difference_Replay_minus_Regeneration_pp','paired_CI_lower_pp','paired_CI_upper_pp']]
-    baseline_success,baseline_evaluable=baseline_cells[(r['study'],r['world'])]
-    lines.append(f"{name} & {world} & {r['N_pairs']} & {r['Replay_correct']}/{r['N_pairs']} & {r['Regeneration_correct']}/{r['N_pairs']} & {baseline_success}/{baseline_evaluable} & {d:+.1f} [{lo:.1f}, {hi:.1f}]"+r' \\')
-    if i%2 and i<7:lines.append(r'\addlinespace')
-lines += [r'\bottomrule',r'\end{tabular}',r'\par\smallskip\raggedright $H_0$: Original action did not execute. $H_1$: Executed, acknowledgement lost. Sheets repl. denotes the valid separate replication. Difference = Replay minus Regeneration on historical matched pairs; external intervals are descriptive. GitHub $H_0$ has 63 historical pairs because one Replay outcome was unknown. Regeneration scored 60/64 over all evaluable arms; the no-model baseline independently scored 64/64 on its complete cohort. No-model counts have no paired contrast, confidence interval, or significance test.',r'\end{table*}']
+# Main results use stored final-state counts, without recomputing estimators.
+lines = [
+    r'\begin{table}[t]', r'\centering', r'\small',
+    r'\setlength{\tabcolsep}{3pt}',
+    r'\caption{Final-state correctness (correct/evaluable). Replay is the semantic reference for unconditional redispatch. The deterministic verify-before-retry reference uses separate frozen cohorts.}',
+    r'\label{tab:results}',
+    r'\begin{tabularx}{\columnwidth}{@{}lcrr|>{\centering\arraybackslash}X@{}}',
+    r'\toprule',
+    r' & & \multicolumn{2}{c|}{Matched comparison} & \shortstack{Separate frozen\\cohorts} \\',
+    r'\cmidrule(lr){3-4}\cmidrule(l){5-5}',
+    r'Study & World & Replay & \shortstack{Regen-\\eration} & \shortstack{Deterministic\\reference} \\',
+    r'\midrule',
+]
+for i, row in enumerate(rows):
+    name = {'Google Sheets replication': 'Sheets'}.get(row['study'], row['study'])
+    world = {'H0': 'NE', 'H1': 'AE'}[row['world']]
+    success, evaluable = baseline_cells[(row['study'], row['world'])]
+    lines.append(f"{name} & {world} & {row['Replay_correct']}/{row['N_pairs']} & "
+                 f"{row['Regeneration_correct']}/{row['N_pairs']} & {success}/{evaluable}" + r' \\')
+    if i % 2 and i < 7:
+        lines.append(r'\addlinespace')
+lines += [r'\bottomrule', r'\end{tabularx}',
+          r'\par\smallskip\raggedright GitHub NE: Replay/Regeneration use 63 matched pairs; one Replay outcome is unknown. Regeneration is 60/64 over all evaluable NE arms. The reference independently evaluates 64/64. Sheets denotes the valid replication.',
+          r'\end{table}']
 (P/'tables/passb_results.tex').write_text('\n'.join(lines)+'\n')
 
-# Vector presentation figures, using retained numbers only.
-def text(c,x,y,lines,size=10,align='center',leading=13):
-    c.setFont('FigureSans',size)
-    ls=lines.split('\n')
-    for i,line in enumerate(ls):
-        yy=y+(len(ls)-1)*leading/2-i*leading
-        {'center':c.drawCentredString,'left':c.drawString,'right':c.drawRightString}[align](x,yy,line)
-def box(c,x,y,w,h,label,color='#eef2f7'):
-    c.setFillColor(HexColor(color));c.setStrokeColor(HexColor('#506076'));c.setLineWidth(.8)
-    c.roundRect(x,y,w,h,6,fill=1,stroke=1);c.setFillColor(HexColor('#17273a'));text(c,x+w/2,y+h/2-3,label)
-def arrow(c,a,b):
-    from math import atan2,cos,sin,pi
-    c.setStrokeColor(HexColor('#506076'));c.setFillColor(HexColor('#506076'));c.setLineWidth(.8)
-    c.line(*a,*b);theta=atan2(b[1]-a[1],b[0]-a[0]);p=c.beginPath();p.moveTo(*b)
-    for t in [theta+2.65,theta-2.65]:p.lineTo(b[0]+6*cos(t),b[1]+6*sin(t))
+# Read archived path counts. No raw evidence, study outcomes, or statistics change.
+evidence = (P/'rewrite_plan/PASS_A_EVIDENCE_REPORT.md').read_text()
+paths = {}
+for line in evidence.splitlines():
+    fields = [s.strip() for s in line.strip().strip('|').split('|')]
+    if len(fields) == 5 and fields[:2] == ['Study 1A', 'H1']:
+        paths[fields[2]] = int(fields[3])
+read_stop = paths['list_tickets -> MODEL_STOP']
+write_read_stop = paths['create_ticket -> list_tickets -> MODEL_STOP']
+write_stop = paths['create_ticket -> MODEL_STOP']
+github = []
+for line in evidence.splitlines():
+    fields = [s.strip() for s in line.strip().strip('|').split('|')]
+    if len(fields) == 8 and fields[0].startswith('gh-f'):
+        github.append(fields)
+no_write = sum(int(row[2]) == 0 for row in github)
+failed_writes = sum(int(row[2]) == 1 and row[3] == '504' for row in github)
+github_correct = int(next(row for row in rows if row['study']=='GitHub' and row['world']=='H0')['Regeneration_correct'])
+github_evaluable = github_correct + len(github)
+ne = sum(evaluable for (study, world), (success, evaluable) in baseline_cells.items() if world=='H0')
+ae = sum(evaluable for (study, world), (success, evaluable) in baseline_cells.items() if world=='H1')
+reference_total = ne + ae
+reference_correct = sum(success for success, evaluable in baseline_cells.values())
+if (read_stop, write_read_stop, write_stop, no_write, failed_writes,
+        github_correct, github_evaluable, ne, ae, reference_correct, reference_total) != (
+        151, 5, 4, 3, 1, 60, 64, 448, 448, 896, 896):
+    raise ValueError('Stored recovery paths differ from the audited presentation counts')
+if any(row[1] != '2' or not row[5].startswith('0 intended effects') for row in github):
+    raise ValueError('Unexpected GitHub missing-effect trace')
+
+# Deterministic vector output makes rerunning the presentation generator stable.
+font_dir = Path(reportlab.__file__).parent / 'fonts'
+pdfmetrics.registerFont(TTFont('FigureBold', str(font_dir/'VeraBd.ttf')))
+INK = '#17273a'
+EDGE = '#657488'
+BLUE = '#e7effc'
+GREEN = '#e4f1ed'
+AMBER = '#fff0cc'
+RED = '#fbe9e7'
+def text(c, x, y, label, size=9, align='center', leading=12, bold=False):
+    c.setFillColor(HexColor(INK))
+    c.setFont('FigureBold' if bold else 'FigureSans', size)
+    lines = label.split('\n')
+    for i, line in enumerate(lines):
+        yy = y + (len(lines)-1)*leading/2 - i*leading
+        {'center': c.drawCentredString, 'left': c.drawString, 'right': c.drawRightString}[align](x, yy, line)
+def box(c, x, y, w, h, label, color='#f7f9fc', size=9, bold=False):
+    c.setFillColor(HexColor(color)); c.setStrokeColor(HexColor(EDGE)); c.setLineWidth(.7)
+    c.roundRect(x,y,w,h,4,fill=1,stroke=1)
+    text(c,x+w/2,y+h/2-2,label,size,leading=12,bold=bold)
+def frame(c,x,y,w,h,dashed=False):
+    c.setStrokeColor(HexColor(EDGE)); c.setLineWidth(.8)
+    c.setDash(3,2) if dashed else c.setDash()
+    c.roundRect(x,y,w,h,5,fill=0,stroke=1); c.setDash()
+def arrow(c,a,b,dashed=False):
+    from math import atan2,cos,sin
+    c.setStrokeColor(HexColor(EDGE)); c.setFillColor(HexColor(EDGE)); c.setLineWidth(.7)
+    c.setDash(3,2) if dashed else c.setDash()
+    c.line(*a,*b); c.setDash()
+    theta=atan2(b[1]-a[1],b[0]-a[0]); p=c.beginPath();p.moveTo(*b)
+    for t in [theta+2.65,theta-2.65]:p.lineTo(b[0]+4*cos(t),b[1]+4*sin(t))
     p.close();c.drawPath(p,fill=1,stroke=0)
-c=canvas.Canvas(str(P/'figures/passb_concept.pdf'),pagesize=(511,246),pageCompression=1,initialFontName='FigureSans')
-box(c,2,200,107,43,'Original create\nrequest stored')
-box(c,146,200,135,43,'Timeout: outcome\nunknown to agent','#fff0cc');arrow(c,(109,221),(142,221))
-text(c,403,221,'Same action and ambiguity\nfor both policies',10)
-# A branching connector stays entirely outside both state labels.
-c.setStrokeColor(HexColor('#506076'));c.setLineWidth(.8)
-c.line(214,200,214,185);c.line(111,185,399,185)
-arrow(c,(111,185),(111,175));arrow(c,(399,185),(399,175))
-box(c,2,125,218,46,'Original action did not execute\nNo intended effect exists')
-box(c,290,125,218,46,'Executed, acknowledgement lost\nOne intended effect exists')
-box(c,2,51,183,46,'Exact Replay\nSend stored request','#e7effc')
-box(c,325,51,183,46,'LLM Regeneration\nRead, write, or stop','#e4f1ed')
-for x in [111,399]:
-    for xx in [94,417]:arrow(c,(x,123),(xx,101))
-arrow(c,(94,49),(217,25));arrow(c,(417,49),(293,25))
-c.setFillColor(HexColor('#17273a'))
-text(c,255,10,'Score final state: exactly one intended effect and no unintended effects',10)
+def pdf(name,size):
+    return canvas.Canvas(str(P/'figures'/name),pagesize=size,pageCompression=1,
+                         initialFontName='FigureSans',invariant=1)
+
+# Figure 1 is designed at one IEEE column's native width.
+c=pdf('passb_concept.pdf',(252,390))
+box(c,51,353,150,33,'Stored correct CREATE',BLUE)
+arrow(c,(126,353),(126,339))
+box(c,51,306,150,33,'Ambiguous outcome: NE / AE',AMBER,size=8.5)
+arrow(c,(126,306),(126,289))
+frame(c,2,191,248,95)
+text(c,126,273,'Matched Replay / Regeneration',9,bold=True)
+box(c,9,206,108,49,'Exact Replay\nStored CREATE\nredispatched once',BLUE,size=8.5)
+box(c,135,206,108,49,'LLM Regeneration\nObserve / write / stop\nunder bounded budget',GREEN,size=8.5)
+c.setStrokeColor(HexColor(EDGE));c.line(63,262,189,262)
+arrow(c,(63,262),(63,255));arrow(c,(189,262),(189,255))
+# A separate dashed conceptual link and frame denote a separate evaluation.
+arrow(c,(201,322),(247,322),dashed=True)
+c.setStrokeColor(HexColor(EDGE));c.setDash(3,2);c.line(247,322,247,179);c.setDash()
+frame(c,2,28,248,151,dashed=True)
+text(c,126,165,'Separate frozen cohorts',9,bold=True)
+text(c,126,149,'Deterministic verify-before-retry reference',8.5)
+box(c,82,115,88,23,'Read once',GREEN,size=8.5)
+# Three distinct branches; unusable observations were not exercised.
+c.setStrokeColor(HexColor(EDGE));c.line(9,126,9,43)
+arrow(c,(82,126),(9,126))
+for y in [101,81,52]:arrow(c,(9,y),(16,y))
+text(c,21,98,'Exact intended effect visible -> STOP',8,align='left')
+text(c,21,78,'Effect absent -> stored CREATE once -> STOP',7.7,align='left')
+text(c,21,55,'Observation unusable -> STOP',8,align='left')
+text(c,21,42,'[Untested in the 896-case collection]',8,align='left')
+text(c,126,10,'Request fidelity | Effect evidence | Mutation decision',8)
 c.showPage();c.save()
-c=canvas.Canvas(str(P/'figures/passb_completed_results.pdf'),pagesize=(511,190),pageCompression=1,initialFontName='FigureSans')
-for k in range(2):
-    left=132+k*190;right=left+175;bottom=40;top=140
-    color=HexColor(['#245487','#147a63'][k])
-    text(c,(left+right)/2,170,['Original action\ndid not execute','Executed,\nacknowledgement lost'][k],11)
-    def xx(v):return left+(v+105)/125*(right-left)
-    for tick in [-100,-50,0]:
-        c.setStrokeColor(HexColor('#e0e3e6'));c.setLineWidth(.6);c.line(xx(tick),bottom,xx(tick),top)
-        c.setFillColor(HexColor('#17273a'));text(c,xx(tick),26,str(tick),9)
-    c.setStrokeColor(HexColor('#8993a0'));c.line(left,bottom,right,bottom)
-    for i,r in enumerate(rows[k::2]):
-        y=top-10-i*27
-        if k==0:
-            c.setFillColor(HexColor('#17273a'));text(c,121,y-3,['Study 1A','Study 1B','GitHub','Sheets replication'][i],10,'right')
-        v,lo,hi=[float(r[t]) for t in ['difference_Replay_minus_Regeneration_pp','paired_CI_lower_pp','paired_CI_upper_pp']]
-        c.setStrokeColor(color);c.setFillColor(color);c.setLineWidth(1.3);c.line(xx(lo),y,xx(hi),y)
-        for h in [lo,hi]:c.line(xx(h),y-3,xx(h),y+3)
-        c.circle(xx(v),y,3,fill=1,stroke=0)
-c.setFillColor(HexColor('#17273a'));text(c,255,7,'Paired difference: Replay minus Regeneration (percentage points)',10)
+
+# Figure 2: observed paths, with no cross-panel pairing or comparative arrows.
+c=pdf('passb_completed_results.pdf',(511,242))
+for x in [1,174,347]:
+    frame(c,x,24,163,215,dashed=(x==347))
+text(c,82,221,'Study 1A | AE',10,bold=True)
+text(c,82,205,'LLM Regeneration',9)
+text(c,82,188,f'{read_stop+write_read_stop+write_stop} opportunities',9)
+box(c,9,137,147,36,f'{read_stop} read -> STOP\nFinal state correct',GREEN)
+box(c,9,82,147,36,f'{write_read_stop+write_stop} write first\nDuplicate ticket',RED)
+c.setStrokeColor(HexColor(EDGE));c.line(5,180,5,100)
+for y in [155,100]:arrow(c,(5,y),(9,y))
+text(c,17,65,f'{write_read_stop} write -> read -> STOP',8.5,align='left')
+text(c,17,45,f'{write_stop} write -> STOP',8.5,align='left')
+
+text(c,255,221,'GitHub | NE',10,bold=True)
+text(c,255,205,'LLM Regeneration',9)
+text(c,255,188,f'{github_evaluable} evaluable arms',9)
+box(c,182,149,147,25,f'{github_correct} final-state correct',GREEN)
+box(c,182,97,147,40,f'{no_write} read -> read -> STOP\nNo write attempted\nRequired issue missing',RED,size=8.5)
+box(c,182,35,147,50,f'{failed_writes} read -> read -> write\nCorrect write attempted\nHTTP 504; issue missing',AMBER,size=8.5)
+# Branching counts: neither failures nor successes follow one another.
+c.setStrokeColor(HexColor(EDGE));c.line(178,180,178,60)
+for y in [162,117,60]:arrow(c,(178,y),(182,y))
+
+text(c,429,221,'Separate frozen cohorts',9,bold=True)
+text(c,429,202,'Deterministic reference',9,bold=True)
+text(c,429,186,'Verify-before-retry',9)
+box(c,355,126,147,42,f'{ne} NE: read absent\nStored CREATE once\nSTOP',GREEN,size=8.5)
+box(c,355,75,147,36,f'{ae} AE: read effect visible\nSTOP; no recovery write',GREEN,size=8.5)
+text(c,429,56,f'{reference_correct}/{reference_total} final-state correct',9,bold=True)
+text(c,429,40,'All decision reads usable',8.5)
+text(c,429,27,'Zero recovery model calls',8)
+text(c,255,8,'Model-case paths and reference paths come from separate evaluations.',9)
 c.showPage();c.save()
-for name,asset,caption in [('figure1','passb_concept','Original paired Replay--Regeneration design. An ambiguous timeout hides whether the stored create happened. Each hidden situation uses the same original semantic action in isolated state. Regeneration may inspect state; Replay redispatches directly. The post-review baseline uses a separate fixed state-aware controller, defined in the text.'),('figure2','passb_completed_results','Historical Replay--Regeneration contrasts. Replay is the semantic reference arm; points show Replay-minus-Regeneration correctness differences and bars retain the 95\\% paired intervals. External intervals are descriptive. GitHub uses 63 not-executed pairs and 64 already-executed pairs. The post-review no-model counts appear separately in Table \\ref{tab:results}; the invalid first Sheets attempt and incomplete Razorpay collections are excluded.')]:
-    (P/f'figures/{name}.tex').write_text('\\begin{figure*}[t]\n\\centering\n\\includegraphics[width=\\textwidth]{figures/'+asset+'.pdf}\n\\caption{'+caption+'}\n\\label{fig:'+name+'}\n\\end{figure*}\n')
-print('Generated 2 presentation figures and 2 main tables from stored data.')
+
+figures=[
+    ('figure1','passb_concept','figure',r'Three controllers after an ambiguous stored CREATE. The solid panel is the matched comparison; the dashed panel is the separately evaluated deterministic verify-before-retry reference. The unusable-observation STOP branch was not exercised in the 896-case reference collection. Stored-request fidelity, effect evidence, and mutation authorization are the analytical lens.'),
+    ('figure2','passb_completed_results','figure*',r'Observed recovery paths. Study 1A AE failures wrote before reading. GitHub NE separates stops without a write from a correct write attempt followed by HTTP 504. The deterministic reference uses separate frozen cohorts, with zero recovery model calls; its successful writes do not establish resilience to the same transport failure.'),
+]
+for name,asset,environment,caption in figures:
+    width=r'\columnwidth' if environment=='figure' else r'\textwidth'
+    (P/f'figures/{name}.tex').write_text(
+        '\\begin{'+environment+'}[t]\n\\centering\n'
+        '\\includegraphics[width='+width+']{figures/'+asset+'.pdf}\n'
+        '\\caption{'+caption+'}\n\\label{fig:'+name+'}\n\\end{'+environment+'}\n')
+print('Generated count table and two recovery-control figures from stored evidence; no statistics recomputed.')

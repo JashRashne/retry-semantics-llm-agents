@@ -12,10 +12,10 @@
 \raggedright
 \section{Scope and evidence guide}
 
-This separate supplement retains detail omitted from the main paper. It presents stored study results, collection provenance, and the post-hoc descriptive summaries recovered from the stored data. It introduces no new primary statistical procedure. The post-review no-model baseline is described separately from the historical paired cohorts. Main-paper terminology applies: $H_0$ means Original action did not execute; $H_1$ means Executed, acknowledgement lost. These are execution-world labels, not null and alternative hypotheses.
+{\raggedright This separate supplement retains detail omitted from the main paper. It presents stored study results, collection provenance, and the post-hoc descriptive summaries recovered from the stored data. It introduces no new primary statistical procedure. The deterministic verify-before-retry reference uses separate frozen cohorts, outside the matched Replay--Regeneration comparison. Main-paper terminology applies: NE means the original action did not execute; AE means it already executed with its acknowledgement lost. Literal \codeurl{H0}/\codeurl{H1} fields remain in artifact identifiers and schemas.\par}
 
 
-{\raggedright The artifact evidence registry (\codeurl{paper/rewrite_plan/PASS_A_EVIDENCE_REPORT.md}) is the complete source-path and SHA-256 registry, with source IDs A1--A7 for Study 1A, B1--B7 for Study 1B, G1 for the sealed GitHub archive, E1--E9 for external analysis and record linkage, S1--S3 for the Sheets replication, P1--P6 for protocols, M1--M3 for manifests, and C1--C3 for provider observation contracts. Its CSV companions retain full numerical precision, scenario identifiers, and action-path membership. This supplement explains the historical evidence rather than replacing that registry. The authoritative post-review baseline summary and audit identities are in \codeurl{research/baselines/no_model/RESULTS.md}; that addition is outside the historical registry.\par}
+{\raggedright The artifact evidence registry (\codeurl{paper/rewrite_plan/PASS_A_EVIDENCE_REPORT.md}) is the complete source-path and SHA-256 registry, with source IDs A1--A7 for Study 1A, B1--B7 for Study 1B, G1 for the sealed GitHub archive, E1--E9 for external analysis and record linkage, S1--S3 for the Sheets replication, P1--P6 for protocols, M1--M3 for manifests, and C1--C3 for provider observation contracts. Its CSV companions retain full numerical precision, scenario identifiers, and action-path membership. This supplement explains the historical evidence rather than replacing that registry. The audited deterministic-reference summary and audit identities are in \codeurl{research/baselines/no_model/RESULTS.md}, outside the paired studies' evidence registry.\par}
 
 
 \section{Protocol chronology and model configuration}
@@ -29,7 +29,7 @@ This separate supplement retains detail omitted from the main paper. It presents
 {\raggedright All studies requested temperature 0.0, top-p 1.0, maximum output tokens 1024, reasoning effort none, automatic tool choice, and no parallel tool calls. No immutable model digest was recorded, and hosted inference at temperature zero does not establish deterministic weights or execution. Controlled originals used seed \codeurl{30000+i}; recovery bases used \codeurl{40000+10i}. GitHub used \codeurl{1000000+i} and \codeurl{2000000+4i}; Sheets and Razorpay used \codeurl{3000000+i} and \codeurl{4000000+4i}. Continuation seeds increment by model-call index. Thus matching model/settings does not mean identical tool schemas, tasks, or seed schedules.\par}
 
 
-{\raggedright The four scheduling strata combine hidden-world order with policy order in the first hidden-world pair: A uses $H_0,H_1$ with Replay first; B uses $H_1,H_0$ with Regeneration first; C uses $H_0,H_1$ with Regeneration first; D uses $H_1,H_0$ with Replay first. The second pair reverses the policy order; each stratum has 40 families globally and five per scenario (\codeurl{research/protocol/primary_experiment_v1.md} and \codeurl{research/protocol/primary_create_v1_3_collection_infrastructure.md}).\par}
+{\raggedright The four scheduling strata combine hidden-world order with policy order in the first hidden-world pair: A uses NE, AE with Replay first; B uses AE, NE with Regeneration first; C uses NE, AE with Regeneration first; D uses AE, NE with Replay first. The second pair reverses the policy order; each stratum has 40 families globally and five per scenario (\codeurl{research/protocol/primary_experiment_v1.md} and \codeurl{research/protocol/primary_create_v1_3_collection_infrastructure.md}).\par}
 
 
 The raw six-file collections and derived analysis hashes for both controlled studies were verified against the artifact evidence registry. Full paths and component hashes remain in that registry. Selected analysis and archive identities appear in Table \ref{tab:s-identities}; their full paths are in the registry.
@@ -41,10 +41,13 @@ The raw six-file collections and derived analysis hashes for both controlled stu
 
 \subsection{Retained paired uncertainty and archived tests}
 
-{\raggedright The main table displays the stored paired estimates and intervals with one decimal of presentation rounding. The supplementary results artifact (\codeurl{paper/rewrite_plan/PASS_A_RESULTS_TABLES.csv}) retains full precision and source identities. The endpoint is binary final-state correctness when state is evaluable, with Replay minus Regeneration as the paired contrast. Newcombe method 10 gives two-sided 95\% paired intervals. Table \ref{tab:s-tests} retains these estimates, including uncertainty in Regeneration's recovery outcomes relative to the semantic reference arm.\par}
+{\raggedright The main table displays observed final-state counts. This supplement retains the stored paired estimates and intervals with four decimals of presentation rounding. The supplementary results artifact (\codeurl{paper/rewrite_plan/PASS_A_RESULTS_TABLES.csv}) retains full precision and source identities. The endpoint is binary final-state correctness when state is evaluable, with Replay minus Regeneration as the paired contrast. Newcombe method 10 gives two-sided 95\% paired intervals. Table \ref{tab:s-tests} retains these estimates, including uncertainty in Regeneration's recovery outcomes relative to the semantic reference arm.\par}
 
 
 Replay--Regeneration significance tests are omitted from the revised manuscript because Replay's already-executed failure follows from unprotected CREATE semantics. Original exact McNemar outputs and two-situation Holm adjustments for Study 1A and the inherited Study 1B extractor remain unchanged in the stored analysis artifacts. External test outputs likewise remain archived, without manuscript significance claims. The original plans, counts, intervals, and statistical outputs have not been recomputed or retroactively changed. Razorpay stopped prefixes have no inferential tests or intervals.
+
+
+Study 1A has 160 repeated opportunities across eight templates: NE Replay and Regeneration are each 160/160; AE Replay is 0/160 and Regeneration 151/160. Study 1B has the same allocation: NE both 160/160; AE Replay 0/160 and Regeneration 160/160. GitHub matched NE counts are Replay 63/63 and Regeneration 60/63; all-evaluable NE Regeneration is 60/64. GitHub AE is Replay 0/64 and Regeneration 64/64. In the valid fresh Sheets replication, NE both score 64/64; AE Replay scores 0/64 and Regeneration 64/64.
 
 
 \input{supplement/tables/tests.tex}
@@ -72,15 +75,18 @@ Table \ref{tab:s-marginal} gives the descriptive boundary intervals.
 
 \input{supplement/tables/marginal.tex}
 
-\section{Post-review deterministic no-model baseline}
+\section{Deterministic verify-before-retry reference}
 
-The fixed rule performs one decision LIST/logical read, stops on an unusable observation or a visible exact intended effect, and otherwise dispatches the stored original CREATE once and stops. It has zero model calls, at most one recovery CREATE, no loop, and no second decision read. It uses Regeneration's semantic observation interface, without hidden execution-world labels, evaluator-only evidence, an original resource ID withheld from Regeneration, or an idempotency key.
-
-
-{\raggedright The audited schedule contains 896 opportunities: 640 tickets, 128 GitHub, and 128 valid Sheets-replication cases. All 896 outcomes are successful, all decision observations are usable, and none is unknown. Each Study 1A and Study 1B situation scores 160/160; each GitHub and Sheets situation scores 64/64. In 448 not-executed cases the stored CREATE was dispatched; in 448 already-executed cases the visible effect suppressed another mutation. Results and retained audit/lock identities are in \codeurl{research/baselines/no_model/RESULTS.md}.\par}
+The fixed rule performs one decision LIST/logical read, stops on an unusable observation or a visible exact intended effect, and otherwise dispatches the stored original CREATE once and stops. It has zero recovery model calls, at most one recovery CREATE, no loop, and no second decision read. It uses Regeneration's semantic observation interface, without hidden execution-world labels, evaluator-only evidence, an original resource ID withheld from Regeneration, or an idempotency key.
 
 
-This post-review addition is descriptive, with no confidence interval or hypothesis test. It is not part of the historical paired analysis. GitHub $H_0$ retains 63 historical matched pairs because one Replay outcome is unknown; Regeneration is 60/64 over all evaluable arms. The baseline's independent complete GitHub $H_0$ cohort is 64/64. Unusable, stale, incomplete, or noisy observations were not tested by this baseline collection.
+{\raggedright The audited schedule contains 896 opportunities: 640 tickets, 128 GitHub, and 128 valid Sheets-replication cases. Final-state correctness was 896/896, with zero recovery model calls, zero unknown outcomes, and all decision observations usable. Each Study 1A and Study 1B situation scores 160/160; each GitHub and Sheets situation scores 64/64. In 448 NE cases the stored CREATE was dispatched; in 448 AE cases the visible effect suppressed another mutation. Results and retained audit/lock identities are in \codeurl{research/baselines/no_model/RESULTS.md}.\par}
+
+
+The reference was evaluated on separate frozen cohorts, with no contemporaneous pairing with model arms, confidence interval, or hypothesis test. GitHub NE retains 63 matched pairs because one Replay outcome is unknown; Regeneration is 60/63 in those pairs and 60/64 over all evaluable NE arms. The reference's independent complete GitHub NE cohort is 64/64. Unusable, stale, delayed, incomplete, or noisy observations were not tested; its STOP-on-unusable branch was not exercised.
+
+
+Verification-aware recovery and verify-before-retry are prior work: Mansoor et al. combine postcondition verification with stable idempotency keys, while our reference is a restricted keyless instantiation \cite{verified_tool_calls}. LIMBO is closely related concurrent work across a broader model, harness, fault, and tool-contract scope; late commits and redelivery delimit keyless observation-based recovery \cite{limbo}. Atomix provides a broader transactional settlement runtime, beyond this single-ambiguous-CREATE boundary \cite{atomix}.
 
 
 \section{Controlled-study scenarios and recovery actions}
@@ -149,7 +155,7 @@ Table \ref{tab:s-github-missing} separates the four failure paths.
 {\raggedright The sealed evidence registry gives each projection and terminal model-message hash and member directory: original \codeurl{004-gh-f002-1}, \codeurl{020-gh-f006-1}, \codeurl{058-gh-f015-3}, and continuation \codeurl{000-gh-f020-2}. All four count among evaluable Regeneration outcomes; only three enter matched not-executed pairs. The state score does not eliminate transport ambiguity for the attempted HTTP 504 write. Separate certified external malformed/schema-rejected and infrastructure-attribution mappings are unavailable; no heuristic classification fills those gaps with zeros.\par}
 
 
-\section{Google Sheets: invalidation and separate replication}
+\section{Google Sheets: invalidation and valid fresh replication}
 
 {\raggedright The primary attempt scheduled 64 four-evaluation families, or 256 opportunities. It recorded 128 results: 32 Replay and 32 Regeneration not-executed successes, and 32 per policy already-executed constructor rejections. The remaining 128 opportunities were invalidated skips. The collector set \codeurl{DispatchFacts.acknowledgement_validated=True} before a validator that requires unvalidated raw transport facts. Valid acknowledgement evidence was consequently rejected before valid already-executed recovery could begin.\par}
 
@@ -228,4 +234,5 @@ The controlled, GitHub, and Sheets studies share the exact system message: \emph
 
 {\raggedright The main paper and supplement sources are \codeurl{paper/manuscript.md} and \codeurl{paper/supplement/manuscript.md}, respectively. Offline analysis scripts and source collections support reproducibility of the reported results; accessing the stored evidence and result tables requires no live research-provider requests.\par}
 
+\bibliographystyle{IEEEtran}\IfFileExists{research/references.bib}{\bibliography{research/references}}{\bibliography{../research/references}}
 \end{document}
