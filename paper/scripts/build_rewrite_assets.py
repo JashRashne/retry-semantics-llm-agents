@@ -55,7 +55,7 @@ lines=[r'\begin{table*}[t]',r'\centering',r'\caption{Completed-study overview. T
 lines = [
     r'\begin{table}[t]', r'\centering', r'\small',
     r'\setlength{\tabcolsep}{3pt}',
-    r'\caption{Final-state correctness (correct/evaluable). Replay is the semantic reference for unconditional redispatch. The deterministic verify-before-retry reference uses separate frozen cohorts.}',
+    r'\caption{Final-state correctness (correct/evaluable). Replay is the semantic reference for unconditional redispatch. The deterministic verify-before-retry reference uses separately evaluated reference cohorts.}',
     r'\label{tab:results}',
     r'\begin{tabularx}{\columnwidth}{@{}lcrr|>{\centering\arraybackslash}X@{}}',
     r'\toprule',
@@ -170,7 +170,7 @@ text(c,21,98,'Exact intended effect visible -> STOP',8,align='left')
 text(c,21,78,'Effect absent -> stored CREATE once -> STOP',7.7,align='left')
 text(c,21,55,'Observation unusable -> STOP',8,align='left')
 text(c,21,42,'[Untested in the 896-case collection]',8,align='left')
-text(c,126,10,'Request fidelity | Effect evidence | Mutation decision',8)
+text(c,126,10,'Request fidelity | Effect evidence | Mutation authorization',8)
 c.showPage();c.save()
 
 # Figure 2: observed paths, with no cross-panel pairing or comparative arrows.
@@ -210,7 +210,7 @@ c.showPage();c.save()
 
 figures=[
     ('figure1','passb_concept','figure',r'Three controllers after an ambiguous stored CREATE. The solid panel is the matched comparison; the dashed panel is the separately evaluated deterministic verify-before-retry reference. The unusable-observation STOP branch was not exercised in the 896-case reference collection. Stored-request fidelity, effect evidence, and mutation authorization are the analytical lens.'),
-    ('figure2','passb_completed_results','figure*',r'Observed recovery paths. Study 1A AE failures wrote before reading. GitHub NE separates stops without a write from a correct write attempt followed by HTTP 504. The deterministic reference uses separate frozen cohorts, with zero recovery model calls; its successful writes do not establish resilience to the same transport failure.'),
+    ('figure2','passb_completed_results','figure*',r'Observed recovery paths. Study 1A AE failures wrote before reading. GitHub NE separates stops without a write from a correct write attempt followed by HTTP 504. The deterministic reference uses separately evaluated reference cohorts, with zero recovery model calls; its successful writes do not establish resilience to the same transport failure.'),
 ]
 for name,asset,environment,caption in figures:
     width=r'\columnwidth' if environment=='figure' else r'\textwidth'
