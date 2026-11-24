@@ -23,17 +23,11 @@ artifacts/
 # Phase 2B live GitHub engineering artifacts — never paper data.
 research/study2/engineering/github/live/
 
-# Paper-root compiler outputs; published PDFs in build/ and figures/ stay visible.
-/paper/*.pdf
-/paper/*.log
-/paper/*.blg
-/paper/*.aux
-/paper/*.bbl
-/paper/*.out
-/paper/*.toc
-/paper/*.synctex.gz
-/paper/*.fls
-/paper/*.fdb_latexmk
+# Manuscript and publication assets are kept in local archives.
+/paper/
+/paper.pdf
+/CITATION.cff
+/research/references.bib
 
 # Local baseline source paths, stale table and preservation/readiness snapshots.
 /research/baselines/no_model/descriptive_counts.csv
@@ -79,3 +73,12 @@ research/study2/engineering/github/live/
 /research/baselines/no_model/split_deployment_v1/frozen_before.json
 /research/baselines/no_model/split_deployment_v1/repository_state/
 /research/baselines/no_model/split_deployment_v1/verification/
+
+# Local drafts, private editorial archives, renders, and caches.
+/output/
+/tmp/
+/.uv-cache/
+/.ruff_cache/
+/coverage.xml
+/.coverage
+/htmlcov/

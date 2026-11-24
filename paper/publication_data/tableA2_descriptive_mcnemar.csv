@@ -1,9 +1,0 @@
-Population,World,N,Exact McNemar value,Status
-GitHub,H0,63,0.25,"secondary descriptive, unadjusted"
-GitHub,H1,64,1.0842e-19,"secondary descriptive, unadjusted"
-Sheets replication,H0,64,1,"secondary descriptive, unadjusted"
-Sheets replication,H1,64,1.0842e-19,"secondary descriptive, unadjusted"
-GitHub original preserved,H0,19,0.25,"secondary descriptive, unadjusted"
-GitHub original preserved,H1,19,3.8147e-06,"secondary descriptive, unadjusted"
-GitHub continuation,H0,44,1,"secondary descriptive, unadjusted"
-GitHub continuation,H1,45,5.68434e-14,"secondary descriptive, unadjusted"

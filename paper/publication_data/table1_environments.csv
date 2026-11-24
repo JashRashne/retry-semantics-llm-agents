@@ -1,8 +1,0 @@
-Environment,Role,Scheduled families,Coverage (arms),H0 pairs,H1 pairs,Complete families,Status / limitation
-Study 1 Ticket CREATE,Locked confirmatory,160,640,160,160,160,Controlled environment; locked model configuration
-GitHub,Secondary external replication,64,256 canonical; 255 evaluable,63,64,63,Complete coverage; one retained non-evaluable arm
-Sheets replication,Secondary external replication,64,256 canonical; 256 evaluable,64,64,64,"Complete, separately authorized; not primary replacement"
-Sheets invalidated primary,Invalidated attempt,64,128 historical projections; 0 eligible,0,0,0,Shared H1 constructor defect; behavioral denominator zero
-Razorpay original,Incomplete external validation,64,2 canonical; 2 evaluable,0,1,0,Stopped after observed prefix; HTTP 429
-Razorpay paced V1,Incomplete external validation,64,4 canonical; 4 evaluable,1,1,1,Stopped after observed prefix; HTTP 429
-Razorpay host V2,Incomplete external validation,64,12 canonical; 12 evaluable,3,3,3,Stopped after observed prefix; HTTP 429

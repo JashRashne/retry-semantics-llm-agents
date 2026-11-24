@@ -1,151 +1,34 @@
-# Phase 1: research and evidence infrastructure
+# Protocols, results, and evidence
 
-This directory tracks the ten user-specified starting references for a study of
-retry semantics under ambiguous outcomes of state-mutating LLM agent tool calls.
-The central distinction to investigate is replaying an already-generated request
-versus invoking the LLM again to regenerate a tool call. Definitions and research
-questions remain provisional.
+This directory preserves protocols, experiment records, and retained result summaries. Historical documents describe decisions at their original study stage; later amendments record subsequent collection and analysis.
 
-Only bibliographic metadata has been populated. All analytical CSV fields,
-including literature buckets, are blank. All reading statuses are `TODO`;
-metadata verification does not mean that a source has been read. No findings,
-limitations, novelty claims, contribution statements, or experiments are included.
+## Contents
 
-## Files and personal workflow
-
-- `literature.csv`: one source per row, stable citation keys and metadata provenance.
-- `references.bib`: the same ten keys, using UTF-8 BibTeX.
-- `notes/TEMPLATE.md`: blank template for future additions.
-- `notes/*.md`: citation metadata plus unanswered personal reading questions.
-- `research_questions.md`: provisional questions and unresolved scope decisions.
-- `scripts/`: offline validators requiring only Python 3.9+ standard library.
-
-Read each source yourself, fill its note in your own words, and record exact
-sections/pages/figures/tables or other source locators beside analytical answers.
-Keep an unresolved answer blank or `TODO`. Then transfer only your supported
-classifications to the CSV. You control reading-status changes: `SKIMMED` means
-you skimmed the source, `FULL_READ` means you read it fully, and `VERIFIED` means
-you checked your recorded analytical claims against source evidence. These are
-workflow labels, not judgments of scientific validity.
-
-For a new source, copy the template, choose a unique key, add CSV and BibTeX
-entries with that key, and set `notes_file` relative to this directory. Record
-metadata source URLs and the actual metadata-check date. Re-run both validators.
-
-## CSV conventions and controlled values
-
-The CSV is UTF-8 with a header and standard CSV quoting. Authors are separated by
-`; ` and retain source order. Multiple metadata URLs are separated by ` | `.
-Use one value per enum cell; enum values are case-sensitive. Empty analytical
-cells and `TODO` mean unassessed. `UNCLEAR` and `NOT_APPLICABLE` are personal
-reading judgments; do not substitute them for unread material.
-
-| Field | Allowed values |
+| Path | Purpose |
 | --- | --- |
-| reading_status | TODO, SKIMMED, FULL_READ, VERIFIED |
-| publication_status | STANDARD, CONFERENCE_PAPER, JOURNAL_ARTICLE, PREPRINT, TECHNICAL_REPORT, DOCUMENTATION, OTHER, UNCLEAR |
-| literature_bucket | SYSTEMS_FOUNDATIONS, AGENT_METHODS, BENCHMARKS, AGENT_RELIABILITY, API_DOCUMENTATION, MODEL_DOCUMENTATION, OTHER, UNCLEAR |
-| replay_or_regenerate | REPLAY, REGENERATE, BOTH, OTHER, UNCLEAR, NOT_APPLICABLE |
-| real_or_simulated_system | REAL, SIMULATED, BOTH, CONCEPTUAL, UNCLEAR |
-| state_mutating, retry_discussed, external_state_verified | YES, NO, PARTIAL, UNCLEAR, NOT_APPLICABLE |
+| [`protocol/`](protocol/) | Study protocols, amendments, analysis plans, and evidence schemas |
+| [`results/STUDY1_RESULTS_LOCK.md`](results/STUDY1_RESULTS_LOCK.md) | Immutable controlled-study outcomes and interpretation boundaries |
+| [`baselines/no_model/PROTOCOL.md`](baselines/no_model/PROTOCOL.md) | Deterministic verify-before-retry policy |
+| [`baselines/no_model/RESULTS.md`](baselines/no_model/RESULTS.md) | Reference results, audit summary, and archive hashes |
+| [`baselines/no_model/`](baselines/no_model/) | Frozen schedules, collection/deployment locks, and audit metadata |
+| [`study2/`](study2/) | Provider semantics, manifests, qualification evidence, and operational history |
 
-All enum fields except `reading_status` and `publication_status` also accept
-blank or `TODO`. `PARTIAL` requires an explanation in the note. Buckets are an
-editable provisional organizational vocabulary; no source has been assigned one.
-Update the validator and this table together if the vocabulary changes.
+## Available records
 
-Bibliographic fields:
+The repository includes protocols, schemas, provider manifests, readiness evidence, locked summaries, and the deterministic-reference result record. Manuscripts, bibliography, presentation figures/tables, publication CSVs, and editorial material are stored separately.
 
-| Field | Meaning |
-| --- | --- |
-| citation_key | Stable unique key shared with BibTeX |
-| title, authors | Source title and full source author list; documentation uses organizational attribution |
-| year | Year of the cited manifestation; four digits, never the access year substituted for an unknown publication year |
-| venue | Publication venue, report repository, standard series, or documentation provider |
-| publication_status | Type of cited manifestation; PREPRINT means this entry cites arXiv, not that no later publication exists |
-| doi | DOI as explicitly displayed or supplied; arXiv-issued DOIs identify arXiv records |
-| arxiv_id | Identifier without URL, prefix, or version in the stored seed data; checked version recorded in metadata_notes |
-| url | Primary source URL, optionally with a section anchor |
-| notes_file | Note path relative to the directory containing literature.csv |
-| metadata_sources | URLs consulted for bibliographic metadata only |
-| metadata_checked_on | Date of metadata lookup in YYYY-MM-DD format; not Date read |
-| metadata_notes | Bibliographic provenance, cited version, attribution and unresolved citation caveats only |
-| missing_metadata | JSON object mapping deliberately missing required metadata fields to specific reasons; `{}` otherwise |
+Some raw collections, sealed run archives, and canonical analysis packages are also outside this repository. Recorded absolute paths describe the original execution environment and will not resolve in a fresh clone. A hash identifies an archive but is not a download location. The checkout supports offline tests and inspection of the supplied research records; it does not supply every input needed to rerun every historical analysis from raw traces.
 
-Personal analytical fields (all blank initially):
+## Study boundaries
 
-| Fields | Intended personal entry after reading |
-| --- | --- |
-| literature_bucket | Provisional organizational category |
-| systems_concept, failure_model | Concepts and failure definition actually studied |
-| state_mutating, external_system | Whether operations mutate state and which external system is considered |
-| retry_discussed, retry_trigger | Whether retry is explicit and what initiates it |
-| replay_or_regenerate | Classification supported by evidence about what is retried and whether the LLM is invoked again |
-| external_state_verified | Whether external state or postconditions are checked before retrying; not bibliographic verification |
-| idempotency_mechanism, compensation_mechanism, transactional_mechanism | Mechanism details in your own words, with evidence in the note |
-| real_or_simulated_system | Environment classification established by reading |
-| main_result_relevant_to_project, limitation_relevant_to_project | Your supported statements of demonstrated results and their limits |
+- Study 1A is the original controlled experiment; Study 1B is a separate replication after a hosted-model transition.
+- GitHub records preserve the original collection, continuation, and unknown outcome.
+- Sheets findings use the valid fresh replication; the invalidated first collection remains in the incident history.
+- Razorpay attempts stopped early and are not completed external validation cohorts.
+- The deterministic reference has separately collected cohorts and is not an additional paired arm of the historical comparison.
 
-Free-text analytical fields accept blank or `TODO`. The validators do not infer,
-generate, or evaluate these answers. Detailed evidence stays in the linked note.
+Frozen protocols, identities, evidence hashes, and result records are retained verbatim. Historical source-file references may point to separately retained manuscript material. Files named `DRAFT`, qualification records, and operator runbooks may be historical inputs to those records; their names do not make them current execution instructions.
 
-## Metadata scope and unresolved items
+## Running code
 
-Metadata was checked on 2026-09-05 against the linked RFC, publisher, conference,
-arXiv, and official documentation pages. No scientific conclusions were extracted.
-
-- RFC 9110 lists Roy T. Fielding, Mark Nottingham, and Julian Reschke as editors;
-  the CSV author field and BibTeX author field preserve those named contributors.
-  The user-specified reading target is section 9.2.2, *Idempotent Methods*.
-- Sagas retains the supplied proceedings DOI `10.1145/38713.38742`. The indexed
-  [ACM publisher record](https://doi.org/10.1145/38713.38742) verifies the title,
-  authors, year and proceedings but also displays the companion SIGMOD Record
-  DOI `10.1145/38714.38742`. Direct publisher access was blocked. The precise DOI
-  relationship remains for manual verification; no second entry was added.
-- ReAct uses the verified ICLR 2023 publication year. Its arXiv record was first
-  submitted in 2022; the stored DOI identifies that arXiv record.
-- For tau_bench, verified_tool_calls, atomix, agent_mesh and qwen3, the cited
-  manifestation is arXiv. A later conference/journal venue or acceptance status
-  was not verified. This is not evidence of the absence of such a publication.
-- [Agent Mesh](https://arxiv.org/abs/2608.26225) has the full subtitle *Identity
-  Adequacy and Evidence Adequacy*. Its DOI is displayed by arXiv with registration
-  pending; DOI resolution remains unverified.
-- GitHub and Ollama documentation publication years and individual bylines were
-  not verified. Years are deliberately blank with reasons in `missing_metadata`.
-  Organizational attribution is used. No DOI or arXiv identifier was verified
-  for those documentation pages; identifier blanks are permitted.
-
-## Validation
-
-From the repository root:
-
-```sh
-python3 research/scripts/validate_literature.py
-python3 research/scripts/validate_bibliography.py
-```
-
-Defaults are resolved from the scripts' locations, so they also work from another
-working directory. To check alternate files:
-
-```sh
-python3 research/scripts/validate_literature.py /absolute/path/literature.csv
-python3 research/scripts/validate_bibliography.py --csv /absolute/path/literature.csv --bib /absolute/path/references.bib
-```
-
-The literature validator checks all required columns, duplicate keys, normalized
-DOI and arXiv duplicates (including version variants), enum values, metadata
-presence and basic syntax, and note-file existence. DOI and arXiv identifiers are
-optional unless the venue is arXiv, which requires its identifier. Missing
-`authors`, `year`, or `venue` can be acknowledged in `missing_metadata` with a
-specific reason, producing a warning. Missing other mandatory metadata is an
-error. Remove an exception when you populate its field; stale exceptions fail.
-
-The bibliography validator checks key coverage and duplicate keys in both files,
-and reports orphaned BibTeX entries. Orphans are informational, not errors. It
-scans top-level BibTeX entries with nested braces, quotes and comments; it is not
-a complete BibTeX parser or a field-by-field metadata comparison. Neither script
-checks live URLs, DOI registration, citation truth, evidence quality, or whether
-an analytical classification is justified. Successful validation is structural.
-
-Both scripts exit 0 when no errors exist and 1 on errors. The seed literature
-file intentionally produces two warnings for the undocumented publication years.
+See the [root setup instructions](../README.md#setup-and-offline-tests) for offline tests. Analysis entry points under [`../scripts/`](../scripts/) require corresponding stored run directories. Historical operational commands target dedicated study resources; new live experiments require fresh scopes and a separate study plan.

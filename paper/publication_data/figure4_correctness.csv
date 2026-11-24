@@ -1,9 +1,0 @@
-population,environment,world,policy,correct,matched_N,correctness_percent,source_json_pointer
-github_canonical_coverage,GitHub,H0,Replay,63,63,100.0,/populations/github_canonical_coverage/worlds/H0/replay_correctness
-github_canonical_coverage,GitHub,H0,Regeneration,60,63,95.23809523809523,/populations/github_canonical_coverage/worlds/H0/regeneration_correctness
-github_canonical_coverage,GitHub,H1,Replay,0,64,0.0,/populations/github_canonical_coverage/worlds/H1/replay_correctness
-github_canonical_coverage,GitHub,H1,Regeneration,64,64,100.0,/populations/github_canonical_coverage/worlds/H1/regeneration_correctness
-sheets_post_incident_replication,Sheets replication,H0,Replay,64,64,100.0,/populations/sheets_post_incident_replication/worlds/H0/replay_correctness
-sheets_post_incident_replication,Sheets replication,H0,Regeneration,64,64,100.0,/populations/sheets_post_incident_replication/worlds/H0/regeneration_correctness
-sheets_post_incident_replication,Sheets replication,H1,Replay,0,64,0.0,/populations/sheets_post_incident_replication/worlds/H1/replay_correctness
-sheets_post_incident_replication,Sheets replication,H1,Regeneration,64,64,100.0,/populations/sheets_post_incident_replication/worlds/H1/regeneration_correctness

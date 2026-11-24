@@ -1,5 +1,0 @@
- paper/main.tex                | 733 +++++++++++++++++++++++++++---------------
- paper/manuscript.md           | 525 +++++++++++-------------------
- paper/tables/study1_table.tex |  27 +-
- paper/tables/study2_table.tex |  22 +-
- 4 files changed, 677 insertions(+), 630 deletions(-)

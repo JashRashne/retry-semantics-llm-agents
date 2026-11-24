@@ -1,4 +1,0 @@
-run,population,evaluated,scheduled,SUCCESS,FAILURE,unrun,stop_http,historical_wrapper,source_json_pointer
-original,razorpay_original,2,256,0,2,254,429,ValueError,/provider_summary/razorpay_original; /source_run_governance/razorpay_original
-paced V1,razorpay_paced_v1,4,256,2,2,252,429,PaperCollectionError,/provider_summary/razorpay_paced_v1; /source_run_governance/razorpay_paced_v1
-host V2,razorpay_host_v2,12,256,7,5,244,429,PaperCollectionError,/provider_summary/razorpay_host_v2; /source_run_governance/razorpay_host_v2

@@ -1,5 +1,0 @@
-population,environment,world,N,difference_pp,lower_pp,upper_pp,status,source_json_pointer
-github_canonical_coverage,GitHub,H0,63,4.761904761904762,-1.781934357992411,13.090967837906076,SECONDARY DESCRIPTIVE REPLICATION ANALYSIS,/populations/github_canonical_coverage/worlds/H0
-github_canonical_coverage,GitHub,H1,64,-100.0,-100.0,-91.99214866843896,SECONDARY DESCRIPTIVE REPLICATION ANALYSIS,/populations/github_canonical_coverage/worlds/H1
-sheets_post_incident_replication,Sheets replication,H0,64,0.0,-5.662405979280538,5.662405979280538,SECONDARY DESCRIPTIVE POST-INCIDENT REPLICATION,/populations/sheets_post_incident_replication/worlds/H0
-sheets_post_incident_replication,Sheets replication,H1,64,-100.0,-100.0,-91.99214866843896,SECONDARY DESCRIPTIVE POST-INCIDENT REPLICATION,/populations/sheets_post_incident_replication/worlds/H1

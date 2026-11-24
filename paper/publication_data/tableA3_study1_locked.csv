@@ -1,3 +1,0 @@
-World,N,Replay correct,Regeneration correct,Difference (pp),95% paired CI (pp),Raw McNemar p,Holm-adjusted p
-H0,160,160/160 (100.00%),160/160 (100.00%),0.0000,"[-2.3446, 2.3446]",1,1
-H1,160,0/160 (0.00%),151/160 (94.38%),-94.3750,"[-97.0128, -89.1060]",7.00649e-46,1.4013e-45

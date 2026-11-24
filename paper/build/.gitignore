@@ -1,6 +1,0 @@
-# Intermediate compiler files remain available locally for inspection.
-*.aux
-*.out
-*.bbl
-*.blg
-*.log
